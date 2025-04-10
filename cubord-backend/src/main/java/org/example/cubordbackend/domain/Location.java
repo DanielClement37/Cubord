@@ -16,19 +16,10 @@ public class Location {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private UUID id;
-
-    // If you had a Household entity, you'd reference it:
-    // @ManyToOne(fetch = FetchType.LAZY)
-    // @JoinColumn(name = "household_id")
-    // private Household household;
-
-    private UUID householdId;
-
+    //todo: add household information when implementing user authentication
     private String name;
     private String locationType;
-
     private UUID parentLocationId;
-
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
