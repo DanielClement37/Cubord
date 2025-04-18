@@ -1,5 +1,6 @@
 package org.example.cubordbackend;
 
+import org.cubord.cubordbackend.CubordBackendApplication;
 import org.springframework.boot.SpringApplication;
 
 public class TestCubordBackendApplication {

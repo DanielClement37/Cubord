@@ -1,6 +1,6 @@
-package org.example.cubordbackend.repository;
+package org.cubord.cubordbackend.repository;
 
-import org.example.cubordbackend.domain.Product;
+import org.cubord.cubordbackend.domain.Product;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

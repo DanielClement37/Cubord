@@ -1,4 +1,4 @@
-package org.example.cubordbackend.domain;
+package org.cubord.cubordbackend.domain;
 
 import jakarta.persistence.*;
 import lombok.*;
@@ -7,16 +7,21 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "households")
+@Table(name = "products")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Household {
+public class Product {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private UUID id;
+    private String upc;
     private String name;
+    private String brand;
+    private String category;
+    private Integer defaultExpirationDays;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 

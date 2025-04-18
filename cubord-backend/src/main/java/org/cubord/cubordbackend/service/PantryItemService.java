@@ -1,13 +1,13 @@
-package org.example.cubordbackend.service;
+package org.cubord.cubordbackend.service;
 
-import org.example.cubordbackend.domain.Location;
-import org.example.cubordbackend.domain.PantryItem;
-import org.example.cubordbackend.domain.Product;
-import org.example.cubordbackend.dto.CreatePantryItemRequest;
-import org.example.cubordbackend.dto.PantryItemResponse;
-import org.example.cubordbackend.repository.LocationRepository;
-import org.example.cubordbackend.repository.PantryItemRepository;
-import org.example.cubordbackend.repository.ProductRepository;
+import org.cubord.cubordbackend.domain.Location;
+import org.cubord.cubordbackend.domain.PantryItem;
+import org.cubord.cubordbackend.domain.Product;
+import org.cubord.cubordbackend.dto.CreatePantryItemRequest;
+import org.cubord.cubordbackend.dto.PantryItemResponse;
+import org.cubord.cubordbackend.repository.LocationRepository;
+import org.cubord.cubordbackend.repository.PantryItemRepository;
+import org.cubord.cubordbackend.repository.ProductRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 

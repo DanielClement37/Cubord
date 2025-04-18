@@ -1,4 +1,4 @@
-package org.example.cubordbackend;
+package org.cubord.cubordbackend;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

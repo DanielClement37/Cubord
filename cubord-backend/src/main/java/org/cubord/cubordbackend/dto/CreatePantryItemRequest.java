@@ -1,4 +1,4 @@
-package org.example.cubordbackend.dto;
+package org.cubord.cubordbackend.dto;
 
 
 import lombok.Data;

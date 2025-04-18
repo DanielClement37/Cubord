@@ -1,9 +1,9 @@
-package org.example.cubordbackend.controller;
+package org.cubord.cubordbackend.controller;
 
 import lombok.RequiredArgsConstructor;
-import org.example.cubordbackend.dto.CreatePantryItemRequest;
-import org.example.cubordbackend.dto.PantryItemResponse;
-import org.example.cubordbackend.service.PantryItemService;
+import org.cubord.cubordbackend.dto.CreatePantryItemRequest;
+import org.cubord.cubordbackend.dto.PantryItemResponse;
+import org.cubord.cubordbackend.service.PantryItemService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 

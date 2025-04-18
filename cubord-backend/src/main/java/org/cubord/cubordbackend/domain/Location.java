@@ -1,27 +1,25 @@
-package org.example.cubordbackend.domain;
+package org.cubord.cubordbackend.domain;
 
 import jakarta.persistence.*;
 import lombok.*;
-
 import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "products")
+@Table(name = "locations")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Product {
+public class Location {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private UUID id;
-    private String upc;
+    //todo: add household information when implementing user authentication
     private String name;
-    private String brand;
-    private String category;
-    private Integer defaultExpirationDays;
+    private String locationType;
+    private UUID parentLocationId;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
