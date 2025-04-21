@@ -8,5 +8,4 @@ import java.util.UUID;
 
 @Repository
 public interface LocationRepository extends JpaRepository<Location, UUID> {
-    // e.g., List<Location> findByHouseholdId(Long householdId);
 }

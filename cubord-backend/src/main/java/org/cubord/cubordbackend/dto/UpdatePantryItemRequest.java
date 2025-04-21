@@ -5,6 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotNull;
 import java.time.LocalDate;
 import java.util.UUID;
 
@@ -12,12 +14,13 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class CreatePantryItemRequest {
-    private UUID productId;
+public class UpdatePantryItemRequest {
     private UUID locationId;
-    private LocalDate expirationDate;
-    private LocalDate purchaseDate;
+    
+    @Min(0)
     private Integer quantity;
+    
     private String unitOfMeasure;
+    private LocalDate expirationDate;
     private String notes;
 }

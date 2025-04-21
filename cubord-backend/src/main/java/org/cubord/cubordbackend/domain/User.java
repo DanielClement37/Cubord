@@ -1,0 +1,37 @@
+package org.cubord.cubordbackend.domain;
+
+import jakarta.persistence.*;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
+
+import java.time.LocalDateTime;
+import java.util.Set;
+import java.util.UUID;
+
+@Entity
+@Table(name = "users")
+@Data
+@NoArgsConstructor
+public class User {
+    @Id
+    private UUID id;
+
+    private String email;
+
+    @Column(name = "display_name")
+    private String displayName;
+
+    @OneToMany(mappedBy = "user")
+    private Set<HouseholdMember> householdMembers;
+
+
+    @CreationTimestamp
+    @Column(name = "created_at")
+    private LocalDateTime createdAt;
+
+    @UpdateTimestamp
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+}
