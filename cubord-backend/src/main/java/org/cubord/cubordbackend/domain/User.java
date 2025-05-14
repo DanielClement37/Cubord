@@ -1,6 +1,8 @@
 package org.cubord.cubordbackend.domain;
 
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
@@ -14,9 +16,14 @@ import java.util.UUID;
 @Table(name = "users")
 @Data
 @NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class User {
     @Id
     private UUID id;
+
+    @Column(unique = true)
+    private String username;
 
     private String email;
 

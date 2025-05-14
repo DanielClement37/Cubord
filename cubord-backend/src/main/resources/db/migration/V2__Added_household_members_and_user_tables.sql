@@ -12,6 +12,7 @@ CREATE TABLE household_members
 CREATE TABLE users
 (
     id           UUID NOT NULL,
+    username     VARCHAR(255),
     email        VARCHAR(255),
     display_name VARCHAR(255),
     created_at   TIMESTAMP WITHOUT TIME ZONE,
@@ -19,23 +20,11 @@ CREATE TABLE users
     CONSTRAINT pk_users PRIMARY KEY (id)
 );
 
-ALTER TABLE locations
-    ADD description VARCHAR(255);
-
-ALTER TABLE locations
-    ADD household_id UUID;
+ALTER TABLE users
+    ADD CONSTRAINT uc_users_username UNIQUE (username);
 
 ALTER TABLE household_members
     ADD CONSTRAINT FK_HOUSEHOLD_MEMBERS_ON_HOUSEHOLD FOREIGN KEY (household_id) REFERENCES households (id);
 
 ALTER TABLE household_members
     ADD CONSTRAINT FK_HOUSEHOLD_MEMBERS_ON_USER FOREIGN KEY (user_id) REFERENCES users (id);
-
-ALTER TABLE locations
-    ADD CONSTRAINT FK_LOCATIONS_ON_HOUSEHOLD FOREIGN KEY (household_id) REFERENCES households (id);
-
-ALTER TABLE locations
-    DROP COLUMN location_type;
-
-ALTER TABLE locations
-    DROP COLUMN parent_location_id;
