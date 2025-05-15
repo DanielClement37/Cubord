@@ -16,9 +16,15 @@ import java.util.UUID;
 public class UserService {
     private final UserRepository userRepository;
 
+    /**
+     * Retrieves the current user from the database or creates a new user if not found.
+     * 
+     * @param token JWT authentication token containing user information
+     * @return User entity corresponding to the authenticated user
+     * @throws IllegalArgumentException if the JWT token doesn't contain a subject claim
+     */
     @Transactional
     public User getCurrentUser(JwtAuthenticationToken token) {
-        // Use token.getToken().getSubject() instead of token.getName()
         String subject = token.getToken().getSubject();
         if (subject == null) {
             throw new IllegalArgumentException("JWT token does not contain a subject claim");
@@ -29,12 +35,25 @@ public class UserService {
                 .orElseGet(() -> createUser(token));
     }
 
+    /**
+     * Retrieves current user details as a DTO.
+     * 
+     * @param token JWT authentication token containing user information
+     * @return UserResponse containing the authenticated user's details
+     */
     @Transactional(readOnly = true)
     public UserResponse getCurrentUserDetails(JwtAuthenticationToken token) {
         User user = getCurrentUser(token);
         return mapToResponse(user);
     }
 
+    /**
+     * Retrieves a user by their ID.
+     * 
+     * @param id UUID of the user to retrieve
+     * @return UserResponse containing the user's details
+     * @throws NotFoundException if no user with the given ID exists
+     */
     @Transactional(readOnly = true)
     public UserResponse getUser(UUID id) {
         User user = userRepository.findById(id)
@@ -42,6 +61,13 @@ public class UserService {
         return mapToResponse(user);
     }
 
+    /**
+     * Retrieves a user by their username.
+     * 
+     * @param username Username of the user to retrieve
+     * @return UserResponse containing the user's details
+     * @throws NotFoundException if no user with the given username exists
+     */
     @Transactional(readOnly = true)
     public UserResponse getUserByUsername(String username) {
         User user = userRepository.findByUsername(username)
@@ -49,6 +75,12 @@ public class UserService {
         return mapToResponse(user);
     }
 
+    /**
+     * Creates a new user from JWT token information.
+     * 
+     * @param token JWT authentication token containing user information
+     * @return Newly created and persisted User entity
+     */
     private User createUser(JwtAuthenticationToken token) {
         User user = new User();
         user.setId(UUID.fromString(token.getToken().getSubject()));
@@ -58,6 +90,12 @@ public class UserService {
         return userRepository.save(user);
     }
 
+    /**
+     * Extracts a username from an email address by taking the part before the @ symbol.
+     * 
+     * @param email Email address to extract username from
+     * @return Username extracted from email, or null if email is null
+     */
     private String extractUsernameFromEmail(String email) {
         if (email == null) {
             return null;
@@ -65,6 +103,12 @@ public class UserService {
         return email.split("@")[0];
     }
 
+    /**
+     * Maps a User entity to a UserResponse DTO.
+     * 
+     * @param user User entity to map
+     * @return UserResponse containing the user's details
+     */
     private UserResponse mapToResponse(User user) {
         return UserResponse.builder()
                 .id(user.getId())
@@ -74,5 +118,4 @@ public class UserService {
                 .createdAt(user.getCreatedAt())
                 .build();
     }
-
 }

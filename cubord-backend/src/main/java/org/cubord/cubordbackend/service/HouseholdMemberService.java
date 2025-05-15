@@ -29,6 +29,17 @@ public class HouseholdMemberService {
     private final HouseholdMemberRepository householdMemberRepository;
     private final UserService userService;
 
+    /**
+     * Adds a new member to a household.
+     * 
+     * @param householdId ID of the household to add member to
+     * @param request Details of the member to add
+     * @param token JWT token of the user performing the action
+     * @return HouseholdMemberResponse containing details of the added member
+     * @throws NotFoundException if the household or user is not found
+     * @throws AccessDeniedException if the current user lacks permission
+     * @throws IllegalStateException if the user is already a member
+     */
     @Transactional
     public HouseholdMemberResponse addMemberToHousehold(UUID householdId, HouseholdMemberRequest request,
                                                         JwtAuthenticationToken token) {
@@ -61,6 +72,15 @@ public class HouseholdMemberService {
         return mapToResponse(newMember);
     }
 
+    /**
+     * Retrieves all members of a household.
+     * 
+     * @param householdId ID of the household to get members for
+     * @param token JWT token of the user performing the action
+     * @return List of HouseholdMemberResponse objects representing household members
+     * @throws NotFoundException if the household is not found
+     * @throws AccessDeniedException if the current user is not a member
+     */
     @Transactional(readOnly = true)
     public List<HouseholdMemberResponse> getHouseholdMembers(UUID householdId, JwtAuthenticationToken token) {
         User currentUser = userService.getCurrentUser(token);
@@ -77,6 +97,12 @@ public class HouseholdMemberService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Maps a HouseholdMember entity to a HouseholdMemberResponse DTO.
+     * 
+     * @param member HouseholdMember entity to map
+     * @return HouseholdMemberResponse containing member details
+     */
     private HouseholdMemberResponse mapToResponse(HouseholdMember member) {
         return HouseholdMemberResponse.builder()
                 .id(member.getId())

@@ -24,6 +24,14 @@ public class HouseholdMemberController {
     private static final Logger logger = LoggerFactory.getLogger(HouseholdMemberController.class);
     private final HouseholdMemberService householdMemberService;
     
+    /**
+     * Adds a new member to a household.
+     * 
+     * @param householdId ID of the household to add member to
+     * @param request Details of the member to add
+     * @param token JWT token of the authenticated user
+     * @return ResponseEntity with created status and the added member details
+     */
     @PostMapping
     public ResponseEntity<HouseholdMemberResponse> addMember(
             @PathVariable UUID householdId,
@@ -40,6 +48,13 @@ public class HouseholdMemberController {
                 .body(response);
     }
     
+    /**
+     * Retrieves all members of a household.
+     * 
+     * @param householdId ID of the household to get members for
+     * @param token JWT token of the authenticated user
+     * @return ResponseEntity with OK status and list of household members
+     */
     @GetMapping
     public ResponseEntity<List<HouseholdMemberResponse>> getHouseholdMembers(
             @PathVariable UUID householdId,

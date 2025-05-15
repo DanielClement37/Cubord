@@ -48,10 +48,22 @@ public class SecurityConfig {
 
     private final HouseholdPermissionEvaluator householdPermissionEvaluator;
 
+    /**
+     * Creates a new SecurityConfig with the specified permission evaluator.
+     * 
+     * @param householdPermissionEvaluator Evaluator for household-related permissions
+     */
     public SecurityConfig(HouseholdPermissionEvaluator householdPermissionEvaluator) {
         this.householdPermissionEvaluator = householdPermissionEvaluator;
     }
 
+    /**
+     * Configures the security filter chain for the application.
+     * 
+     * @param http HttpSecurity to be configured
+     * @return Configured SecurityFilterChain
+     * @throws Exception if configuration fails
+     */
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
@@ -69,6 +81,12 @@ public class SecurityConfig {
         return http.build();
     }
 
+    /**
+     * Creates a JWT decoder configured with the application's secret key.
+     * 
+     * @return JwtDecoder for validating JWT tokens
+     * @throws IllegalStateException if JWT_SECRET environment variable is not set
+     */
     @Bean
     public JwtDecoder jwtDecoder() {
         logger.info("Configuring JWT Decoder with HS256 algorithm");
@@ -79,13 +97,7 @@ public class SecurityConfig {
         
         logger.debug("JWT Secret length: {}", jwtSecret.length());
 
-        byte[] secretBytes;
-        if (jwtSecret.startsWith("ey")) {
-            secretBytes = jwtSecret.getBytes(StandardCharsets.UTF_8);
-        } else {
-            secretBytes = jwtSecret.getBytes(StandardCharsets.UTF_8);
-        }
-
+        byte[] secretBytes = jwtSecret.getBytes(StandardCharsets.UTF_8);
         SecretKey key = new SecretKeySpec(secretBytes, "HmacSHA256");
 
         return NimbusJwtDecoder.withSecretKey(key)
@@ -93,17 +105,19 @@ public class SecurityConfig {
                 .build();
     }
 
+    /**
+     * Configures CORS settings for the application.
+     * 
+     * @return CorsConfigurationSource with configured origins and methods
+     */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
         String allowedOrigins = env.getProperty("ALLOWED_ORIGINS", "http://localhost:3000");
         configuration.setAllowedOriginPatterns(Arrays.asList(allowedOrigins.split(",")));
-
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With"));
-
         configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);
 
@@ -112,6 +126,11 @@ public class SecurityConfig {
         return source;
     }
 
+    /**
+     * Creates a JWT authentication converter for extracting authorities and principal.
+     * 
+     * @return JwtAuthenticationConverter configured for the application
+     */
     @Bean
     public JwtAuthenticationConverter jwtAuthenticationConverter() {
         JwtGrantedAuthoritiesConverter grantedAuthoritiesConverter = new JwtGrantedAuthoritiesConverter();
@@ -120,12 +139,16 @@ public class SecurityConfig {
 
         JwtAuthenticationConverter jwtAuthenticationConverter = new JwtAuthenticationConverter();
         jwtAuthenticationConverter.setJwtGrantedAuthoritiesConverter(grantedAuthoritiesConverter);
-
         jwtAuthenticationConverter.setPrincipalClaimName("sub");
 
         return jwtAuthenticationConverter;
     }
 
+    /**
+     * Configures method security expression handling with custom permission evaluator.
+     * 
+     * @return MethodSecurityExpressionHandler with household permissions
+     */
     @Bean
     public MethodSecurityExpressionHandler methodSecurityExpressionHandler() {
         DefaultMethodSecurityExpressionHandler expressionHandler = new DefaultMethodSecurityExpressionHandler();

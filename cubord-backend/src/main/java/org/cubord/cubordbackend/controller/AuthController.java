@@ -21,6 +21,12 @@ public class AuthController {
 
     private final UserService userService;
 
+    /**
+     * Retrieves the current authenticated user.
+     * 
+     * @param authentication Current authentication object
+     * @return ResponseEntity with user details or unauthorized status
+     */
     @GetMapping("/me")
     public ResponseEntity<User> getCurrentUser(Authentication authentication) {
         if (authentication == null || !(authentication instanceof JwtAuthenticationToken token)) {

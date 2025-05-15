@@ -8,5 +8,5 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/pantry-items")
 @RequiredArgsConstructor
 public class PantryItemController {
-
+    // Empty controller - no methods to document yet
 }
