@@ -97,8 +97,10 @@ Entity relationships are managed through JPA annotations, with appropriate mappi
 When creating new endpoints, use Spring Security's `Authentication` object to access the current user:
 
 ```
-
-public ResponseEntity<?> someEndpoint(Authentication authentication) {    JwtAuthenticationToken token = (JwtAuthenticationToken) authentication;    // Access user details and perform operations}
+public ResponseEntity<?> someEndpoint(Authentication authentication)
+{
+    JwtAuthenticationToken token = (JwtAuthenticationToken) authentication;    // Access user details and perform operations
+}
 ```
 
 ## API Endpoints and Controllers
@@ -122,7 +124,15 @@ Example controller structure:
 
 ```
 
-@RestController@RequestMapping("/api/resource")@RequiredArgsConstructorpublic class ResourceController {    private final ResourceService service;        @GetMapping("/{id}")    public ResponseEntity<ResourceDTO> getResource(@PathVariable UUID id) {        // Implementation    }        // Other endpoints}
+@RestController@RequestMapping("/api/resource")@RequiredArgsConstructorpublic class ResourceController
+{
+    private final ResourceService service;
+    @GetMapping("/{id}")
+    public ResponseEntity<ResourceDTO> getResource(@PathVariable UUID id)
+    {        // Implementation    }
+
+    // Other endpoints
+}
 ```
 
 ## Business Logic and Services
@@ -152,7 +162,11 @@ Example repository:
 
 ```
 
-public interface HouseholdRepository extends JpaRepository<Household, UUID> {    List<Household> findByMembersUserId(UUID userId);    Optional<Household> findByIdAndMembersUserId(UUID id, UUID userId);}
+public interface HouseholdRepository extends JpaRepository<Household, UUID>
+{
+    List<Household> findByMembersUserId(UUID userId);
+    Optional<Household> findByIdAndMembersUserId(UUID id, UUID userId);
+}
 ```
 
 ## Testing Strategy
@@ -174,15 +188,6 @@ Our testing approach includes:
 
 - Testing controllers with MockMvc
 - Verifying HTTP responses and payloads
-
-### Mock Authentication in Tests
-
-For testing secured endpoints, we use the `JwtTestUtil` utility class to simulate authenticated requests:
-
-```
-
-mockMvc.perform(get("/api/endpoint")        .with(JwtTestUtil.authentication(userId)))        .andExpect(status().isOk());
-```
 
 ## Local Development Setup
 
@@ -287,9 +292,3 @@ mockMvc.perform(get("/api/endpoint")        .with(JwtTestUtil.authentication(use
     
     - Ensure test environment has all required properties
     - Mock external dependencies properly
-
----
-
-This onboarding document is a living resource. If you find areas that need improvement, please submit updates through pull requests.
-
-Happy coding!
