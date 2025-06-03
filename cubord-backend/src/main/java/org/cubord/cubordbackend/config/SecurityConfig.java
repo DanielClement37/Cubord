@@ -29,6 +29,8 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.MediaType;
 
 @Configuration
 @EnableWebSecurity
@@ -76,6 +78,12 @@ public class SecurityConfig {
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.decoder(jwtDecoder())
                                       .jwtAuthenticationConverter(jwtAuthenticationConverter()))
+                        .authenticationEntryPoint((request, response, authException) -> {
+                            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                            response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                            response.getWriter().write("{\"error\":\"Unauthorized\",\"message\":\"" 
+                                    + authException.getMessage() + "\"}");
+                        })
                 );
 
         return http.build();

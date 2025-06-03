@@ -8,6 +8,8 @@ export const TokenLoggerButton: React.FC = () => {
       const session = await supabase.auth.getSession();
       if (session && session.data.session) {
         console.log('JWT Token:', session.data.session.access_token);
+
+
       } else {
         console.log('No active session found');
       }

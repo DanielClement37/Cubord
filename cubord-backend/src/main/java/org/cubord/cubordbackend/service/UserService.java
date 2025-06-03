@@ -9,6 +9,7 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashSet;
 import java.util.UUID;
 
 @Service
@@ -87,6 +88,7 @@ public class UserService {
         user.setEmail(token.getToken().getClaimAsString("email"));
         user.setUsername(extractUsernameFromEmail(token.getToken().getClaimAsString("email")));
         user.setDisplayName(token.getToken().getClaimAsString("name"));
+        user.setHouseholdMembers(new HashSet<>());
         return userRepository.save(user);
     }
 
@@ -97,10 +99,25 @@ public class UserService {
      * @return Username extracted from email, or null if email is null
      */
     private String extractUsernameFromEmail(String email) {
-        if (email == null) {
+        if (email == null || email.isBlank()) {
             return null;
         }
-        return email.split("@")[0];
+
+        if (!email.contains("@")) {
+            throw new IllegalArgumentException("Invalid email format");
+        }
+
+        String username = email.split("@")[0].trim();
+        
+        // Handle empty username part
+        if (username.isEmpty()) {
+            return null; // or some default value
+        }
+        
+        // Optional: sanitize username (remove special characters, etc.)
+        // username = username.replaceAll("[^a-zA-Z0-9_-]", "");
+        
+        return username;
     }
 
     /**
