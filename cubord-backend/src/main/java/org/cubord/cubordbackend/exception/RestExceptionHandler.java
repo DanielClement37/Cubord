@@ -1,5 +1,6 @@
 package org.cubord.cubordbackend.exception;
 
+import lombok.Getter;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -74,15 +75,13 @@ public class RestExceptionHandler {
     /**
      * Error response format for all API errors.
      */
+    @Getter
     public static class ErrorResponse {
         private final String message;
         
         public ErrorResponse(String message) {
             this.message = message;
         }
-        
-        public String getMessage() {
-            return message;
-        }
+
     }
 }
