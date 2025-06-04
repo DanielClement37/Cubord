@@ -84,4 +84,14 @@ public class RestExceptionHandler {
         }
 
     }
+    /**
+     * Handles ForbiddenException by returning a 403 status.
+     */
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<ErrorResponse> handleForbiddenException(ForbiddenException e) {
+        return ResponseEntity
+                .status(HttpStatus.FORBIDDEN)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(new ErrorResponse(e.getMessage()));
+    }
 }
