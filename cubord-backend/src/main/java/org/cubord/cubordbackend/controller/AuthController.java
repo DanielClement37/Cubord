@@ -34,7 +34,7 @@ public class AuthController {
                     authentication != null ? authentication.getClass().getName() : "null");
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
-
+    
         logger.debug("Token received: {}", token);
         logger.debug("Subject: {}", token.getToken().getSubject());
 

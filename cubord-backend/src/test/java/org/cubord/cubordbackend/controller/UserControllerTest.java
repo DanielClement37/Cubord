@@ -1,7 +1,9 @@
 package org.cubord.cubordbackend.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.cubord.cubordbackend.config.TestSecurityConfig;
 import org.cubord.cubordbackend.dto.UserResponse;
+import org.cubord.cubordbackend.dto.UserUpdateRequest;
 import org.cubord.cubordbackend.exception.NotFoundException;
 import org.cubord.cubordbackend.service.UserService;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,13 +26,17 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
-
+import java.util.HashMap;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(UserController.class)
@@ -240,6 +246,155 @@ class UserControllerTest {
                     .andExpect(jsonPath("$.username").value(specialUsername));
 
             verify(userService).getUserByUsername(eq(specialUsername));
+        }
+    }
+
+    @Nested
+    @DisplayName("PUT /api/users/{id}")
+    class UpdateUser {
+        @Test
+        @DisplayName("should update user when valid data and authorization provided")
+        void shouldUpdateUserWhenValidDataAndAuthorizationProvided() throws Exception {
+            // Create user update request
+            UserUpdateRequest updateRequest = new UserUpdateRequest();
+            updateRequest.setDisplayName("Updated Name");
+            updateRequest.setEmail("updated@example.com");
+            
+            // Mock service response
+            UserResponse updatedResponse = UserResponse.builder()
+                    .id(sampleUserId)
+                    .username(sampleUsername)
+                    .email("updated@example.com")
+                    .displayName("Updated Name")
+                    .createdAt(LocalDateTime.now().minusDays(7))
+                    .build();
+                    
+            when(userService.updateUser(eq(sampleUserId), any(UserUpdateRequest.class)))
+                    .thenReturn(updatedResponse);
+                    
+            mockMvc.perform(put("/api/users/" + sampleUserId)
+                    .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(new ObjectMapper().writeValueAsString(updateRequest)))
+                    .andExpect(status().isOk())
+                    .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                    .andExpect(jsonPath("$.id").value(sampleUserId.toString()))
+                    .andExpect(jsonPath("$.displayName").value("Updated Name"))
+                    .andExpect(jsonPath("$.email").value("updated@example.com"));
+                    
+            verify(userService).updateUser(eq(sampleUserId), any(UserUpdateRequest.class));
+        }
+        
+        @Test
+        @DisplayName("should return 403 when updating another user's profile")
+        void shouldReturn403WhenUpdatingAnotherUsersProfile() throws Exception {
+            UUID anotherUserId = UUID.randomUUID();
+            
+            UserUpdateRequest updateRequest = new UserUpdateRequest();
+            updateRequest.setDisplayName("Updated Name");
+            
+            mockMvc.perform(put("/api/users/" + anotherUserId)
+                    .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(new ObjectMapper().writeValueAsString(updateRequest)))
+                    .andExpect(status().isForbidden());
+                    
+            verify(userService, never()).updateUser(any(UUID.class), any(UserUpdateRequest.class));
+        }
+        
+        @Test
+        @DisplayName("should return 400 when update request is invalid")
+        void shouldReturn400WhenUpdateRequestIsInvalid() throws Exception {
+            // Create invalid request (e.g., email with invalid format)
+            UserUpdateRequest invalidRequest = new UserUpdateRequest();
+            invalidRequest.setEmail("not-an-email");
+            
+            mockMvc.perform(put("/api/users/" + sampleUserId)
+                    .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(new ObjectMapper().writeValueAsString(invalidRequest)))
+                    .andExpect(status().isBadRequest());
+                    
+            verify(userService, never()).updateUser(any(UUID.class), any(UserUpdateRequest.class));
+        }
+    }
+
+    @Nested
+    @DisplayName("PATCH /api/users/{id}")
+    class PatchUser {
+        @Test
+        @DisplayName("should partially update user when valid data provided")
+        void shouldPartiallyUpdateUserWhenValidDataProvided() throws Exception {
+            // Create patch request with only displayName
+            Map<String, Object> patchRequest = new HashMap<>();
+            patchRequest.put("displayName", "Patched Name");
+            
+            // Mock service response
+            UserResponse patchedResponse = UserResponse.builder()
+                    .id(sampleUserId)
+                    .username(sampleUsername)
+                    .email("test@example.com")
+                    .displayName("Patched Name")
+                    .createdAt(LocalDateTime.now().minusDays(7))
+                    .build();
+                    
+            when(userService.patchUser(eq(sampleUserId), anyMap()))
+                    .thenReturn(patchedResponse);
+                    
+            mockMvc.perform(patch("/api/users/" + sampleUserId)
+                    .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(new ObjectMapper().writeValueAsString(patchRequest)))
+                    .andExpect(status().isOk())
+                    .andExpect(content().contentType(MediaType.APPLICATION_JSON))
+                    .andExpect(jsonPath("$.displayName").value("Patched Name"));
+                    
+            verify(userService).patchUser(eq(sampleUserId), anyMap());
+        }
+        
+        @Test
+        @DisplayName("should return 403 when patching another user's profile")
+        void shouldReturn403WhenPatchingAnotherUsersProfile() throws Exception {
+            UUID anotherUserId = UUID.randomUUID();
+            
+            Map<String, Object> patchRequest = new HashMap<>();
+            patchRequest.put("displayName", "Patched Name");
+            
+            mockMvc.perform(patch("/api/users/" + anotherUserId)
+                    .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(new ObjectMapper().writeValueAsString(patchRequest)))
+                    .andExpect(status().isForbidden());
+                    
+            verify(userService, never()).patchUser(any(UUID.class), anyMap());
+        }
+    }
+
+    @Nested
+    @DisplayName("DELETE /api/users/{id}")
+    class DeleteUser {
+        @Test
+        @DisplayName("should delete user when authorized")
+        void shouldDeleteUserWhenAuthorized() throws Exception {
+            doNothing().when(userService).deleteUser(eq(sampleUserId));
+            
+            mockMvc.perform(delete("/api/users/" + sampleUserId)
+                    .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt)))
+                    .andExpect(status().isNoContent());
+                    
+            verify(userService).deleteUser(eq(sampleUserId));
+        }
+        
+        @Test
+        @DisplayName("should return 403 when deleting another user")
+        void shouldReturn403WhenDeletingAnotherUser() throws Exception {
+            UUID anotherUserId = UUID.randomUUID();
+            
+            mockMvc.perform(delete("/api/users/" + anotherUserId)
+                    .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt)))
+                    .andExpect(status().isForbidden());
+                    
+            verify(userService, never()).deleteUser(any(UUID.class));
         }
     }
 }

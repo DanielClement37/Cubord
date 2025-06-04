@@ -3,6 +3,7 @@ package org.cubord.cubordbackend.service;
 import lombok.RequiredArgsConstructor;
 import org.cubord.cubordbackend.domain.User;
 import org.cubord.cubordbackend.dto.UserResponse;
+import org.cubord.cubordbackend.dto.UserUpdateRequest;
 import org.cubord.cubordbackend.exception.NotFoundException;
 import org.cubord.cubordbackend.repository.UserRepository;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
@@ -11,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashSet;
 import java.util.UUID;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -134,5 +136,45 @@ public class UserService {
                 .displayName(user.getDisplayName())
                 .createdAt(user.getCreatedAt())
                 .build();
+    }
+
+    /**
+     * Updates a user with the provided information.
+     * 
+     * @param id UUID of the user to update
+     * @param updateRequest DTO containing the updated user information
+     * @return UserResponse containing the updated user's details
+     * @throws NotFoundException if no user with the given ID exists
+     */
+    @Transactional
+    public UserResponse updateUser(UUID id, UserUpdateRequest updateRequest) {
+        // To be implemented
+        throw new UnsupportedOperationException("Not implemented yet");
+    }
+
+    /**
+     * Partially updates a user with the provided field values.
+     * 
+     * @param id UUID of the user to update
+     * @param patchData Map containing field names and their new values
+     * @return UserResponse containing the updated user's details
+     * @throws NotFoundException if no user with the given ID exists
+     */
+    @Transactional
+    public UserResponse patchUser(UUID id, Map<String, Object> patchData) {
+        // To be implemented
+        throw new UnsupportedOperationException("Not implemented yet");
+    }
+
+    /**
+     * Deletes a user by their ID.
+     * 
+     * @param id UUID of the user to delete
+     * @throws NotFoundException if no user with the given ID exists
+     */
+    @Transactional
+    public void deleteUser(UUID id) {
+        // To be implemented
+        throw new UnsupportedOperationException("Not implemented yet");
     }
 }

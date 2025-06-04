@@ -1,7 +1,9 @@
 package org.cubord.cubordbackend.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.cubord.cubordbackend.config.TestSecurityConfig;
 import org.cubord.cubordbackend.dto.UserResponse;
+import org.cubord.cubordbackend.dto.UserUpdateRequest;
 import org.cubord.cubordbackend.service.UserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -16,6 +18,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.result.MockMvcResultHandlers;
+import org.springframework.http.MediaType;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -25,6 +28,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(UserController.class)
@@ -160,5 +165,74 @@ class UserControllerSecurityTest {
                 .andExpect(status().isForbidden());
                 
         verify(userService).getUserByUsername(eq(anotherUsername));
+    }
+
+    @Test
+    @DisplayName("should prevent updating another user's profile")
+    void shouldPreventUpdatingAnotherUsersProfile() throws Exception {
+        UUID anotherUserId = UUID.randomUUID();
+        
+        UserUpdateRequest updateRequest = new UserUpdateRequest();
+        updateRequest.setDisplayName("Updated Name");
+        
+        mockMvc.perform(put("/api/users/" + anotherUserId)
+                .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(new ObjectMapper().writeValueAsString(updateRequest)))
+                .andExpect(status().isForbidden());
+                
+        verify(userService, never()).updateUser(any(), any());
+    }
+
+    @Test
+    @DisplayName("should prevent deleting another user's account")
+    void shouldPreventDeletingAnotherUsersAccount() throws Exception {
+        UUID anotherUserId = UUID.randomUUID();
+        
+        mockMvc.perform(delete("/api/users/" + anotherUserId)
+                .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt)))
+                .andExpect(status().isForbidden());
+                
+        verify(userService, never()).deleteUser(any());
+    }
+
+    @Test
+    @DisplayName("should allow updating own user profile")
+    void shouldAllowUpdatingOwnUserProfile() throws Exception {
+        UserUpdateRequest updateRequest = new UserUpdateRequest();
+        updateRequest.setDisplayName("Updated Name");
+        
+        UserResponse updatedResponse = UserResponse.builder()
+            .id(sampleUserId)
+            .username("testuser")
+            .email("test@example.com")
+            .displayName("Updated Name")
+            .createdAt(LocalDateTime.now())
+            .build();
+            
+        when(userService.updateUser(eq(sampleUserId), any(UserUpdateRequest.class)))
+            .thenReturn(updatedResponse);
+            
+        mockMvc.perform(put("/api/users/" + sampleUserId)
+            .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(new ObjectMapper().writeValueAsString(updateRequest)))
+            .andExpect(status().isOk());
+            
+        verify(userService).updateUser(eq(sampleUserId), any(UserUpdateRequest.class));
+    }
+
+    @Test
+    @DisplayName("should require authentication for updating user profile")
+    void shouldRequireAuthenticationForUpdatingUserProfile() throws Exception {
+        UserUpdateRequest updateRequest = new UserUpdateRequest();
+        updateRequest.setDisplayName("Updated Name");
+        
+        mockMvc.perform(put("/api/users/" + sampleUserId)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(new ObjectMapper().writeValueAsString(updateRequest)))
+            .andExpect(status().isUnauthorized());
+            
+        verifyNoInteractions(userService);
     }
 }
