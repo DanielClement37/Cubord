@@ -1,10 +1,12 @@
 package org.cubord.cubordbackend.controller;
 
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.cubord.cubordbackend.dto.UserResponse;
+import org.cubord.cubordbackend.dto.UserUpdateRequest;
 import org.cubord.cubordbackend.exception.NotFoundException;
 import org.cubord.cubordbackend.service.UserService;
 import org.slf4j.Logger;
@@ -24,6 +26,7 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.security.Principal;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -188,6 +191,155 @@ public class UserController {
     }
     
     /**
+     * Updates a user's profile completely.
+     * 
+     * @param id UUID of the user to update
+     * @param updateRequest User update request with new details
+     * @param principal Current authenticated principal
+     * @return ResponseEntity with the updated user details
+     * @throws ResponseStatusException with status 403 if attempting to update another user's data
+     * @throws ResponseStatusException with status 404 if user not found
+     */
+    @PutMapping("/{id}")
+    public ResponseEntity<UserResponse> updateUser(
+            @PathVariable @NotNull UUID id,
+            @RequestBody @Valid UserUpdateRequest updateRequest,
+            Principal principal) {
+        
+        // Check if user is trying to update their own data
+        if (principal instanceof JwtAuthenticationToken token) {
+            // Explicitly check token expiration
+            Instant expiration = token.getToken().getExpiresAt();
+            if (expiration == null || expiration.isBefore(Instant.now())) {
+                logger.warn("JWT token has expired. Expiration: {}, Now: {}", expiration, Instant.now());
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "JWT token has expired");
+            }
+            
+            String userIdFromToken = token.getToken().getSubject();
+            if (!id.toString().equals(userIdFromToken)) {
+                logger.warn("Access denied: User {} attempted to update data for user {}", 
+                    userIdFromToken, id);
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cannot update another user's data");
+            }
+        } else {
+            logger.warn("Unauthorized access: Principal is not a JwtAuthenticationToken");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Valid authentication required");
+        }
+        
+        try {
+            logger.debug("Updating user {}: {}", id, updateRequest);
+            UserResponse updatedUser = userService.updateUser(id, updateRequest);
+            return ResponseEntity.ok()
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(updatedUser);
+        } catch (NotFoundException e) {
+            logger.info("User not found for update: {}", id);
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
+        } catch (Exception e) {
+            logger.error("Error updating user {}", id, e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Error updating user", e);
+        }
+    }
+    
+    /**
+     * Partially updates a user's profile.
+     * 
+     * @param id UUID of the user to update
+     * @param patchData Map of fields to update
+     * @param principal Current authenticated principal
+     * @return ResponseEntity with the updated user details
+     * @throws ResponseStatusException with status 403 if attempting to update another user's data
+     * @throws ResponseStatusException with status 404 if user not found
+     */
+    @PatchMapping("/{id}")
+    public ResponseEntity<UserResponse> patchUser(
+            @PathVariable @NotNull UUID id,
+            @RequestBody Map<String, Object> patchData,
+            Principal principal) {
+        
+        // Check if user is trying to patch their own data
+        if (principal instanceof JwtAuthenticationToken token) {
+            // Explicitly check token expiration
+            Instant expiration = token.getToken().getExpiresAt();
+            if (expiration == null || expiration.isBefore(Instant.now())) {
+                logger.warn("JWT token has expired. Expiration: {}, Now: {}", expiration, Instant.now());
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "JWT token has expired");
+            }
+            
+            String userIdFromToken = token.getToken().getSubject();
+            if (!id.toString().equals(userIdFromToken)) {
+                logger.warn("Access denied: User {} attempted to patch data for user {}", 
+                    userIdFromToken, id);
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cannot patch another user's data");
+            }
+        } else {
+            logger.warn("Unauthorized access: Principal is not a JwtAuthenticationToken");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Valid authentication required");
+        }
+        
+        try {
+            logger.debug("Patching user {}: {}", id, patchData);
+            UserResponse patchedUser = userService.patchUser(id, patchData);
+            return ResponseEntity.ok()
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(patchedUser);
+        } catch (NotFoundException e) {
+            logger.info("User not found for patch: {}", id);
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
+        } catch (Exception e) {
+            logger.error("Error patching user {}", id, e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Error patching user", e);
+        }
+    }
+    
+    /**
+     * Deletes a user account.
+     * 
+     * @param id UUID of the user to delete
+     * @param principal Current authenticated principal
+     * @return ResponseEntity with no content
+     * @throws ResponseStatusException with status 403 if attempting to delete another user's account
+     * @throws ResponseStatusException with status 404 if user not found
+     */
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteUser(
+            @PathVariable @NotNull UUID id,
+            Principal principal) {
+        
+        // Check if user is trying to delete their own account
+        if (principal instanceof JwtAuthenticationToken token) {
+            // Explicitly check token expiration
+            Instant expiration = token.getToken().getExpiresAt();
+            if (expiration == null || expiration.isBefore(Instant.now())) {
+                logger.warn("JWT token has expired. Expiration: {}, Now: {}", expiration, Instant.now());
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "JWT token has expired");
+            }
+            
+            String userIdFromToken = token.getToken().getSubject();
+            if (!id.toString().equals(userIdFromToken)) {
+                logger.warn("Access denied: User {} attempted to delete account for user {}", 
+                    userIdFromToken, id);
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cannot delete another user's account");
+            }
+        } else {
+            logger.warn("Unauthorized access: Principal is not a JwtAuthenticationToken");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Valid authentication required");
+        }
+        
+        try {
+            logger.debug("Deleting user {}", id);
+            userService.deleteUser(id);
+            return ResponseEntity.noContent().build();
+        } catch (NotFoundException e) {
+            logger.info("User not found for deletion: {}", id);
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, e.getMessage(), e);
+        } catch (Exception e) {
+            logger.error("Error deleting user {}", id, e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Error deleting user", e);
+        }
+    }
+    
+    /**
      * Exception handler for validation errors.
      * 
      * @param e The exception thrown
@@ -195,6 +347,20 @@ public class UserController {
      */
     @ExceptionHandler(jakarta.validation.ConstraintViolationException.class)
     public ResponseEntity<ErrorResponse> handleValidationExceptions(jakarta.validation.ConstraintViolationException e) {
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(new ErrorResponse("Validation error: " + e.getMessage()));
+    }
+
+    /**
+     * Exception handler for method argument validation errors.
+     *
+     * @param e The exception thrown
+     * @return ResponseEntity with error details
+     */
+    @ExceptionHandler(org.springframework.web.bind.MethodArgumentNotValidException.class)
+    public ResponseEntity<ErrorResponse> handleMethodArgumentNotValid(org.springframework.web.bind.MethodArgumentNotValidException e) {
         return ResponseEntity
                 .status(HttpStatus.BAD_REQUEST)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -225,6 +391,5 @@ public class UserController {
         public ErrorResponse(String message) {
             this.message = message;
         }
-
     }
 }
