@@ -8,14 +8,16 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "pantry_items")
-@Data
+@Getter
+@Setter
+@ToString(exclude = {"product", "location"})
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@EqualsAndHashCode(of = "id")
 public class PantryItem {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)

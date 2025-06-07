@@ -9,21 +9,23 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "households")
-@Data
+@Getter
+@Setter
+@ToString(exclude = {"locations", "members"})
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@EqualsAndHashCode(of = "id")
 public class Household {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private UUID id;
 
     private String name;
 
-    @OneToMany(mappedBy = "household")
+    @OneToMany(mappedBy = "household", cascade = CascadeType.ALL, orphanRemoval = true)
     private Set<Location> locations;
 
-    @OneToMany(mappedBy = "household")
+    @OneToMany(mappedBy = "household", cascade = CascadeType.ALL, orphanRemoval = true)
     private Set<HouseholdMember> members;
 
     private LocalDateTime createdAt;

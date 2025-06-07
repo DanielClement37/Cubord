@@ -7,14 +7,16 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "locations")
-@Data
+@Getter
+@Setter
+@ToString(exclude = "household")
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@EqualsAndHashCode(of = "id")
 public class Location {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private UUID id;
 
     private String name;
@@ -27,7 +29,6 @@ public class Location {
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
-
 
     @PrePersist
     public void onCreate() {

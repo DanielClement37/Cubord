@@ -1,10 +1,7 @@
 package org.cubord.cubordbackend.domain;
 
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
@@ -14,10 +11,13 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "users")
-@Data
+@Getter
+@Setter
+@ToString(exclude = "householdMembers")
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@EqualsAndHashCode(of = "id")
 public class User {
     @Id
     private UUID id;
@@ -32,7 +32,6 @@ public class User {
 
     @OneToMany(mappedBy = "user")
     private Set<HouseholdMember> householdMembers;
-
 
     @CreationTimestamp
     @Column(name = "created_at")
