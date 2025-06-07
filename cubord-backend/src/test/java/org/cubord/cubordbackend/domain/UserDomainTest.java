@@ -91,12 +91,12 @@ class UserDomainTest {
                 .email("user1@example.com")  // Same email
                 .build();
 
-        // Then - Lombok's @Data provides equals/hashCode based on all fields
+        // Then - With @EqualsAndHashCode(of = "id"), only ID matters for equality
         assertThat(user1).isEqualTo(user1);  // Same instance
-        assertThat(user1).isNotEqualTo(user2);  // Same ID but different fields
+        assertThat(user1).isEqualTo(user2);  // Same ID, so should be equal
         assertThat(user1).isNotEqualTo(user3);  // Different ID
         
-        assertThat(user1.hashCode()).isNotEqualTo(user2.hashCode());
-        assertThat(user1.hashCode()).isNotEqualTo(user3.hashCode());
+        assertThat(user1.hashCode()).isEqualTo(user2.hashCode());  // Same ID, so same hash
+        assertThat(user1.hashCode()).isNotEqualTo(user3.hashCode());  // Different ID
     }
 }

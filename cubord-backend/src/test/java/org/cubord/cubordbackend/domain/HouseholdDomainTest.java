@@ -201,13 +201,13 @@ class HouseholdDomainTest {
                 .name("Home 1")
                 .build();
 
-        // Then - with Lombok's @Data, equals/hashCode considers all fields
-        assertThat(household1).isEqualTo(household1);
-        assertThat(household1).isNotEqualTo(household2); // Different name despite same ID
-        assertThat(household1).isNotEqualTo(household3); // Different ID
+        // Then - with @EqualsAndHashCode(of = "id"), only ID matters for equality
+        assertThat(household1).isEqualTo(household1);  // Same instance
+        assertThat(household1).isEqualTo(household2);  // Same ID, so should be equal despite different name
+        assertThat(household1).isNotEqualTo(household3);  // Different ID
         
-        assertThat(household1.hashCode()).isNotEqualTo(household2.hashCode());
-        assertThat(household1.hashCode()).isNotEqualTo(household3.hashCode());
+        assertThat(household1.hashCode()).isEqualTo(household2.hashCode());  // Same ID, so same hash
+        assertThat(household1.hashCode()).isNotEqualTo(household3.hashCode());  // Different ID
     }
     
     @Test
