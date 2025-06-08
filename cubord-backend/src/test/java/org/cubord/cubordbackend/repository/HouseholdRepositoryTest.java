@@ -28,7 +28,6 @@ class HouseholdRepositoryTest {
     private HouseholdRepository householdRepository;
 
     private User user1;
-    private User user2;
     private User user3;
     private Household household1;
     private Household household2;
@@ -52,8 +51,8 @@ class HouseholdRepositoryTest {
                 .displayName("John Doe")
                 .householdMembers(new HashSet<>())
                 .build();
-        
-        user2 = User.builder()
+
+        User user2 = User.builder()
                 .id(UUID.randomUUID())
                 .username("janesmith")
                 .email("user2@example.com")
@@ -82,7 +81,7 @@ class HouseholdRepositoryTest {
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
-        
+
         household2 = Household.builder()
                 .id(UUID.randomUUID())
                 .name("Johnson Family")
@@ -91,7 +90,7 @@ class HouseholdRepositoryTest {
                 .createdAt(yesterday)
                 .updatedAt(yesterday)
                 .build();
-        
+
         household3 = Household.builder()
                 .id(UUID.randomUUID())
                 .name("Smith-Johnson Household")
@@ -114,7 +113,7 @@ class HouseholdRepositoryTest {
                 .createdAt(now)
                 .updatedAt(now)
                 .build();
-        
+
         member2 = HouseholdMember.builder()
                 .id(UUID.randomUUID())
                 .user(user2)
@@ -123,7 +122,7 @@ class HouseholdRepositoryTest {
                 .createdAt(yesterday)
                 .updatedAt(yesterday)
                 .build();
-        
+
         member3 = HouseholdMember.builder()
                 .id(UUID.randomUUID())
                 .user(user3)
@@ -188,7 +187,7 @@ class HouseholdRepositoryTest {
         
         // Then
         assertThat(user1Households).hasSize(1);
-        assertThat(user1Households.get(0).getName()).isEqualTo("Smith Family");
+        assertThat(user1Households.getFirst().getName()).isEqualTo("Smith Family");
     }
 
     @Test
@@ -231,7 +230,7 @@ class HouseholdRepositoryTest {
         
         // Then
         assertThat(user3Households).hasSize(1);
-        assertThat(user3Households.get(0).getName()).isEqualTo("Smith-Johnson Household");
+        assertThat(user3Households.getFirst().getName()).isEqualTo("Smith-Johnson Household");
     }
     
     @Test

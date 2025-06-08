@@ -36,9 +36,6 @@ public class HouseholdServiceTest {
     private HouseholdMemberRepository householdMemberRepository;
 
     @Mock
-    private UserRepository userRepository;
-
-    @Mock
     private UserService userService;
 
     @Mock
@@ -206,8 +203,8 @@ public class HouseholdServiceTest {
 
             // Then
             assertThat(responses).hasSize(1);
-            assertThat(responses.get(0).getId()).isEqualTo(householdId);
-            assertThat(responses.get(0).getName()).isEqualTo(testHousehold.getName());
+            assertThat(responses.getFirst().getId()).isEqualTo(householdId);
+            assertThat(responses.getFirst().getName()).isEqualTo(testHousehold.getName());
             verify(householdRepository).findByMembersUserId(userId);
         }
 
@@ -530,8 +527,8 @@ public class HouseholdServiceTest {
 
             // Then
             assertThat(responses).hasSize(1);
-            assertThat(responses.get(0).getId()).isEqualTo(householdId);
-            assertThat(responses.get(0).getName()).isEqualTo(testHousehold.getName());
+            assertThat(responses.getFirst().getId()).isEqualTo(householdId);
+            assertThat(responses.getFirst().getName()).isEqualTo(testHousehold.getName());
             verify(householdRepository).findByNameContainingIgnoreCase(searchTerm);
         }
 
