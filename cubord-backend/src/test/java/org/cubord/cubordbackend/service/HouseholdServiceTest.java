@@ -3,7 +3,7 @@ package org.cubord.cubordbackend.service;
 import org.cubord.cubordbackend.domain.*;
 import org.cubord.cubordbackend.dto.HouseholdRequest;
 import org.cubord.cubordbackend.dto.HouseholdResponse;
-import org.cubord.cubordbackend.exception.AccessDeniedException;
+import org.cubord.cubordbackend.exception.ForbiddenException;
 import org.cubord.cubordbackend.exception.NotFoundException;
 import org.cubord.cubordbackend.repository.HouseholdMemberRepository;
 import org.cubord.cubordbackend.repository.HouseholdRepository;
@@ -177,7 +177,7 @@ public class HouseholdServiceTest {
         }
 
         @Test
-        @DisplayName("Should throw AccessDeniedException when user is not a member")
+        @DisplayName("Should throw ForbiddenException when user is not a member")
         void shouldThrowAccessDeniedExceptionWhenUserIsNotMember() {
             // Given
             when(userService.getCurrentUser(token)).thenReturn(testUser);
@@ -187,7 +187,7 @@ public class HouseholdServiceTest {
 
             // When/Then
             assertThatThrownBy(() -> householdService.getHouseholdById(householdId, token))
-                .isInstanceOf(AccessDeniedException.class)
+                .isInstanceOf(ForbiddenException.class)
                 .hasMessageContaining("access to this household");
             
             verify(householdRepository).findById(householdId);
@@ -280,7 +280,7 @@ public class HouseholdServiceTest {
         }
 
         @Test
-        @DisplayName("Should throw AccessDeniedException when user is regular member")
+        @DisplayName("Should throw ForbiddenException when user is regular member")
         void shouldThrowAccessDeniedExceptionWhenUserIsRegularMember() {
             // Given
             testMember.setRole(HouseholdRole.MEMBER);
@@ -294,7 +294,7 @@ public class HouseholdServiceTest {
 
             // When/Then
             assertThatThrownBy(() -> householdService.updateHousehold(householdId, request, token))
-                .isInstanceOf(AccessDeniedException.class)
+                .isInstanceOf(ForbiddenException.class)
                 .hasMessageContaining("permission to update");
             
             verify(householdRepository).findById(householdId);
@@ -355,7 +355,7 @@ public class HouseholdServiceTest {
         }
 
         @Test
-        @DisplayName("Should throw AccessDeniedException when user is not owner")
+        @DisplayName("Should throw ForbiddenException when user is not owner")
         void shouldThrowAccessDeniedExceptionWhenUserIsNotOwner() {
             // Given
             testMember.setRole(HouseholdRole.ADMIN);
@@ -367,7 +367,7 @@ public class HouseholdServiceTest {
 
             // When/Then
             assertThatThrownBy(() -> householdService.deleteHousehold(householdId, token))
-                .isInstanceOf(AccessDeniedException.class)
+                .isInstanceOf(ForbiddenException.class)
                 .hasMessageContaining("Only the owner can delete");
             
             verify(householdRepository).findById(householdId);
@@ -476,7 +476,7 @@ public class HouseholdServiceTest {
 
             // When/Then
             assertThatThrownBy(() -> householdService.transferOwnership(householdId, newOwnerId, token))
-                .isInstanceOf(AccessDeniedException.class)
+                .isInstanceOf(ForbiddenException.class)
                 .hasMessageContaining("Only the owner can transfer ownership");
             
             verify(householdRepository).findById(householdId);
@@ -669,7 +669,7 @@ public class HouseholdServiceTest {
             // When/Then
             assertThatThrownBy(() -> 
                 householdService.changeMemberRole(householdId, targetMemberId, HouseholdRole.ADMIN, token))
-                .isInstanceOf(AccessDeniedException.class)
+                .isInstanceOf(ForbiddenException.class)
                 .hasMessageContaining("Only an owner can change the role of another owner or admin");
             
             verify(householdMemberRepository, never()).save(any());
@@ -690,7 +690,7 @@ public class HouseholdServiceTest {
             // When/Then
             assertThatThrownBy(() -> 
                 householdService.changeMemberRole(householdId, targetMemberId, HouseholdRole.ADMIN, token))
-                .isInstanceOf(AccessDeniedException.class)
+                .isInstanceOf(ForbiddenException.class)
                 .hasMessageContaining("You don't have permission to change member roles");
             
             verify(householdMemberRepository, never()).findByHouseholdIdAndUserId(eq(householdId), eq(targetMemberId));
@@ -703,28 +703,13 @@ public class HouseholdServiceTest {
             // Given
             UUID targetMemberId = UUID.randomUUID();
             
-            User targetUser = new User();
-            targetUser.setId(targetMemberId);
-            
-            HouseholdMember targetMember = new HouseholdMember();
-            targetMember.setId(UUID.randomUUID());
-            targetMember.setUser(targetUser);
-            targetMember.setHousehold(testHousehold);
-            targetMember.setRole(HouseholdRole.ADMIN);
-
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                .thenReturn(Optional.of(testMember));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, targetMemberId))
-                .thenReturn(Optional.of(targetMember));
-
             // When/Then
             assertThatThrownBy(() -> 
                 householdService.changeMemberRole(householdId, targetMemberId, HouseholdRole.OWNER, token))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Cannot set role to OWNER");
             
+            // Since exception is thrown at the beginning of the method, no repository methods are called
             verify(householdMemberRepository, never()).save(any());
         }
     }
