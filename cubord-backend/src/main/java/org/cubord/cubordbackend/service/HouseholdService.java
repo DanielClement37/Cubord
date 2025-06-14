@@ -18,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -35,7 +36,7 @@ public class HouseholdService {
      * Creates a new household with the current user as the owner.
      *
      * @param request DTO containing household information
-     * @param token JWT authentication token of the current user
+     * @param token   JWT authentication token of the current user
      * @return HouseholdResponse containing the created household's details
      * @throws IllegalStateException if a household with the same name already exists
      */
@@ -75,9 +76,9 @@ public class HouseholdService {
      * Retrieves a household by its ID if the current user is a member.
      *
      * @param householdId UUID of the household to retrieve
-     * @param token JWT authentication token of the current user
+     * @param token       JWT authentication token of the current user
      * @return HouseholdResponse containing the household's details
-     * @throws NotFoundException if the household doesn't exist
+     * @throws NotFoundException  if the household doesn't exist
      * @throws ForbiddenException if the current user is not a member of the household
      */
     @Transactional(readOnly = true)
@@ -119,11 +120,11 @@ public class HouseholdService {
      * Updates a household's information if the current user has appropriate permissions.
      *
      * @param householdId UUID of the household to update
-     * @param request DTO containing updated household information
-     * @param token JWT authentication token of the current user
+     * @param request     DTO containing updated household information
+     * @param token       JWT authentication token of the current user
      * @return HouseholdResponse containing the updated household's details
-     * @throws NotFoundException if the household doesn't exist
-     * @throws ForbiddenException if the current user lacks permission to update the household
+     * @throws NotFoundException     if the household doesn't exist
+     * @throws ForbiddenException    if the current user lacks permission to update the household
      * @throws IllegalStateException if the new name is already used by another household
      */
     @Transactional
@@ -163,8 +164,8 @@ public class HouseholdService {
      * Deletes a household if the current user is the owner.
      *
      * @param householdId UUID of the household to delete
-     * @param token JWT authentication token of the current user
-     * @throws NotFoundException if the household doesn't exist
+     * @param token       JWT authentication token of the current user
+     * @throws NotFoundException  if the household doesn't exist
      * @throws ForbiddenException if the current user is not the owner of the household
      */
     @Transactional
@@ -191,9 +192,9 @@ public class HouseholdService {
      * Allows a user to leave a household unless they are the owner.
      *
      * @param householdId UUID of the household to leave
-     * @param token JWT authentication token of the current user
-     * @throws NotFoundException if the household doesn't exist
-     * @throws ForbiddenException if the current user is not a member of the household
+     * @param token       JWT authentication token of the current user
+     * @throws NotFoundException     if the household doesn't exist
+     * @throws ForbiddenException    if the current user is not a member of the household
      * @throws IllegalStateException if the current user is the owner of the household
      */
     @Transactional
@@ -221,9 +222,9 @@ public class HouseholdService {
      * Transfers ownership of a household to another member.
      *
      * @param householdId UUID of the household
-     * @param newOwnerId UUID of the member to become the new owner
-     * @param token JWT authentication token of the current user
-     * @throws NotFoundException if the household or new owner doesn't exist
+     * @param newOwnerId  UUID of the member to become the new owner
+     * @param token       JWT authentication token of the current user
+     * @throws NotFoundException  if the household or new owner doesn't exist
      * @throws ForbiddenException if the current user is not the owner of the household
      */
     @Transactional
@@ -259,7 +260,7 @@ public class HouseholdService {
      * Searches for households by name and returns only those the current user is a member of.
      *
      * @param searchTerm Term to search for in household names
-     * @param token JWT authentication token of the current user
+     * @param token      JWT authentication token of the current user
      * @return List of HouseholdResponse objects matching the search criteria
      */
     @Transactional(readOnly = true)
@@ -281,11 +282,11 @@ public class HouseholdService {
      * Changes a member's role within a household if the current user has appropriate permissions.
      *
      * @param householdId UUID of the household
-     * @param memberId UUID of the member whose role is to be changed
-     * @param role New role to assign to the member
-     * @param token JWT authentication token of the current user
-     * @throws NotFoundException if the household or member doesn't exist
-     * @throws ForbiddenException if the current user lacks permission to change roles
+     * @param memberId    UUID of the member whose role is to be changed
+     * @param role        New role to assign to the member
+     * @param token       JWT authentication token of the current user
+     * @throws NotFoundException        if the household or member doesn't exist
+     * @throws ForbiddenException       if the current user lacks permission to change roles
      * @throws IllegalArgumentException if attempting to set role to OWNER through this method
      */
     @Transactional
@@ -338,5 +339,9 @@ public class HouseholdService {
                 .createdAt(household.getCreatedAt())
                 .updatedAt(household.getUpdatedAt())
                 .build();
+    }
+
+    public HouseholdResponse patchHousehold(UUID id, Map<String, Object> fields, JwtAuthenticationToken auth) {
+        return null;
     }
 }

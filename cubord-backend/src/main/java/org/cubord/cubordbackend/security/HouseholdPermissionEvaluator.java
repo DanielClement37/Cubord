@@ -74,6 +74,58 @@ public class HouseholdPermissionEvaluator implements PermissionEvaluator {
     }
     
     /**
+     * Checks if a user has view permission for a household.
+     * 
+     * @param authentication The authentication object
+     * @param householdId The household ID as string
+     * @return true if the user has view permission, false otherwise
+     */
+    public boolean hasViewPermission(Authentication authentication, String householdId) {
+        if (authentication == null || householdId == null) {
+            return false;
+        }
+        
+        UUID userId = getUserIdFromAuthentication(authentication);
+        if (userId == null) {
+            return false;
+        }
+        
+        try {
+            UUID householdUuid = UUID.fromString(householdId);
+            return hasHouseholdPermission(userId, householdUuid, "MEMBER");
+        } catch (IllegalArgumentException e) {
+            logger.error("Invalid household UUID: {}", householdId, e);
+            return false;
+        }
+    }
+    
+    /**
+     * Checks if a user has edit permission for a household.
+     * 
+     * @param authentication The authentication object
+     * @param householdId The household ID as string
+     * @return true if the user has edit permission, false otherwise
+     */
+    public boolean hasEditPermission(Authentication authentication, String householdId) {
+        if (authentication == null || householdId == null) {
+            return false;
+        }
+        
+        UUID userId = getUserIdFromAuthentication(authentication);
+        if (userId == null) {
+            return false;
+        }
+        
+        try {
+            UUID householdUuid = UUID.fromString(householdId);
+            return hasHouseholdPermission(userId, householdUuid, "ADMIN");
+        } catch (IllegalArgumentException e) {
+            logger.error("Invalid household UUID: {}", householdId, e);
+            return false;
+        }
+    }
+    
+    /**
      * Extracts the user ID from the authentication object.
      *
      * @param authentication The authentication object
