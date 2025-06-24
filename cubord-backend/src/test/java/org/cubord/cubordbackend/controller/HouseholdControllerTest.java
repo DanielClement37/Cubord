@@ -47,14 +47,13 @@ class HouseholdControllerTest {
     @MockitoBean
     private org.cubord.cubordbackend.security.HouseholdPermissionEvaluator householdPermissionEvaluator;
 
-    private UUID sampleUserId;
     private UUID sampleHouseholdId;
     private Jwt jwt;
     private HouseholdResponse sampleHouseholdResponse;
 
     @BeforeEach
     void setUp() {
-        sampleUserId = UUID.randomUUID();
+        UUID sampleUserId = UUID.randomUUID();
         sampleHouseholdId = UUID.randomUUID();
         LocalDateTime createdAt = LocalDateTime.now().minusDays(7);
 
@@ -389,72 +388,100 @@ class HouseholdControllerTest {
         @Test
         @DisplayName("should partially update household when valid data provided")
         void shouldPartiallyUpdateHouseholdWhenValidDataProvided() throws Exception {
-            Map<String, Object> patchRequest = new HashMap<>();
-            patchRequest.put("name", "Patched Household");
-            
-            HouseholdResponse patchedResponse = HouseholdResponse.builder()
+            // Prepare test data
+            Map<String, Object> patchData = Map.of("name", "Updated Household Name");
+            HouseholdResponse updatedResponse = HouseholdResponse.builder()
                     .id(sampleHouseholdId)
-                    .name("Patched Household")
+                    .name("Updated Household Name")
                     .createdAt(sampleHouseholdResponse.getCreatedAt())
                     .updatedAt(LocalDateTime.now())
                     .build();
-                    
-            when(householdService.patchHousehold(eq(sampleHouseholdId), anyMap(), any(JwtAuthenticationToken.class)))
-                    .thenReturn(patchedResponse);
-                    
+            
+            // Setup mocks
+            when(householdPermissionEvaluator.hasEditPermission(any(), eq(sampleHouseholdId.toString())))
+                    .thenReturn(true);
+            when(householdService.patchHousehold(eq(sampleHouseholdId), any(), any(JwtAuthenticationToken.class)))
+                    .thenReturn(updatedResponse);
+            
+            // Perform request and verify
             mockMvc.perform(patch("/api/households/" + sampleHouseholdId)
                         .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(new ObjectMapper().writeValueAsString(patchRequest)))
+                        .content(new ObjectMapper().writeValueAsString(patchData)))
                     .andExpect(status().isOk())
                     .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                     .andExpect(jsonPath("$.id").value(sampleHouseholdId.toString()))
-                    .andExpect(jsonPath("$.name").value("Patched Household"));
-                    
-            verify(householdService).patchHousehold(eq(sampleHouseholdId), anyMap(), any(JwtAuthenticationToken.class));
+                    .andExpect(jsonPath("$.name").value("Updated Household Name"));
+            
+            verify(householdService).patchHousehold(eq(sampleHouseholdId), any(), any(JwtAuthenticationToken.class));
         }
         
         @Test
         @DisplayName("should return 403 when user doesn't have permission to patch household")
         void shouldReturn403WhenUserDoesntHavePermissionToPatchHousehold() throws Exception {
-            UUID restrictedHouseholdId = UUID.randomUUID();
-            Map<String, Object> patchRequest = new HashMap<>();
-            patchRequest.put("name", "Patched Household");
+            // Prepare test data
+            Map<String, Object> patchData = Map.of("name", "Updated Household Name");
             
-            when(householdPermissionEvaluator.hasEditPermission(any(), eq(restrictedHouseholdId.toString())))
+            // Setup mocks to deny permission
+            when(householdPermissionEvaluator.hasEditPermission(any(), eq(sampleHouseholdId.toString())))
                     .thenReturn(false);
-                    
-            mockMvc.perform(patch("/api/households/" + restrictedHouseholdId)
+            
+            // Perform request and verify
+            mockMvc.perform(patch("/api/households/" + sampleHouseholdId)
                         .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(new ObjectMapper().writeValueAsString(patchRequest)))
+                        .content(new ObjectMapper().writeValueAsString(patchData)))
                     .andExpect(status().isForbidden());
-                    
+            
             verifyNoInteractions(householdService);
         }
         
         @Test
         @DisplayName("should return 404 when household to patch not found")
         void shouldReturn404WhenHouseholdToPatchNotFound() throws Exception {
-            UUID nonExistentId = UUID.randomUUID();
-            Map<String, Object> patchRequest = new HashMap<>();
-            patchRequest.put("name", "Patched Household");
+            // Prepare test data
+            Map<String, Object> patchData = Map.of("name", "Updated Household Name");
+            String errorMessage = "Household not found";
             
-            when(householdPermissionEvaluator.hasEditPermission(any(), eq(nonExistentId.toString())))
+            // Setup mocks
+            when(householdPermissionEvaluator.hasEditPermission(any(), eq(sampleHouseholdId.toString())))
                     .thenReturn(true);
-                    
-            when(householdService.patchHousehold(eq(nonExistentId), anyMap(), any(JwtAuthenticationToken.class)))
-                    .thenThrow(new NotFoundException("Household not found"));
-                    
-            mockMvc.perform(patch("/api/households/" + nonExistentId)
-                        .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(new ObjectMapper().writeValueAsString(patchRequest)))
-                    .andExpect(status().isNotFound())
-                    .andExpect(content().contentType(MediaType.APPLICATION_JSON))
-                    .andExpect(jsonPath("$.message").value("Household not found"));
-                    
-            verify(householdService).patchHousehold(eq(nonExistentId), anyMap(), any(JwtAuthenticationToken.class));
+            when(householdService.patchHousehold(eq(sampleHouseholdId), any(), any(JwtAuthenticationToken.class)))
+                    .thenThrow(new NotFoundException(errorMessage));
+            
+            // Perform request and verify
+            mockMvc.perform(patch("/api/households/" + sampleHouseholdId)
+                    .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(new ObjectMapper().writeValueAsString(patchData)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value(errorMessage));
+            
+            verify(householdService).patchHousehold(eq(sampleHouseholdId), any(), any(JwtAuthenticationToken.class));
+        }
+        
+        @Test
+        @DisplayName("should return 409 when patch would create name conflict")
+        void shouldReturn409WhenPatchWouldCreateNameConflict() throws Exception {
+            // Prepare test data
+            Map<String, Object> patchData = Map.of("name", "Existing Household Name");
+            String errorMessage = "Household with name 'Existing Household Name' already exists";
+            
+            // Setup mocks
+            when(householdPermissionEvaluator.hasEditPermission(any(), eq(sampleHouseholdId.toString())))
+                    .thenReturn(true);
+            when(householdService.patchHousehold(eq(sampleHouseholdId), any(), any(JwtAuthenticationToken.class)))
+                    .thenThrow(new IllegalStateException(errorMessage));
+            
+            // Perform request and verify
+            mockMvc.perform(patch("/api/households/" + sampleHouseholdId)
+                    .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(new ObjectMapper().writeValueAsString(patchData)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(errorMessage));
+            
+            verify(householdService).patchHousehold(eq(sampleHouseholdId), any(), any(JwtAuthenticationToken.class));
         }
     }
 
@@ -707,7 +734,7 @@ class HouseholdControllerTest {
             mockMvc.perform(get("/api/households/search")
                         .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt)))
                     .andExpect(status().isBadRequest());
-                    
+
             verifyNoInteractions(householdService);
         }
     }

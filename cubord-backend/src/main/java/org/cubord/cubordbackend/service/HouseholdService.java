@@ -201,10 +201,6 @@ public class HouseholdService {
     public void leaveHousehold(UUID householdId, JwtAuthenticationToken token) {
         User currentUser = userService.getCurrentUser(token);
 
-        // Find household
-        Household household = householdRepository.findById(householdId)
-                .orElseThrow(() -> new NotFoundException("Household not found"));
-
         // Check if user is a member
         HouseholdMember member = householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUser.getId())
                 .orElseThrow(() -> new ForbiddenException("You are not a member of this household"));
@@ -230,10 +226,6 @@ public class HouseholdService {
     @Transactional
     public void transferOwnership(UUID householdId, UUID newOwnerId, JwtAuthenticationToken token) {
         User currentUser = userService.getCurrentUser(token);
-
-        // Find household
-        Household household = householdRepository.findById(householdId)
-                .orElseThrow(() -> new NotFoundException("Household not found"));
 
         // Check if current user is the owner
         HouseholdMember currentMember = householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUser.getId())
@@ -297,10 +289,6 @@ public class HouseholdService {
 
         User currentUser = userService.getCurrentUser(token);
 
-        // Find household
-        Household household = householdRepository.findById(householdId)
-                .orElseThrow(() -> new NotFoundException("Household not found"));
-
         // Check if current user is a member with appropriate permissions
         HouseholdMember currentMember = householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUser.getId())
                 .orElseThrow(() -> new ForbiddenException("You don't have access to this household"));
@@ -327,6 +315,62 @@ public class HouseholdService {
     }
 
     /**
+     * Partially updates a household's information if the current user has appropriate permissions.
+     *
+     * @param householdId UUID of the household to update
+     * @param fields      Map of field names to updated values
+     * @param token       JWT authentication token of the current user
+     * @return HouseholdResponse containing the updated household's details
+     * @throws NotFoundException     if the household doesn't exist
+     * @throws ForbiddenException    if the current user lacks permission to update the household
+     * @throws IllegalStateException if the new name is already used by another household
+     */
+    @Transactional
+    public HouseholdResponse patchHousehold(UUID householdId, Map<String, Object> fields, JwtAuthenticationToken token) {
+        User currentUser = userService.getCurrentUser(token);
+
+        // Find household
+        Household household = householdRepository.findById(householdId)
+                .orElseThrow(() -> new NotFoundException("Household not found"));
+
+        // Check if user is a member with appropriate permissions
+        HouseholdMember member = householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUser.getId())
+                .orElseThrow(() -> new ForbiddenException("You don't have access to this household"));
+
+        // Check if user has permissions to update
+        if (member.getRole() != HouseholdRole.OWNER && member.getRole() != HouseholdRole.ADMIN) {
+            throw new ForbiddenException("You don't have permission to update this household");
+        }
+
+        // Apply patches to the fields
+        for (Map.Entry<String, Object> entry : fields.entrySet()) {
+            String field = entry.getKey();
+            Object value = entry.getValue();
+
+            if (field.equals("name")) {
+                if (value instanceof String newName) {
+                    // Check if name is already used by a different household
+                    Optional<Household> existingHousehold = householdRepository.findByName(newName);
+                    if (existingHousehold.isPresent() && !existingHousehold.get().getId().equals(householdId)) {
+                        throw new IllegalStateException("Household with name '" + newName + "' already exists");
+                    }
+                    household.setName(newName);
+                }
+                // Add additional fields to update as needed
+            } else {
+                log.warn("Ignoring unknown field: {}", field);
+            }
+        }
+
+        // Update timestamp
+        household.setUpdatedAt(LocalDateTime.now());
+        household = householdRepository.save(household);
+
+        // Convert to response DTO
+        return mapToHouseholdResponse(household);
+    }
+
+    /**
      * Maps a Household entity to a HouseholdResponse DTO.
      *
      * @param household Household entity to map
@@ -339,9 +383,5 @@ public class HouseholdService {
                 .createdAt(household.getCreatedAt())
                 .updatedAt(household.getUpdatedAt())
                 .build();
-    }
-
-    public HouseholdResponse patchHousehold(UUID id, Map<String, Object> fields, JwtAuthenticationToken auth) {
-        return null;
     }
 }

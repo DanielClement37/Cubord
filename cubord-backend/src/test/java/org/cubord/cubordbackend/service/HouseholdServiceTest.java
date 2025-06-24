@@ -7,7 +7,6 @@ import org.cubord.cubordbackend.exception.ForbiddenException;
 import org.cubord.cubordbackend.exception.NotFoundException;
 import org.cubord.cubordbackend.repository.HouseholdMemberRepository;
 import org.cubord.cubordbackend.repository.HouseholdRepository;
-import org.cubord.cubordbackend.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -125,9 +124,9 @@ public class HouseholdServiceTest {
 
             // When/Then
             assertThatThrownBy(() -> householdService.createHousehold(request, token))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("already exists");
-            
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("already exists");
+
             verify(householdRepository, never()).save(any());
             verify(householdMemberRepository, never()).save(any());
         }
@@ -144,7 +143,7 @@ public class HouseholdServiceTest {
             when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                .thenReturn(Optional.of(testMember));
+                    .thenReturn(Optional.of(testMember));
 
             // When
             HouseholdResponse response = householdService.getHouseholdById(householdId, token);
@@ -166,9 +165,9 @@ public class HouseholdServiceTest {
 
             // When/Then
             assertThatThrownBy(() -> householdService.getHouseholdById(householdId, token))
-                .isInstanceOf(NotFoundException.class)
-                .hasMessageContaining("Household not found");
-            
+                    .isInstanceOf(NotFoundException.class)
+                    .hasMessageContaining("Household not found");
+
             verify(householdRepository).findById(householdId);
             verify(householdMemberRepository, never()).findByHouseholdIdAndUserId(any(), any());
         }
@@ -180,13 +179,13 @@ public class HouseholdServiceTest {
             when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                .thenReturn(Optional.empty());
+                    .thenReturn(Optional.empty());
 
             // When/Then
             assertThatThrownBy(() -> householdService.getHouseholdById(householdId, token))
-                .isInstanceOf(ForbiddenException.class)
-                .hasMessageContaining("access to this household");
-            
+                    .isInstanceOf(ForbiddenException.class)
+                    .hasMessageContaining("access to this household");
+
             verify(householdRepository).findById(householdId);
             verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
         }
@@ -238,7 +237,7 @@ public class HouseholdServiceTest {
             when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                .thenReturn(Optional.of(testMember));
+                    .thenReturn(Optional.of(testMember));
             when(householdRepository.save(any(Household.class))).thenReturn(testHousehold);
 
             // When
@@ -264,7 +263,7 @@ public class HouseholdServiceTest {
             when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                .thenReturn(Optional.of(testMember));
+                    .thenReturn(Optional.of(testMember));
             when(householdRepository.save(any(Household.class))).thenReturn(testHousehold);
 
             // When
@@ -287,13 +286,13 @@ public class HouseholdServiceTest {
             when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                .thenReturn(Optional.of(testMember));
+                    .thenReturn(Optional.of(testMember));
 
             // When/Then
             assertThatThrownBy(() -> householdService.updateHousehold(householdId, request, token))
-                .isInstanceOf(ForbiddenException.class)
-                .hasMessageContaining("permission to update");
-            
+                    .isInstanceOf(ForbiddenException.class)
+                    .hasMessageContaining("permission to update");
+
             verify(householdRepository).findById(householdId);
             verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
             verify(householdRepository, never()).save(any());
@@ -313,14 +312,14 @@ public class HouseholdServiceTest {
             when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                .thenReturn(Optional.of(testMember));
+                    .thenReturn(Optional.of(testMember));
             when(householdRepository.findByName(request.getName())).thenReturn(Optional.of(existingHousehold));
 
             // When/Then
             assertThatThrownBy(() -> householdService.updateHousehold(householdId, request, token))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("already exists");
-            
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("already exists");
+
             verify(householdRepository).findById(householdId);
             verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
             verify(householdRepository).findByName(request.getName());
@@ -339,7 +338,7 @@ public class HouseholdServiceTest {
             when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                .thenReturn(Optional.of(testMember));
+                    .thenReturn(Optional.of(testMember));
             doNothing().when(householdRepository).delete(testHousehold);
 
             // When
@@ -360,13 +359,13 @@ public class HouseholdServiceTest {
             when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                .thenReturn(Optional.of(testMember));
+                    .thenReturn(Optional.of(testMember));
 
             // When/Then
             assertThatThrownBy(() -> householdService.deleteHousehold(householdId, token))
-                .isInstanceOf(ForbiddenException.class)
-                .hasMessageContaining("Only the owner can delete");
-            
+                    .isInstanceOf(ForbiddenException.class)
+                    .hasMessageContaining("Only the owner can delete");
+
             verify(householdRepository).findById(householdId);
             verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
             verify(householdRepository, never()).delete(any());
@@ -386,7 +385,7 @@ public class HouseholdServiceTest {
             when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                .thenReturn(Optional.of(testMember));
+                    .thenReturn(Optional.of(testMember));
             doNothing().when(householdMemberRepository).delete(testMember);
 
             // When
@@ -407,13 +406,13 @@ public class HouseholdServiceTest {
             when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                .thenReturn(Optional.of(testMember));
+                    .thenReturn(Optional.of(testMember));
 
             // When/Then
             assertThatThrownBy(() -> householdService.leaveHousehold(householdId, token))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("Owners cannot leave");
-            
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("Owners cannot leave");
+
             verify(householdRepository).findById(householdId);
             verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
             verify(householdMemberRepository, never()).delete(any());
@@ -429,10 +428,10 @@ public class HouseholdServiceTest {
         void shouldTransferOwnershipToAnotherMember() {
             // Given
             UUID newOwnerId = UUID.randomUUID();
-            
+
             User newOwnerUser = new User();
             newOwnerUser.setId(newOwnerId);
-            
+
             HouseholdMember newOwnerMember = new HouseholdMember();
             newOwnerMember.setId(UUID.randomUUID());
             newOwnerMember.setUser(newOwnerUser);
@@ -442,9 +441,9 @@ public class HouseholdServiceTest {
             when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                .thenReturn(Optional.of(testMember));
+                    .thenReturn(Optional.of(testMember));
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, newOwnerId))
-                .thenReturn(Optional.of(newOwnerMember));
+                    .thenReturn(Optional.of(newOwnerMember));
             when(householdMemberRepository.save(any(HouseholdMember.class))).thenAnswer(i -> i.getArgument(0));
 
             // When
@@ -469,13 +468,13 @@ public class HouseholdServiceTest {
             when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                .thenReturn(Optional.of(testMember));
+                    .thenReturn(Optional.of(testMember));
 
             // When/Then
             assertThatThrownBy(() -> householdService.transferOwnership(householdId, newOwnerId, token))
-                .isInstanceOf(ForbiddenException.class)
-                .hasMessageContaining("Only the owner can transfer ownership");
-            
+                    .isInstanceOf(ForbiddenException.class)
+                    .hasMessageContaining("Only the owner can transfer ownership");
+
             verify(householdRepository).findById(householdId);
             verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
             verify(householdMemberRepository, never()).findByHouseholdIdAndUserId(householdId, newOwnerId);
@@ -491,15 +490,15 @@ public class HouseholdServiceTest {
             when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                .thenReturn(Optional.of(testMember));
+                    .thenReturn(Optional.of(testMember));
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, newOwnerId))
-                .thenReturn(Optional.empty());
+                    .thenReturn(Optional.empty());
 
             // When/Then
             assertThatThrownBy(() -> householdService.transferOwnership(householdId, newOwnerId, token))
-                .isInstanceOf(NotFoundException.class)
-                .hasMessageContaining("New owner is not a member");
-            
+                    .isInstanceOf(NotFoundException.class)
+                    .hasMessageContaining("New owner is not a member");
+
             verify(householdRepository).findById(householdId);
             verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
             verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, newOwnerId);
@@ -518,9 +517,9 @@ public class HouseholdServiceTest {
             String searchTerm = "Test";
             when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(householdRepository.findByNameContainingIgnoreCase(searchTerm))
-                .thenReturn(List.of(testHousehold));
+                    .thenReturn(List.of(testHousehold));
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                .thenReturn(Optional.of(testMember));
+                    .thenReturn(Optional.of(testMember));
 
             // When
             List<HouseholdResponse> responses = householdService.searchHouseholds(searchTerm, token);
@@ -539,7 +538,7 @@ public class HouseholdServiceTest {
             String searchTerm = "Nonexistent";
             when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(householdRepository.findByNameContainingIgnoreCase(searchTerm))
-                .thenReturn(Collections.emptyList());
+                    .thenReturn(Collections.emptyList());
 
             // When
             List<HouseholdResponse> responses = householdService.searchHouseholds(searchTerm, token);
@@ -556,9 +555,9 @@ public class HouseholdServiceTest {
             String searchTerm = "Test";
             when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(householdRepository.findByNameContainingIgnoreCase(searchTerm))
-                .thenReturn(List.of(testHousehold));
+                    .thenReturn(List.of(testHousehold));
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                .thenReturn(Optional.empty());
+                    .thenReturn(Optional.empty());
 
             // When
             List<HouseholdResponse> responses = householdService.searchHouseholds(searchTerm, token);
@@ -579,10 +578,10 @@ public class HouseholdServiceTest {
         void shouldAllowOwnerToChangeMemberRole() {
             // Given
             UUID targetMemberId = UUID.randomUUID();
-            
+
             User targetUser = new User();
             targetUser.setId(targetMemberId);
-            
+
             HouseholdMember targetMember = new HouseholdMember();
             targetMember.setId(UUID.randomUUID());
             targetMember.setUser(targetUser);
@@ -592,9 +591,9 @@ public class HouseholdServiceTest {
             when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                .thenReturn(Optional.of(testMember));
+                    .thenReturn(Optional.of(testMember));
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, targetMemberId))
-                .thenReturn(Optional.of(targetMember));
+                    .thenReturn(Optional.of(targetMember));
             when(householdMemberRepository.save(any(HouseholdMember.class))).thenAnswer(i -> i.getArgument(0));
 
             // When
@@ -614,10 +613,10 @@ public class HouseholdServiceTest {
             // Given
             testMember.setRole(HouseholdRole.ADMIN);
             UUID targetMemberId = UUID.randomUUID();
-            
+
             User targetUser = new User();
             targetUser.setId(targetMemberId);
-            
+
             HouseholdMember targetMember = new HouseholdMember();
             targetMember.setId(UUID.randomUUID());
             targetMember.setUser(targetUser);
@@ -627,9 +626,9 @@ public class HouseholdServiceTest {
             when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                .thenReturn(Optional.of(testMember));
+                    .thenReturn(Optional.of(testMember));
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, targetMemberId))
-                .thenReturn(Optional.of(targetMember));
+                    .thenReturn(Optional.of(targetMember));
             when(householdMemberRepository.save(any(HouseholdMember.class))).thenAnswer(i -> i.getArgument(0));
 
             // When
@@ -646,10 +645,10 @@ public class HouseholdServiceTest {
             // Given
             testMember.setRole(HouseholdRole.ADMIN);
             UUID targetMemberId = UUID.randomUUID();
-            
+
             User targetUser = new User();
             targetUser.setId(targetMemberId);
-            
+
             HouseholdMember targetMember = new HouseholdMember();
             targetMember.setId(UUID.randomUUID());
             targetMember.setUser(targetUser);
@@ -659,16 +658,16 @@ public class HouseholdServiceTest {
             when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                .thenReturn(Optional.of(testMember));
+                    .thenReturn(Optional.of(testMember));
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, targetMemberId))
-                .thenReturn(Optional.of(targetMember));
+                    .thenReturn(Optional.of(targetMember));
 
             // When/Then
-            assertThatThrownBy(() -> 
-                householdService.changeMemberRole(householdId, targetMemberId, HouseholdRole.ADMIN, token))
-                .isInstanceOf(ForbiddenException.class)
-                .hasMessageContaining("Only an owner can change the role of another owner or admin");
-            
+            assertThatThrownBy(() ->
+                    householdService.changeMemberRole(householdId, targetMemberId, HouseholdRole.ADMIN, token))
+                    .isInstanceOf(ForbiddenException.class)
+                    .hasMessageContaining("Only an owner can change the role of another owner or admin");
+
             verify(householdMemberRepository, never()).save(any());
         }
 
@@ -682,14 +681,14 @@ public class HouseholdServiceTest {
             when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                .thenReturn(Optional.of(testMember));
+                    .thenReturn(Optional.of(testMember));
 
             // When/Then
-            assertThatThrownBy(() -> 
-                householdService.changeMemberRole(householdId, targetMemberId, HouseholdRole.ADMIN, token))
-                .isInstanceOf(ForbiddenException.class)
-                .hasMessageContaining("You don't have permission to change member roles");
-            
+            assertThatThrownBy(() ->
+                    householdService.changeMemberRole(householdId, targetMemberId, HouseholdRole.ADMIN, token))
+                    .isInstanceOf(ForbiddenException.class)
+                    .hasMessageContaining("You don't have permission to change member roles");
+
             verify(householdMemberRepository, never()).findByHouseholdIdAndUserId(eq(householdId), eq(targetMemberId));
             verify(householdMemberRepository, never()).save(any());
         }
@@ -699,15 +698,168 @@ public class HouseholdServiceTest {
         void shouldNotAllowChangingRoleToOwner() {
             // Given
             UUID targetMemberId = UUID.randomUUID();
-            
+
             // When/Then
-            assertThatThrownBy(() -> 
-                householdService.changeMemberRole(householdId, targetMemberId, HouseholdRole.OWNER, token))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Cannot set role to OWNER");
-            
+            assertThatThrownBy(() ->
+                    householdService.changeMemberRole(householdId, targetMemberId, HouseholdRole.OWNER, token))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Cannot set role to OWNER");
+
             // Since exception is thrown at the beginning of the method, no repository methods are called
             verify(householdMemberRepository, never()).save(any());
+        }
+    }
+
+    @Nested
+    @DisplayName("Patch Household Tests")
+    class PatchHouseholdTests {
+
+        @Test
+        @DisplayName("Should patch household name when user is owner")
+        void shouldPatchHouseholdNameWhenUserIsOwner() {
+            // Given
+            Map<String, Object> patchFields = new HashMap<>();
+            patchFields.put("name", "Updated Household Name");
+
+            when(userService.getCurrentUser(token)).thenReturn(testUser);
+            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
+            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
+                    .thenReturn(Optional.of(testMember));
+            when(householdRepository.findByName("Updated Household Name")).thenReturn(Optional.empty());
+            when(householdRepository.save(any(Household.class))).thenAnswer(i -> i.getArgument(0));
+
+            testMember.setRole(HouseholdRole.OWNER);
+
+            // When
+            HouseholdResponse response = householdService.patchHousehold(householdId, patchFields, token);
+
+            // Then
+            assertThat(response).isNotNull();
+            assertThat(response.getId()).isEqualTo(householdId);
+            assertThat(response.getName()).isEqualTo("Updated Household Name");
+
+            verify(householdRepository).save(testHousehold);
+            verify(householdRepository).findByName("Updated Household Name");
+        }
+
+        @Test
+        @DisplayName("Should patch household when user is admin")
+        void shouldPatchHouseholdWhenUserIsAdmin() {
+            // Given
+            Map<String, Object> patchFields = new HashMap<>();
+            patchFields.put("name", "Admin Updated Name");
+
+            when(userService.getCurrentUser(token)).thenReturn(testUser);
+            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
+            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
+                    .thenReturn(Optional.of(testMember));
+            when(householdRepository.findByName("Admin Updated Name")).thenReturn(Optional.empty());
+            when(householdRepository.save(any(Household.class))).thenAnswer(i -> i.getArgument(0));
+
+            testMember.setRole(HouseholdRole.ADMIN);
+
+            // When
+            HouseholdResponse response = householdService.patchHousehold(householdId, patchFields, token);
+
+            // Then
+            assertThat(response).isNotNull();
+            assertThat(response.getName()).isEqualTo("Admin Updated Name");
+
+            verify(householdRepository).save(testHousehold);
+        }
+
+        @Test
+        @DisplayName("Should ignore unknown fields when patching")
+        void shouldIgnoreUnknownFieldsWhenPatching() {
+            // Given
+            Map<String, Object> patchFields = new HashMap<>();
+            patchFields.put("name", "Valid Name Update");
+            patchFields.put("unknownField", "Some Value");
+
+            when(userService.getCurrentUser(token)).thenReturn(testUser);
+            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
+            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
+                    .thenReturn(Optional.of(testMember));
+            when(householdRepository.findByName("Valid Name Update")).thenReturn(Optional.empty());
+            when(householdRepository.save(any(Household.class))).thenAnswer(i -> i.getArgument(0));
+
+            testMember.setRole(HouseholdRole.OWNER);
+
+            // When
+            HouseholdResponse response = householdService.patchHousehold(householdId, patchFields, token);
+
+            // Then
+            assertThat(response).isNotNull();
+            assertThat(response.getName()).isEqualTo("Valid Name Update");
+
+            verify(householdRepository).save(testHousehold);
+        }
+
+        @Test
+        @DisplayName("Should throw ForbiddenException when user is regular member")
+        void shouldThrowForbiddenExceptionWhenUserIsRegularMember() {
+            // Given
+            Map<String, Object> patchFields = new HashMap<>();
+            patchFields.put("name", "Attempt Update");
+
+            when(userService.getCurrentUser(token)).thenReturn(testUser);
+            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
+            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
+                    .thenReturn(Optional.of(testMember));
+
+            testMember.setRole(HouseholdRole.MEMBER);
+
+            // When/Then
+            assertThatThrownBy(() -> householdService.patchHousehold(householdId, patchFields, token))
+                    .isInstanceOf(ForbiddenException.class)
+                    .hasMessageContaining("don't have permission");
+
+            verify(householdRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Should throw NotFoundException when household doesn't exist")
+        void shouldThrowNotFoundExceptionWhenHouseholdDoesntExist() {
+            // Given
+            Map<String, Object> patchFields = new HashMap<>();
+            patchFields.put("name", "New Name");
+
+            when(userService.getCurrentUser(token)).thenReturn(testUser);
+            when(householdRepository.findById(householdId)).thenReturn(Optional.empty());
+
+            // When/Then
+            assertThatThrownBy(() -> householdService.patchHousehold(householdId, patchFields, token))
+                    .isInstanceOf(NotFoundException.class)
+                    .hasMessageContaining("Household not found");
+
+            verify(householdRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Should throw IllegalStateException when name already exists")
+        void shouldThrowIllegalStateExceptionWhenNameAlreadyExists() {
+            // Given
+            Map<String, Object> patchFields = new HashMap<>();
+            patchFields.put("name", "Existing Name");
+
+            Household existingHousehold = new Household();
+            existingHousehold.setId(UUID.randomUUID()); // Different ID
+            existingHousehold.setName("Existing Name");
+
+            when(userService.getCurrentUser(token)).thenReturn(testUser);
+            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
+            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
+                    .thenReturn(Optional.of(testMember));
+            when(householdRepository.findByName("Existing Name")).thenReturn(Optional.of(existingHousehold));
+
+            testMember.setRole(HouseholdRole.OWNER);
+
+            // When/Then
+            assertThatThrownBy(() -> householdService.patchHousehold(householdId, patchFields, token))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("already exists");
+
+            verify(householdRepository, never()).save(any());
         }
     }
 }
