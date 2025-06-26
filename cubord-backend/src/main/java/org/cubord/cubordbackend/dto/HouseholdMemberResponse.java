@@ -21,4 +21,6 @@ public class HouseholdMemberResponse {
     private String householdName;
     private HouseholdRole role;
     private LocalDateTime createdAt;
+    // Add invitationStatus field when implemented
+    // private InvitationStatus invitationStatus;
 }

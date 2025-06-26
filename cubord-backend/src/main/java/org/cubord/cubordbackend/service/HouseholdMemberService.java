@@ -1,12 +1,10 @@
 package org.cubord.cubordbackend.service;
 
-import lombok.RequiredArgsConstructor;
-import org.cubord.cubordbackend.domain.Household;
 import org.cubord.cubordbackend.domain.HouseholdMember;
 import org.cubord.cubordbackend.domain.HouseholdRole;
-import org.cubord.cubordbackend.domain.User;
 import org.cubord.cubordbackend.dto.HouseholdMemberRequest;
 import org.cubord.cubordbackend.dto.HouseholdMemberResponse;
+import org.cubord.cubordbackend.exception.ForbiddenException;
 import org.cubord.cubordbackend.exception.NotFoundException;
 import org.cubord.cubordbackend.repository.HouseholdMemberRepository;
 import org.cubord.cubordbackend.repository.HouseholdRepository;
@@ -16,12 +14,18 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
+/**
+ * Service for managing household members.
+ */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class HouseholdMemberService {
 
     private final HouseholdRepository householdRepository;
@@ -42,34 +46,9 @@ public class HouseholdMemberService {
      */
     @Transactional
     public HouseholdMemberResponse addMemberToHousehold(UUID householdId, HouseholdMemberRequest request,
-                                                        JwtAuthenticationToken token) {
-        User currentUser = userService.getCurrentUser(token);
-        Household household = householdRepository.findById(householdId)
-                .orElseThrow(() -> new NotFoundException("Household not found"));
-
-        HouseholdMember currentMember = householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUser.getId())
-                .orElseThrow(() -> new AccessDeniedException("You don't have access to this household"));
-
-        if (currentMember.getRole() != HouseholdRole.OWNER && currentMember.getRole() != HouseholdRole.ADMIN) {
-            throw new AccessDeniedException("You don't have permission to add members to this household");
-        }
-
-        User userToAdd = userRepository.findById(request.getUserId())
-                .orElseThrow(() -> new NotFoundException("User not found"));
-
-        if (householdMemberRepository.findByHouseholdIdAndUserId(householdId, userToAdd.getId()).isPresent()) {
-            throw new IllegalStateException("User is already a member of this household");
-        }
-
-        HouseholdMember newMember = HouseholdMember.builder()
-                .household(household)
-                .user(userToAdd)
-                .role(request.getRole())
-                .build();
-
-        newMember = householdMemberRepository.save(newMember);
-
-        return mapToResponse(newMember);
+                                                       JwtAuthenticationToken token) {
+         
+        return null;
     }
 
     /**
@@ -83,18 +62,89 @@ public class HouseholdMemberService {
      */
     @Transactional(readOnly = true)
     public List<HouseholdMemberResponse> getHouseholdMembers(UUID householdId, JwtAuthenticationToken token) {
-        User currentUser = userService.getCurrentUser(token);
-        Household household = householdRepository.findById(householdId)
-                .orElseThrow(() -> new NotFoundException("Household not found"));
+         
+        return null;
+    }
 
-        householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUser.getId())
-                .orElseThrow(() -> new AccessDeniedException("You don't have access to this household"));
+    /**
+     * Retrieves a specific member of a household by ID.
+     * 
+     * @param householdId ID of the household
+     * @param memberId ID of the member to retrieve
+     * @param token JWT token of the user performing the action
+     * @return HouseholdMemberResponse containing member details
+     * @throws NotFoundException if the household or member is not found
+     * @throws AccessDeniedException if the current user is not a member of the household
+     * @throws ForbiddenException if the member is not from the specified household
+     */
+    @Transactional(readOnly = true)
+    public HouseholdMemberResponse getMemberById(UUID householdId, UUID memberId, JwtAuthenticationToken token) {
+         
+        return null;
+    }
 
-        List<HouseholdMember> members = householdMemberRepository.findByHouseholdId(householdId);
+    /**
+     * Removes a member from a household.
+     * 
+     * @param householdId ID of the household
+     * @param memberId ID of the member to remove
+     * @param token JWT token of the user performing the action
+     * @throws NotFoundException if the household or member is not found
+     * @throws AccessDeniedException if the current user lacks permission
+     * @throws IllegalStateException if attempting to remove the owner
+     * @throws ForbiddenException if the member is not from the specified household or admin tries to remove another admin
+     */
+    @Transactional
+    public void removeMember(UUID householdId, UUID memberId, JwtAuthenticationToken token) {
+         
+    }
 
-        return members.stream()
-                .map(this::mapToResponse)
-                .collect(Collectors.toList());
+    /**
+     * Updates a member's role within a household.
+     * 
+     * @param householdId ID of the household
+     * @param memberId ID of the member whose role is to be updated
+     * @param role New role to assign to the member
+     * @param token JWT token of the user performing the action
+     * @return HouseholdMemberResponse containing updated member details
+     * @throws NotFoundException if the household or member is not found
+     * @throws AccessDeniedException if the current user lacks permission
+     * @throws IllegalArgumentException if attempting to set role to OWNER
+     * @throws ForbiddenException if admin tries to update another admin's role
+     */
+    @Transactional
+    public HouseholdMemberResponse updateMemberRole(UUID householdId, UUID memberId, HouseholdRole role, JwtAuthenticationToken token) {
+         
+        return null;
+    }
+
+    /**
+     * Processes an invitation to join a household.
+     * 
+     * @param invitationId ID of the invitation (member entry) to process
+     * @param accept Whether to accept or decline the invitation
+     * @param token JWT token of the user performing the action
+     * @return HouseholdMemberResponse containing invitation details
+     * @throws NotFoundException if the invitation is not found
+     * @throws ForbiddenException if the user tries to process someone else's invitation
+     * @throws IllegalStateException if the invitation is not pending
+     */
+    @Transactional
+    public HouseholdMemberResponse processInvitation(UUID invitationId, boolean accept, JwtAuthenticationToken token) {
+         
+        return null;
+    }
+
+    /**
+     * Retrieves all pending invitations for the current user.
+     * 
+     * @param token JWT token of the user performing the action
+     * @return List of HouseholdMemberResponse objects representing pending invitations
+     */
+    @Transactional(readOnly = true)
+    public List<HouseholdMemberResponse> getUserInvitations(JwtAuthenticationToken token) {
+         
+        return null;
     }
 
     /**
