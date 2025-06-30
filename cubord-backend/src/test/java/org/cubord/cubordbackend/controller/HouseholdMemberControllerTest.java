@@ -5,7 +5,6 @@ import org.cubord.cubordbackend.config.TestSecurityConfig;
 import org.cubord.cubordbackend.domain.HouseholdRole;
 import org.cubord.cubordbackend.dto.HouseholdMemberRequest;
 import org.cubord.cubordbackend.dto.HouseholdMemberResponse;
-import org.cubord.cubordbackend.exception.ForbiddenException;
 import org.cubord.cubordbackend.exception.NotFoundException;
 import org.cubord.cubordbackend.service.HouseholdMemberService;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,6 +15,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
@@ -25,11 +25,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -104,15 +100,15 @@ class HouseholdMemberControllerTest {
                     .build();
 
             when(householdMemberService.addMemberToHousehold(
-                    eq(sampleHouseholdId), 
-                    any(HouseholdMemberRequest.class), 
+                    eq(sampleHouseholdId),
+                    any(HouseholdMemberRequest.class),
                     any(JwtAuthenticationToken.class)))
                     .thenReturn(sampleMemberResponse);
 
             mockMvc.perform(post("/api/households/" + sampleHouseholdId + "/members")
-                        .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(new ObjectMapper().writeValueAsString(request)))
+                            .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(new ObjectMapper().writeValueAsString(request)))
                     .andExpect(status().isCreated())
                     .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                     .andExpect(jsonPath("$.id").value(sampleMemberId.toString()))
@@ -122,8 +118,8 @@ class HouseholdMemberControllerTest {
                     .andExpect(jsonPath("$.role").value("MEMBER"));
 
             verify(householdMemberService).addMemberToHousehold(
-                    eq(sampleHouseholdId), 
-                    any(HouseholdMemberRequest.class), 
+                    eq(sampleHouseholdId),
+                    any(HouseholdMemberRequest.class),
                     any(JwtAuthenticationToken.class));
         }
 
@@ -135,9 +131,9 @@ class HouseholdMemberControllerTest {
                     .build();
 
             mockMvc.perform(post("/api/households/" + sampleHouseholdId + "/members")
-                        .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(new ObjectMapper().writeValueAsString(invalidRequest)))
+                            .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(new ObjectMapper().writeValueAsString(invalidRequest)))
                     .andExpect(status().isBadRequest());
 
             verifyNoInteractions(householdMemberService);
@@ -152,8 +148,8 @@ class HouseholdMemberControllerTest {
                     .build();
 
             mockMvc.perform(post("/api/households/" + sampleHouseholdId + "/members")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(new ObjectMapper().writeValueAsString(request)))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(new ObjectMapper().writeValueAsString(request)))
                     .andExpect(status().isUnauthorized());
 
             verifyNoInteractions(householdMemberService);
@@ -169,20 +165,20 @@ class HouseholdMemberControllerTest {
                     .build();
 
             when(householdMemberService.addMemberToHousehold(
-                    eq(restrictedHouseholdId), 
-                    any(HouseholdMemberRequest.class), 
+                    eq(restrictedHouseholdId),
+                    any(HouseholdMemberRequest.class),
                     any(JwtAuthenticationToken.class)))
-                    .thenThrow(new ForbiddenException("You don't have permission to add members to this household"));
+                    .thenThrow(new AccessDeniedException("You don't have permission to add members to this household"));
 
             mockMvc.perform(post("/api/households/" + restrictedHouseholdId + "/members")
-                        .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(new ObjectMapper().writeValueAsString(request)))
+                            .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(new ObjectMapper().writeValueAsString(request)))
                     .andExpect(status().isForbidden());
 
             verify(householdMemberService).addMemberToHousehold(
-                    eq(restrictedHouseholdId), 
-                    any(HouseholdMemberRequest.class), 
+                    eq(restrictedHouseholdId),
+                    any(HouseholdMemberRequest.class),
                     any(JwtAuthenticationToken.class));
         }
 
@@ -196,21 +192,21 @@ class HouseholdMemberControllerTest {
                     .build();
 
             when(householdMemberService.addMemberToHousehold(
-                    eq(nonExistentHouseholdId), 
-                    any(HouseholdMemberRequest.class), 
+                    eq(nonExistentHouseholdId),
+                    any(HouseholdMemberRequest.class),
                     any(JwtAuthenticationToken.class)))
                     .thenThrow(new NotFoundException("Household not found"));
 
             mockMvc.perform(post("/api/households/" + nonExistentHouseholdId + "/members")
-                        .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(new ObjectMapper().writeValueAsString(request)))
+                            .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(new ObjectMapper().writeValueAsString(request)))
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.message").value("Household not found"));
 
             verify(householdMemberService).addMemberToHousehold(
-                    eq(nonExistentHouseholdId), 
-                    any(HouseholdMemberRequest.class), 
+                    eq(nonExistentHouseholdId),
+                    any(HouseholdMemberRequest.class),
                     any(JwtAuthenticationToken.class));
         }
 
@@ -223,20 +219,20 @@ class HouseholdMemberControllerTest {
                     .build();
 
             when(householdMemberService.addMemberToHousehold(
-                    eq(sampleHouseholdId), 
-                    any(HouseholdMemberRequest.class), 
+                    eq(sampleHouseholdId),
+                    any(HouseholdMemberRequest.class),
                     any(JwtAuthenticationToken.class)))
                     .thenThrow(new IllegalStateException("User is already a member of this household"));
 
             mockMvc.perform(post("/api/households/" + sampleHouseholdId + "/members")
-                        .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(new ObjectMapper().writeValueAsString(request)))
+                            .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(new ObjectMapper().writeValueAsString(request)))
                     .andExpect(status().isConflict());
 
             verify(householdMemberService).addMemberToHousehold(
-                    eq(sampleHouseholdId), 
-                    any(HouseholdMemberRequest.class), 
+                    eq(sampleHouseholdId),
+                    any(HouseholdMemberRequest.class),
                     any(JwtAuthenticationToken.class));
         }
     }
@@ -249,7 +245,7 @@ class HouseholdMemberControllerTest {
         void shouldReturnAllHouseholdMembers() throws Exception {
             List<HouseholdMemberResponse> members = new ArrayList<>();
             members.add(sampleMemberResponse);
-            
+
             UUID secondMemberId = UUID.randomUUID();
             UUID secondUserId = UUID.randomUUID();
             HouseholdMemberResponse secondMember = HouseholdMemberResponse.builder()
@@ -267,7 +263,7 @@ class HouseholdMemberControllerTest {
                     .thenReturn(members);
 
             mockMvc.perform(get("/api/households/" + sampleHouseholdId + "/members")
-                        .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt)))
+                            .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt)))
                     .andExpect(status().isOk())
                     .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                     .andExpect(jsonPath("$").isArray())
@@ -287,7 +283,7 @@ class HouseholdMemberControllerTest {
                     .thenReturn(List.of());
 
             mockMvc.perform(get("/api/households/" + sampleHouseholdId + "/members")
-                        .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt)))
+                            .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt)))
                     .andExpect(status().isOk())
                     .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                     .andExpect(jsonPath("$").isArray())
@@ -311,10 +307,10 @@ class HouseholdMemberControllerTest {
             UUID restrictedHouseholdId = UUID.randomUUID();
 
             when(householdMemberService.getHouseholdMembers(eq(restrictedHouseholdId), any(JwtAuthenticationToken.class)))
-                    .thenThrow(new ForbiddenException("You don't have permission to view members of this household"));
+                    .thenThrow(new AccessDeniedException("You don't have permission to view members of this household"));
 
             mockMvc.perform(get("/api/households/" + restrictedHouseholdId + "/members")
-                        .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt)))
+                            .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt)))
                     .andExpect(status().isForbidden());
 
             verify(householdMemberService).getHouseholdMembers(eq(restrictedHouseholdId), any(JwtAuthenticationToken.class));
@@ -329,7 +325,7 @@ class HouseholdMemberControllerTest {
                     .thenThrow(new NotFoundException("Household not found"));
 
             mockMvc.perform(get("/api/households/" + nonExistentHouseholdId + "/members")
-                        .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt)))
+                            .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt)))
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.message").value("Household not found"));
 
@@ -344,13 +340,13 @@ class HouseholdMemberControllerTest {
         @DisplayName("should return member details when valid IDs provided")
         void shouldReturnMemberDetailsById() throws Exception {
             when(householdMemberService.getMemberById(
-                    eq(sampleHouseholdId), 
-                    eq(sampleMemberId), 
+                    eq(sampleHouseholdId),
+                    eq(sampleMemberId),
                     any(JwtAuthenticationToken.class)))
                     .thenReturn(sampleMemberResponse);
 
             mockMvc.perform(get("/api/households/" + sampleHouseholdId + "/members/" + sampleMemberId)
-                        .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt)))
+                            .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt)))
                     .andExpect(status().isOk())
                     .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                     .andExpect(jsonPath("$.id").value(sampleMemberId.toString()))
@@ -360,8 +356,8 @@ class HouseholdMemberControllerTest {
                     .andExpect(jsonPath("$.role").value("MEMBER"));
 
             verify(householdMemberService).getMemberById(
-                    eq(sampleHouseholdId), 
-                    eq(sampleMemberId), 
+                    eq(sampleHouseholdId),
+                    eq(sampleMemberId),
                     any(JwtAuthenticationToken.class));
         }
 
@@ -371,19 +367,19 @@ class HouseholdMemberControllerTest {
             UUID nonExistentMemberId = UUID.randomUUID();
 
             when(householdMemberService.getMemberById(
-                    eq(sampleHouseholdId), 
-                    eq(nonExistentMemberId), 
+                    eq(sampleHouseholdId),
+                    eq(nonExistentMemberId),
                     any(JwtAuthenticationToken.class)))
                     .thenThrow(new NotFoundException("Member not found"));
 
             mockMvc.perform(get("/api/households/" + sampleHouseholdId + "/members/" + nonExistentMemberId)
-                        .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt)))
+                            .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt)))
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.message").value("Member not found"));
 
             verify(householdMemberService).getMemberById(
-                    eq(sampleHouseholdId), 
-                    eq(nonExistentMemberId), 
+                    eq(sampleHouseholdId),
+                    eq(nonExistentMemberId),
                     any(JwtAuthenticationToken.class));
         }
 
@@ -391,7 +387,7 @@ class HouseholdMemberControllerTest {
         @DisplayName("should return 400 when invalid UUID format provided")
         void shouldReturn400WhenInvalidUuidProvided() throws Exception {
             mockMvc.perform(get("/api/households/" + sampleHouseholdId + "/members/invalid-uuid")
-                        .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt)))
+                            .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt)))
                     .andExpect(status().isBadRequest());
 
             verifyNoInteractions(householdMemberService);
@@ -408,12 +404,12 @@ class HouseholdMemberControllerTest {
                     .removeMember(eq(sampleHouseholdId), eq(sampleMemberId), any(JwtAuthenticationToken.class));
 
             mockMvc.perform(delete("/api/households/" + sampleHouseholdId + "/members/" + sampleMemberId)
-                        .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt)))
+                            .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt)))
                     .andExpect(status().isNoContent());
 
             verify(householdMemberService).removeMember(
-                    eq(sampleHouseholdId), 
-                    eq(sampleMemberId), 
+                    eq(sampleHouseholdId),
+                    eq(sampleMemberId),
                     any(JwtAuthenticationToken.class));
         }
 
@@ -427,30 +423,30 @@ class HouseholdMemberControllerTest {
                     .removeMember(eq(sampleHouseholdId), eq(nonExistentMemberId), any(JwtAuthenticationToken.class));
 
             mockMvc.perform(delete("/api/households/" + sampleHouseholdId + "/members/" + nonExistentMemberId)
-                        .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt)))
+                            .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt)))
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.message").value("Member not found"));
 
             verify(householdMemberService).removeMember(
-                    eq(sampleHouseholdId), 
-                    eq(nonExistentMemberId), 
+                    eq(sampleHouseholdId),
+                    eq(nonExistentMemberId),
                     any(JwtAuthenticationToken.class));
         }
 
         @Test
         @DisplayName("should return 403 when user doesn't have permission to remove members")
         void shouldReturn403WhenUserDoesntHavePermissionToRemoveMembers() throws Exception {
-            doThrow(new ForbiddenException("You don't have permission to remove members from this household"))
+            doThrow(new AccessDeniedException("You don't have permission to remove members from this household"))
                     .when(householdMemberService)
                     .removeMember(eq(sampleHouseholdId), eq(sampleMemberId), any(JwtAuthenticationToken.class));
 
             mockMvc.perform(delete("/api/households/" + sampleHouseholdId + "/members/" + sampleMemberId)
-                        .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt)))
+                            .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt)))
                     .andExpect(status().isForbidden());
 
             verify(householdMemberService).removeMember(
-                    eq(sampleHouseholdId), 
-                    eq(sampleMemberId), 
+                    eq(sampleHouseholdId),
+                    eq(sampleMemberId),
                     any(JwtAuthenticationToken.class));
         }
 
@@ -462,12 +458,12 @@ class HouseholdMemberControllerTest {
                     .removeMember(eq(sampleHouseholdId), eq(sampleMemberId), any(JwtAuthenticationToken.class));
 
             mockMvc.perform(delete("/api/households/" + sampleHouseholdId + "/members/" + sampleMemberId)
-                        .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt)))
+                            .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt)))
                     .andExpect(status().isConflict());
 
             verify(householdMemberService).removeMember(
-                    eq(sampleHouseholdId), 
-                    eq(sampleMemberId), 
+                    eq(sampleHouseholdId),
+                    eq(sampleMemberId),
                     any(JwtAuthenticationToken.class));
         }
     }
@@ -480,7 +476,7 @@ class HouseholdMemberControllerTest {
         void shouldUpdateMemberRoleWhenValidDataProvided() throws Exception {
             Map<String, String> roleUpdate = new HashMap<>();
             roleUpdate.put("role", "ADMIN");
-            
+
             HouseholdMemberResponse updatedResponse = HouseholdMemberResponse.builder()
                     .id(sampleMemberId)
                     .userId(sampleUserId)
@@ -492,42 +488,45 @@ class HouseholdMemberControllerTest {
                     .build();
 
             when(householdMemberService.updateMemberRole(
-                    eq(sampleHouseholdId), 
-                    eq(sampleMemberId), 
-                    eq(HouseholdRole.ADMIN), 
+                    eq(sampleHouseholdId),
+                    eq(sampleMemberId),
+                    eq(HouseholdRole.ADMIN),
                     any(JwtAuthenticationToken.class)))
                     .thenReturn(updatedResponse);
 
             mockMvc.perform(put("/api/households/" + sampleHouseholdId + "/members/" + sampleMemberId + "/role")
-                        .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(new ObjectMapper().writeValueAsString(roleUpdate)))
+                            .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(new ObjectMapper().writeValueAsString(roleUpdate)))
                     .andExpect(status().isOk())
                     .andExpect(content().contentType(MediaType.APPLICATION_JSON))
                     .andExpect(jsonPath("$.id").value(sampleMemberId.toString()))
                     .andExpect(jsonPath("$.role").value("ADMIN"));
 
             verify(householdMemberService).updateMemberRole(
-                    eq(sampleHouseholdId), 
-                    eq(sampleMemberId), 
-                    eq(HouseholdRole.ADMIN), 
+                    eq(sampleHouseholdId),
+                    eq(sampleMemberId),
+                    eq(HouseholdRole.ADMIN),
                     any(JwtAuthenticationToken.class));
         }
 
         @Test
         @DisplayName("should return 400 when role is invalid")
         void shouldReturn400WhenRoleIsInvalid() throws Exception {
-            Map<String, String> invalidRoleUpdate = new HashMap<>();
-            invalidRoleUpdate.put("role", "INVALID_ROLE");
 
-            mockMvc.perform(put("/api/households/" + sampleHouseholdId + "/members/" + sampleMemberId + "/role")
-                        .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(new ObjectMapper().writeValueAsString(invalidRoleUpdate)))
+            String body = """
+                    { "role": "INVALID_ROLE" }
+                    """;
+
+            mockMvc.perform(put("/api/households/{hid}/members/{mid}/role", sampleHouseholdId, sampleMemberId)
+                            .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(body))
                     .andExpect(status().isBadRequest());
 
-            verifyNoInteractions(householdMemberService);
+            verifyNoInteractions(householdMemberService);   // controller never reaches service
         }
+
 
         @Test
         @DisplayName("should return 400 when trying to set role to OWNER")
@@ -536,22 +535,22 @@ class HouseholdMemberControllerTest {
             ownerRoleUpdate.put("role", "OWNER");
 
             when(householdMemberService.updateMemberRole(
-                    eq(sampleHouseholdId), 
-                    eq(sampleMemberId), 
-                    eq(HouseholdRole.OWNER), 
+                    eq(sampleHouseholdId),
+                    eq(sampleMemberId),
+                    eq(HouseholdRole.OWNER),
                     any(JwtAuthenticationToken.class)))
                     .thenThrow(new IllegalArgumentException("Cannot assign OWNER role directly"));
 
             mockMvc.perform(put("/api/households/" + sampleHouseholdId + "/members/" + sampleMemberId + "/role")
-                        .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(new ObjectMapper().writeValueAsString(ownerRoleUpdate)))
+                            .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(new ObjectMapper().writeValueAsString(ownerRoleUpdate)))
                     .andExpect(status().isBadRequest());
 
             verify(householdMemberService).updateMemberRole(
-                    eq(sampleHouseholdId), 
-                    eq(sampleMemberId), 
-                    eq(HouseholdRole.OWNER), 
+                    eq(sampleHouseholdId),
+                    eq(sampleMemberId),
+                    eq(HouseholdRole.OWNER),
                     any(JwtAuthenticationToken.class));
         }
     }
