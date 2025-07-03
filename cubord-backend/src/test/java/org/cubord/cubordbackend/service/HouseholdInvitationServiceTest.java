@@ -145,10 +145,10 @@ public class HouseholdInvitationServiceTest {
                 .build();
     }
 
-    private HouseholdInvitationRequest createInvitationRequestWithUserId(UUID userId, HouseholdRole role) {
+    private HouseholdInvitationRequest createInvitationRequestWithUserId(UUID userId) {
         return HouseholdInvitationRequest.builder()
                 .invitedUserId(userId)
-                .proposedRole(role)
+                .proposedRole(HouseholdRole.MEMBER)
                 .build();
     }
 
@@ -197,7 +197,7 @@ public class HouseholdInvitationServiceTest {
         @DisplayName("Should send invitation by user ID when provided")
         void shouldSendInvitationByUserIdWhenProvided() {
             // Given
-            HouseholdInvitationRequest request = createInvitationRequestWithUserId(invitedUserId, HouseholdRole.MEMBER);
+            HouseholdInvitationRequest request = createInvitationRequestWithUserId(invitedUserId);
             when(userService.getCurrentUser(token)).thenReturn(currentUser);
             when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUserId))
@@ -643,7 +643,7 @@ public class HouseholdInvitationServiceTest {
 
             // Then
             assertThat(responses).hasSize(1);
-            assertThat(responses.get(0).getInvitedUserEmail()).isEqualTo("invited@example.com");
+            assertThat(responses.getFirst().getInvitedUserEmail()).isEqualTo("invited@example.com");
         }
 
         @Test
@@ -662,7 +662,7 @@ public class HouseholdInvitationServiceTest {
 
             // Then
             assertThat(responses).hasSize(1);
-            assertThat(responses.get(0).getStatus()).isEqualTo(InvitationStatus.PENDING);
+            assertThat(responses.getFirst().getStatus()).isEqualTo(InvitationStatus.PENDING);
         }
 
         @Test
@@ -678,7 +678,7 @@ public class HouseholdInvitationServiceTest {
 
             // Then
             assertThat(responses).hasSize(1);
-            assertThat(responses.get(0).getInvitedUserEmail()).isEqualTo("invited@example.com");
+            assertThat(responses.getFirst().getInvitedUserEmail()).isEqualTo("invited@example.com");
         }
 
         @Test
@@ -694,7 +694,7 @@ public class HouseholdInvitationServiceTest {
 
             // Then
             assertThat(responses).hasSize(1);
-            assertThat(responses.get(0).getStatus()).isEqualTo(InvitationStatus.PENDING);
+            assertThat(responses.getFirst().getStatus()).isEqualTo(InvitationStatus.PENDING);
         }
 
         @Test

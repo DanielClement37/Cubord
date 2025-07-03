@@ -188,12 +188,17 @@ class HouseholdInvitationControllerTest {
                     .proposedRole(HouseholdRole.MEMBER)
                     .build();
 
+            // Mock the service to throw an exception for invalid input
+            when(householdInvitationService.sendInvitation(eq(householdId), any(HouseholdInvitationRequest.class), any(JwtAuthenticationToken.class)))
+                    .thenThrow(new IllegalArgumentException("Either invitedUserEmail or invitedUserId must be provided"));
+
             mockMvc.perform(post("/api/households/{householdId}/invitations", householdId)
                             .with(jwt().jwt(jwt))
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(request)))
                     .andExpect(status().isBadRequest());
         }
+
 
         @Test
         @DisplayName("should return 400 when expiry date is in the past")

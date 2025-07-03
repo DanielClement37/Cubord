@@ -2,12 +2,13 @@ package org.cubord.cubordbackend.controller;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.cubord.cubordbackend.domain.InvitationStatus;
 import org.cubord.cubordbackend.dto.HouseholdInvitationRequest;
 import org.cubord.cubordbackend.dto.HouseholdInvitationResponse;
 import org.cubord.cubordbackend.dto.HouseholdInvitationUpdateRequest;
 import org.cubord.cubordbackend.dto.ResendInvitationRequest;
+import org.cubord.cubordbackend.domain.InvitationStatus;
 import org.cubord.cubordbackend.service.HouseholdInvitationService;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.web.bind.annotation.*;
@@ -35,8 +36,8 @@ public class HouseholdInvitationController {
             @Valid @RequestBody HouseholdInvitationRequest request,
             JwtAuthenticationToken token) {
         
-        // TODO: Implement invitation sending logic
-        throw new RuntimeException("Method not implemented yet");
+        HouseholdInvitationResponse response = householdInvitationService.sendInvitation(householdId, request, token);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     /**
@@ -48,8 +49,14 @@ public class HouseholdInvitationController {
             @RequestParam(required = false) InvitationStatus status,
             JwtAuthenticationToken token) {
         
-        // TODO: Implement get household invitations logic
-        throw new RuntimeException("Method not implemented yet");
+        List<HouseholdInvitationResponse> invitations;
+        if (status != null) {
+            invitations = householdInvitationService.getHouseholdInvitationsByStatus(householdId, status, token);
+        } else {
+            invitations = householdInvitationService.getHouseholdInvitations(householdId, token);
+        }
+        
+        return ResponseEntity.ok(invitations);
     }
 
     /**
@@ -61,8 +68,8 @@ public class HouseholdInvitationController {
             @PathVariable UUID invitationId,
             JwtAuthenticationToken token) {
         
-        // TODO: Implement get invitation by ID logic
-        throw new RuntimeException("Method not implemented yet");
+        HouseholdInvitationResponse response = householdInvitationService.getInvitationById(householdId, invitationId, token);
+        return ResponseEntity.ok(response);
     }
 
     /**
@@ -73,8 +80,14 @@ public class HouseholdInvitationController {
             @RequestParam(required = false) InvitationStatus status,
             JwtAuthenticationToken token) {
         
-        // TODO: Implement get my invitations logic
-        throw new RuntimeException("Method not implemented yet");
+        List<HouseholdInvitationResponse> invitations;
+        if (status != null) {
+            invitations = householdInvitationService.getMyInvitationsByStatus(status, token);
+        } else {
+            invitations = householdInvitationService.getMyInvitations(token);
+        }
+        
+        return ResponseEntity.ok(invitations);
     }
 
     /**
@@ -85,8 +98,8 @@ public class HouseholdInvitationController {
             @PathVariable UUID invitationId,
             JwtAuthenticationToken token) {
         
-        // TODO: Implement accept invitation logic
-        throw new RuntimeException("Method not implemented yet");
+        HouseholdInvitationResponse response = householdInvitationService.acceptInvitation(invitationId, token);
+        return ResponseEntity.ok(response);
     }
 
     /**
@@ -97,8 +110,8 @@ public class HouseholdInvitationController {
             @PathVariable UUID invitationId,
             JwtAuthenticationToken token) {
         
-        // TODO: Implement decline invitation logic
-        throw new RuntimeException("Method not implemented yet");
+        HouseholdInvitationResponse response = householdInvitationService.declineInvitation(invitationId, token);
+        return ResponseEntity.ok(response);
     }
 
     /**
@@ -110,8 +123,8 @@ public class HouseholdInvitationController {
             @PathVariable UUID invitationId,
             JwtAuthenticationToken token) {
         
-        // TODO: Implement cancel invitation logic
-        throw new RuntimeException("Method not implemented yet");
+        householdInvitationService.cancelInvitation(householdId, invitationId, token);
+        return ResponseEntity.noContent().build();
     }
 
     /**
@@ -124,8 +137,8 @@ public class HouseholdInvitationController {
             @Valid @RequestBody HouseholdInvitationUpdateRequest request,
             JwtAuthenticationToken token) {
         
-        // TODO: Implement update invitation logic
-        throw new RuntimeException("Method not implemented yet");
+        HouseholdInvitationResponse response = householdInvitationService.updateInvitation(householdId, invitationId, request, token);
+        return ResponseEntity.ok(response);
     }
 
     /**
@@ -138,7 +151,7 @@ public class HouseholdInvitationController {
             @Valid @RequestBody ResendInvitationRequest request,
             JwtAuthenticationToken token) {
         
-        // TODO: Implement resend invitation logic
-        throw new RuntimeException("Method not implemented yet");
+        HouseholdInvitationResponse response = householdInvitationService.resendInvitation(householdId, invitationId, request, token);
+        return ResponseEntity.ok(response);
     }
 }

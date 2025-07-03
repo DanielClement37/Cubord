@@ -60,7 +60,7 @@ public class HouseholdInvitationService {
         }
         
         // Find invited user - both userId and email are required
-        User invitedUser = null;
+        User invitedUser;
         if (request.getInvitedUserId() != null) {
             invitedUser = userRepository.findById(request.getInvitedUserId())
                     .orElseThrow(() -> new NotFoundException("User not found"));
