@@ -30,6 +30,8 @@ public class Location {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
+    //TODO have some sort of icon solution for when developing the front end.
+
     @PrePersist
     public void onCreate() {
         this.createdAt = LocalDateTime.now();
