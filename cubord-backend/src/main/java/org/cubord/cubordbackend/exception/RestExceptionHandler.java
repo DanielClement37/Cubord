@@ -99,6 +99,32 @@ public class RestExceptionHandler {
     }
     
     /**
+     * Handles IllegalStateException by returning a 400 status.
+     * This is used for business logic validation errors.
+     */
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<ErrorResponse> handleIllegalStateException(IllegalStateException e) {
+        logger.debug("Invalid state: {}", e.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(new ErrorResponse(e.getMessage()));
+    }
+
+    /**
+     * Handles IllegalArgumentException by returning a 400 status.
+     * This is used for invalid input parameter errors.
+     */
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ErrorResponse> handleIllegalArgumentException(IllegalArgumentException e) {
+        logger.debug("Invalid argument: {}", e.getMessage());
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(new ErrorResponse(e.getMessage()));
+    }
+    
+    /**
      * Handles validation exceptions.
      */
     @ExceptionHandler(ConstraintViolationException.class)

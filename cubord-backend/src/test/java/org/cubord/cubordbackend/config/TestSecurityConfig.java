@@ -6,6 +6,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.OAuth2TokenValidator;
@@ -22,11 +23,13 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collections;
 
+
 /**
  * Test security configuration that enables JWT authentication for tests
  * but does not enforce token validation.
  */
 @TestConfiguration
+@EnableWebSecurity
 public class TestSecurityConfig {
     private static final Logger logger = LoggerFactory.getLogger(TestSecurityConfig.class);
 
@@ -48,7 +51,7 @@ public class TestSecurityConfig {
         
         return http.build();
     }
-    
+
     /**
      * Custom JWT validator that strictly checks token expiration.
      */
