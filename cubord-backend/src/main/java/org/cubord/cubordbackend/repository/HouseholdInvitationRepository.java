@@ -5,6 +5,7 @@ import org.cubord.cubordbackend.domain.HouseholdInvitation;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -16,4 +17,6 @@ public interface HouseholdInvitationRepository extends JpaRepository<HouseholdIn
     List<HouseholdInvitation> findByInvitedUserIdAndStatus(UUID invitedUserId, InvitationStatus status);
     Optional<HouseholdInvitation> findByHouseholdIdAndInvitedUserIdAndStatus(UUID householdId, UUID invitedUserId, InvitationStatus status);
     boolean existsByHouseholdIdAndInvitedUserIdAndStatus(UUID householdId, UUID invitedUserId, InvitationStatus status);
+
+    List<HouseholdInvitation> findByStatusAndExpiresAtBefore(InvitationStatus invitationStatus, LocalDateTime currentTime);
 }

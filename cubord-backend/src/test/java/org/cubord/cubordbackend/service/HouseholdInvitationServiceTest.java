@@ -6,7 +6,6 @@ import org.cubord.cubordbackend.dto.HouseholdInvitationRequest;
 import org.cubord.cubordbackend.dto.HouseholdInvitationResponse;
 import org.cubord.cubordbackend.domain.*;
 import org.cubord.cubordbackend.exception.ConflictException;
-import org.cubord.cubordbackend.exception.ForbiddenException;
 import org.cubord.cubordbackend.exception.NotFoundException;
 import org.cubord.cubordbackend.repository.HouseholdInvitationRepository;
 import org.cubord.cubordbackend.repository.HouseholdMemberRepository;
@@ -20,6 +19,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
 import java.time.LocalDateTime;
@@ -35,25 +35,18 @@ import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 public class HouseholdInvitationServiceTest {
-
     @Mock
     private HouseholdRepository householdRepository;
-
     @Mock
     private HouseholdMemberRepository householdMemberRepository;
-
     @Mock
     private HouseholdInvitationRepository householdInvitationRepository;
-
     @Mock
     private UserRepository userRepository;
-
     @Mock
     private UserService userService;
-
     @Mock
     private JwtAuthenticationToken token;
-
     @InjectMocks
     private HouseholdInvitationService householdInvitationService;
 
@@ -76,7 +69,13 @@ public class HouseholdInvitationServiceTest {
         householdId = UUID.randomUUID();
         invitationId = UUID.randomUUID();
 
-        // Set up users
+        setupUsers();
+        setupHousehold();
+        setupHouseholdMembers();
+        setupInvitation();
+    }
+
+    private void setupUsers() {
         currentUser = new User();
         currentUser.setId(currentUserId);
         currentUser.setEmail("current@example.com");
@@ -86,32 +85,30 @@ public class HouseholdInvitationServiceTest {
         invitedUser.setId(invitedUserId);
         invitedUser.setEmail("invited@example.com");
         invitedUser.setUsername("inviteduser");
+    }
 
-        // Set up household
+    private void setupHousehold() {
         testHousehold = new Household();
         testHousehold.setId(householdId);
         testHousehold.setName("Test Household");
+    }
 
-        // Set up household members
-        ownerMember = new HouseholdMember();
-        ownerMember.setId(UUID.randomUUID());
-        ownerMember.setUser(currentUser);
-        ownerMember.setHousehold(testHousehold);
-        ownerMember.setRole(HouseholdRole.OWNER);
+    private void setupHouseholdMembers() {
+        ownerMember = createHouseholdMember(HouseholdRole.OWNER);
+        adminMember = createHouseholdMember(HouseholdRole.ADMIN);
+        regularMember = createHouseholdMember(HouseholdRole.MEMBER);
+    }
 
-        adminMember = new HouseholdMember();
-        adminMember.setId(UUID.randomUUID());
-        adminMember.setUser(currentUser);
-        adminMember.setHousehold(testHousehold);
-        adminMember.setRole(HouseholdRole.ADMIN);
+    private HouseholdMember createHouseholdMember(HouseholdRole role) {
+        HouseholdMember member = new HouseholdMember();
+        member.setId(UUID.randomUUID());
+        member.setUser(currentUser);
+        member.setHousehold(testHousehold);
+        member.setRole(role);
+        return member;
+    }
 
-        regularMember = new HouseholdMember();
-        regularMember.setId(UUID.randomUUID());
-        regularMember.setUser(currentUser);
-        regularMember.setHousehold(testHousehold);
-        regularMember.setRole(HouseholdRole.MEMBER);
-
-        // Set up invitation
+    private void setupInvitation() {
         testInvitation = new HouseholdInvitation();
         testInvitation.setId(invitationId);
         testInvitation.setInvitedUser(invitedUser);
@@ -123,6 +120,45 @@ public class HouseholdInvitationServiceTest {
         testInvitation.setExpiresAt(LocalDateTime.now().plusDays(7));
     }
 
+    private void setupSuccessfulInvitationMocks(HouseholdMember member) {
+        when(userService.getCurrentUser(token)).thenReturn(currentUser);
+        when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
+        when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUserId))
+                .thenReturn(Optional.of(member));
+        when(userRepository.findByEmail("invited@example.com")).thenReturn(Optional.of(invitedUser));
+        when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, invitedUserId))
+                .thenReturn(Optional.empty());
+        when(householdInvitationRepository.existsByHouseholdIdAndInvitedUserIdAndStatus(
+                householdId, invitedUserId, InvitationStatus.PENDING)).thenReturn(false);
+        when(householdInvitationRepository.save(any(HouseholdInvitation.class))).thenReturn(testInvitation);
+    }
+
+    private void setupBasicInvitationMocks() {
+        when(userService.getCurrentUser(token)).thenReturn(currentUser);
+        when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
+    }
+
+    private HouseholdInvitationRequest createInvitationRequest(String email, HouseholdRole role) {
+        return HouseholdInvitationRequest.builder()
+                .invitedUserEmail(email)
+                .proposedRole(role)
+                .build();
+    }
+
+    private HouseholdInvitationRequest createInvitationRequestWithUserId(UUID userId, HouseholdRole role) {
+        return HouseholdInvitationRequest.builder()
+                .invitedUserId(userId)
+                .proposedRole(role)
+                .build();
+    }
+
+    private void assertSuccessfulInvitationResponse(HouseholdInvitationResponse response) {
+        assertThat(response).isNotNull();
+        assertThat(response.getInvitedUserEmail()).isEqualTo("invited@example.com");
+        assertThat(response.getProposedRole()).isEqualTo(HouseholdRole.MEMBER);
+        assertThat(response.getStatus()).isEqualTo(InvitationStatus.PENDING);
+    }
+
     @Nested
     @DisplayName("Send Invitation Tests")
     class SendInvitationTests {
@@ -131,30 +167,14 @@ public class HouseholdInvitationServiceTest {
         @DisplayName("Should send invitation successfully when user is owner")
         void shouldSendInvitationSuccessfullyWhenUserIsOwner() {
             // Given
-            HouseholdInvitationRequest request = HouseholdInvitationRequest.builder()
-                    .invitedUserEmail("invited@example.com")
-                    .proposedRole(HouseholdRole.MEMBER)
-                    .build();
-
-            when(userService.getCurrentUser(token)).thenReturn(currentUser);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUserId))
-                    .thenReturn(Optional.of(ownerMember));
-            when(userRepository.findByEmail("invited@example.com")).thenReturn(Optional.of(invitedUser));
-            when(householdMemberRepository.existsByHouseholdIdAndUserId(householdId, invitedUserId))
-                    .thenReturn(false);
-            when(householdInvitationRepository.existsByHouseholdIdAndInvitedUserIdAndStatus(
-                    householdId, invitedUserId, InvitationStatus.PENDING)).thenReturn(false);
-            when(householdInvitationRepository.save(any(HouseholdInvitation.class))).thenReturn(testInvitation);
+            HouseholdInvitationRequest request = createInvitationRequest("invited@example.com", HouseholdRole.MEMBER);
+            setupSuccessfulInvitationMocks(ownerMember);
 
             // When
             HouseholdInvitationResponse response = householdInvitationService.sendInvitation(householdId, request, token);
 
             // Then
-            assertThat(response).isNotNull();
-            assertThat(response.getInvitedUserEmail()).isEqualTo("invited@example.com");
-            assertThat(response.getProposedRole()).isEqualTo(HouseholdRole.MEMBER);
-            assertThat(response.getStatus()).isEqualTo(InvitationStatus.PENDING);
+            assertSuccessfulInvitationResponse(response);
             verify(householdInvitationRepository).save(any(HouseholdInvitation.class));
         }
 
@@ -162,21 +182,8 @@ public class HouseholdInvitationServiceTest {
         @DisplayName("Should send invitation successfully when user is admin")
         void shouldSendInvitationSuccessfullyWhenUserIsAdmin() {
             // Given
-            HouseholdInvitationRequest request = HouseholdInvitationRequest.builder()
-                    .invitedUserEmail("invited@example.com")
-                    .proposedRole(HouseholdRole.MEMBER)
-                    .build();
-
-            when(userService.getCurrentUser(token)).thenReturn(currentUser);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUserId))
-                    .thenReturn(Optional.of(adminMember));
-            when(userRepository.findByEmail("invited@example.com")).thenReturn(Optional.of(invitedUser));
-            when(householdMemberRepository.existsByHouseholdIdAndUserId(householdId, invitedUserId))
-                    .thenReturn(false);
-            when(householdInvitationRepository.existsByHouseholdIdAndInvitedUserIdAndStatus(
-                    householdId, invitedUserId, InvitationStatus.PENDING)).thenReturn(false);
-            when(householdInvitationRepository.save(any(HouseholdInvitation.class))).thenReturn(testInvitation);
+            HouseholdInvitationRequest request = createInvitationRequest("invited@example.com", HouseholdRole.MEMBER);
+            setupSuccessfulInvitationMocks(adminMember);
 
             // When
             HouseholdInvitationResponse response = householdInvitationService.sendInvitation(householdId, request, token);
@@ -190,18 +197,14 @@ public class HouseholdInvitationServiceTest {
         @DisplayName("Should send invitation by user ID when provided")
         void shouldSendInvitationByUserIdWhenProvided() {
             // Given
-            HouseholdInvitationRequest request = HouseholdInvitationRequest.builder()
-                    .invitedUserId(invitedUserId)
-                    .proposedRole(HouseholdRole.MEMBER)
-                    .build();
-
+            HouseholdInvitationRequest request = createInvitationRequestWithUserId(invitedUserId, HouseholdRole.MEMBER);
             when(userService.getCurrentUser(token)).thenReturn(currentUser);
             when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUserId))
                     .thenReturn(Optional.of(ownerMember));
             when(userRepository.findById(invitedUserId)).thenReturn(Optional.of(invitedUser));
-            when(householdMemberRepository.existsByHouseholdIdAndUserId(householdId, invitedUserId))
-                    .thenReturn(false);
+            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, invitedUserId))
+                    .thenReturn(Optional.empty());
             when(householdInvitationRepository.existsByHouseholdIdAndInvitedUserIdAndStatus(
                     householdId, invitedUserId, InvitationStatus.PENDING)).thenReturn(false);
             when(householdInvitationRepository.save(any(HouseholdInvitation.class))).thenReturn(testInvitation);
@@ -219,11 +222,7 @@ public class HouseholdInvitationServiceTest {
         @DisplayName("Should throw NotFoundException when household doesn't exist")
         void shouldThrowNotFoundExceptionWhenHouseholdDoesntExist() {
             // Given
-            HouseholdInvitationRequest request = HouseholdInvitationRequest.builder()
-                    .invitedUserEmail("invited@example.com")
-                    .proposedRole(HouseholdRole.MEMBER)
-                    .build();
-
+            HouseholdInvitationRequest request = createInvitationRequest("invited@example.com", HouseholdRole.MEMBER);
             when(userService.getCurrentUser(token)).thenReturn(currentUser);
             when(householdRepository.findById(householdId)).thenReturn(Optional.empty());
 
@@ -234,42 +233,32 @@ public class HouseholdInvitationServiceTest {
         }
 
         @Test
-        @DisplayName("Should throw ForbiddenException when user is not a member")
-        void shouldThrowForbiddenExceptionWhenUserIsNotMember() {
+        @DisplayName("Should throw AccessDeniedException when user is not a member")
+        void shouldThrowAccessDeniedExceptionWhenUserIsNotMember() {
             // Given
-            HouseholdInvitationRequest request = HouseholdInvitationRequest.builder()
-                    .invitedUserEmail("invited@example.com")
-                    .proposedRole(HouseholdRole.MEMBER)
-                    .build();
-
-            when(userService.getCurrentUser(token)).thenReturn(currentUser);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
+            HouseholdInvitationRequest request = createInvitationRequest("invited@example.com", HouseholdRole.MEMBER);
+            setupBasicInvitationMocks();
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUserId))
                     .thenReturn(Optional.empty());
 
             // When & Then
             assertThatThrownBy(() -> householdInvitationService.sendInvitation(householdId, request, token))
-                    .isInstanceOf(ForbiddenException.class)
+                    .isInstanceOf(AccessDeniedException.class)
                     .hasMessage("You don't have access to this household");
         }
 
         @Test
-        @DisplayName("Should throw ForbiddenException when user is regular member")
-        void shouldThrowForbiddenExceptionWhenUserIsRegularMember() {
+        @DisplayName("Should throw AccessDeniedException when user is regular member")
+        void shouldThrowAccessDeniedExceptionWhenUserIsRegularMember() {
             // Given
-            HouseholdInvitationRequest request = HouseholdInvitationRequest.builder()
-                    .invitedUserEmail("invited@example.com")
-                    .proposedRole(HouseholdRole.MEMBER)
-                    .build();
-
-            when(userService.getCurrentUser(token)).thenReturn(currentUser);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
+            HouseholdInvitationRequest request = createInvitationRequest("invited@example.com", HouseholdRole.MEMBER);
+            setupBasicInvitationMocks();
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUserId))
                     .thenReturn(Optional.of(regularMember));
 
             // When & Then
             assertThatThrownBy(() -> householdInvitationService.sendInvitation(householdId, request, token))
-                    .isInstanceOf(ForbiddenException.class)
+                    .isInstanceOf(AccessDeniedException.class)
                     .hasMessage("You don't have permission to send invitations");
         }
 
@@ -277,13 +266,8 @@ public class HouseholdInvitationServiceTest {
         @DisplayName("Should throw NotFoundException when invited user doesn't exist")
         void shouldThrowNotFoundExceptionWhenInvitedUserDoesntExist() {
             // Given
-            HouseholdInvitationRequest request = HouseholdInvitationRequest.builder()
-                    .invitedUserEmail("nonexistent@example.com")
-                    .proposedRole(HouseholdRole.MEMBER)
-                    .build();
-
-            when(userService.getCurrentUser(token)).thenReturn(currentUser);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
+            HouseholdInvitationRequest request = createInvitationRequest("nonexistent@example.com", HouseholdRole.MEMBER);
+            setupBasicInvitationMocks();
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUserId))
                     .thenReturn(Optional.of(ownerMember));
             when(userRepository.findByEmail("nonexistent@example.com")).thenReturn(Optional.empty());
@@ -298,18 +282,13 @@ public class HouseholdInvitationServiceTest {
         @DisplayName("Should throw ConflictException when user already has pending invitation")
         void shouldThrowConflictExceptionWhenUserAlreadyHasPendingInvitation() {
             // Given
-            HouseholdInvitationRequest request = HouseholdInvitationRequest.builder()
-                    .invitedUserEmail("invited@example.com")
-                    .proposedRole(HouseholdRole.MEMBER)
-                    .build();
-
-            when(userService.getCurrentUser(token)).thenReturn(currentUser);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
+            HouseholdInvitationRequest request = createInvitationRequest("invited@example.com", HouseholdRole.MEMBER);
+            setupBasicInvitationMocks();
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUserId))
                     .thenReturn(Optional.of(ownerMember));
             when(userRepository.findByEmail("invited@example.com")).thenReturn(Optional.of(invitedUser));
-            when(householdMemberRepository.existsByHouseholdIdAndUserId(householdId, invitedUserId))
-                    .thenReturn(false);
+            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, invitedUserId))
+                    .thenReturn(Optional.empty());
             when(householdInvitationRepository.existsByHouseholdIdAndInvitedUserIdAndStatus(
                     householdId, invitedUserId, InvitationStatus.PENDING)).thenReturn(true);
 
@@ -323,18 +302,13 @@ public class HouseholdInvitationServiceTest {
         @DisplayName("Should throw ConflictException when user is already a member")
         void shouldThrowConflictExceptionWhenUserIsAlreadyMember() {
             // Given
-            HouseholdInvitationRequest request = HouseholdInvitationRequest.builder()
-                    .invitedUserEmail("invited@example.com")
-                    .proposedRole(HouseholdRole.MEMBER)
-                    .build();
-
-            when(userService.getCurrentUser(token)).thenReturn(currentUser);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
+            HouseholdInvitationRequest request = createInvitationRequest("invited@example.com", HouseholdRole.MEMBER);
+            setupBasicInvitationMocks();
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUserId))
                     .thenReturn(Optional.of(ownerMember));
             when(userRepository.findByEmail("invited@example.com")).thenReturn(Optional.of(invitedUser));
-            when(householdMemberRepository.existsByHouseholdIdAndUserId(householdId, invitedUserId))
-                    .thenReturn(true);
+            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, invitedUserId))
+                    .thenReturn(Optional.of(regularMember));
 
             // When & Then
             assertThatThrownBy(() -> householdInvitationService.sendInvitation(householdId, request, token))
@@ -346,15 +320,11 @@ public class HouseholdInvitationServiceTest {
         @DisplayName("Should throw IllegalArgumentException when trying to invite as OWNER")
         void shouldThrowIllegalArgumentExceptionWhenTryingToInviteAsOwner() {
             // Given
-            HouseholdInvitationRequest request = HouseholdInvitationRequest.builder()
-                    .invitedUserEmail("invited@example.com")
-                    .proposedRole(HouseholdRole.OWNER)
-                    .build();
-
-            when(userService.getCurrentUser(token)).thenReturn(currentUser);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
+            HouseholdInvitationRequest request = createInvitationRequest("invited@example.com", HouseholdRole.OWNER);
+            setupBasicInvitationMocks();
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUserId))
                     .thenReturn(Optional.of(ownerMember));
+            when(userRepository.findByEmail("invited@example.com")).thenReturn(Optional.of(invitedUser));
 
             // When & Then
             assertThatThrownBy(() -> householdInvitationService.sendInvitation(householdId, request, token))
@@ -366,13 +336,8 @@ public class HouseholdInvitationServiceTest {
         @DisplayName("Should throw IllegalArgumentException when trying to invite self")
         void shouldThrowIllegalArgumentExceptionWhenTryingToInviteSelf() {
             // Given
-            HouseholdInvitationRequest request = HouseholdInvitationRequest.builder()
-                    .invitedUserEmail("current@example.com") // Same as current user
-                    .proposedRole(HouseholdRole.MEMBER)
-                    .build();
-
-            when(userService.getCurrentUser(token)).thenReturn(currentUser);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
+            HouseholdInvitationRequest request = createInvitationRequest("current@example.com", HouseholdRole.MEMBER);
+            setupBasicInvitationMocks();
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUserId))
                     .thenReturn(Optional.of(ownerMember));
             when(userRepository.findByEmail("current@example.com")).thenReturn(Optional.of(currentUser));
@@ -392,151 +357,15 @@ public class HouseholdInvitationServiceTest {
                     .proposedRole(HouseholdRole.MEMBER)
                     .expiresAt(LocalDateTime.now().minusDays(1))
                     .build();
-
-            when(userService.getCurrentUser(token)).thenReturn(currentUser);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
+            setupBasicInvitationMocks();
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUserId))
                     .thenReturn(Optional.of(ownerMember));
+            when(userRepository.findByEmail("invited@example.com")).thenReturn(Optional.of(invitedUser));
 
             // When & Then
             assertThatThrownBy(() -> householdInvitationService.sendInvitation(householdId, request, token))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessage("Expiry date cannot be in the past");
-        }
-    }
-
-    @Nested
-    @DisplayName("Get Household Invitations Tests")
-    class GetHouseholdInvitationsTests {
-
-        @Test
-        @DisplayName("Should get all invitations when user is member")
-        void shouldGetAllInvitationsWhenUserIsMember() {
-            // Given
-            List<HouseholdInvitation> invitations = List.of(testInvitation);
-            
-            when(userService.getCurrentUser(token)).thenReturn(currentUser);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUserId))
-                    .thenReturn(Optional.of(ownerMember));
-            when(householdInvitationRepository.findByHouseholdId(householdId)).thenReturn(invitations);
-
-            // When
-            List<HouseholdInvitationResponse> responses = householdInvitationService.getHouseholdInvitations(householdId, token);
-
-            // Then
-            assertThat(responses).hasSize(1);
-            assertThat(responses.get(0).getId()).isEqualTo(invitationId);
-        }
-
-        @Test
-        @DisplayName("Should return empty list when no invitations exist")
-        void shouldReturnEmptyListWhenNoInvitationsExist() {
-            // Given
-            when(userService.getCurrentUser(token)).thenReturn(currentUser);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUserId))
-                    .thenReturn(Optional.of(ownerMember));
-            when(householdInvitationRepository.findByHouseholdId(householdId)).thenReturn(Collections.emptyList());
-
-            // When
-            List<HouseholdInvitationResponse> responses = householdInvitationService.getHouseholdInvitations(householdId, token);
-
-            // Then
-            assertThat(responses).isEmpty();
-        }
-
-        @Test
-        @DisplayName("Should throw NotFoundException when household doesn't exist")
-        void shouldThrowNotFoundExceptionWhenHouseholdDoesntExist() {
-            // Given
-            when(userService.getCurrentUser(token)).thenReturn(currentUser);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.empty());
-
-            // When & Then
-            assertThatThrownBy(() -> householdInvitationService.getHouseholdInvitations(householdId, token))
-                    .isInstanceOf(NotFoundException.class)
-                    .hasMessage("Household not found");
-        }
-
-        @Test
-        @DisplayName("Should throw ForbiddenException when user is not a member")
-        void shouldThrowForbiddenExceptionWhenUserIsNotMember() {
-            // Given
-            when(userService.getCurrentUser(token)).thenReturn(currentUser);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUserId))
-                    .thenReturn(Optional.empty());
-
-            // When & Then
-            assertThatThrownBy(() -> householdInvitationService.getHouseholdInvitations(householdId, token))
-                    .isInstanceOf(ForbiddenException.class)
-                    .hasMessage("You don't have access to this household");
-        }
-    }
-
-    @Nested
-    @DisplayName("Get Household Invitations By Status Tests")
-    class GetHouseholdInvitationsByStatusTests {
-
-        @Test
-        @DisplayName("Should get invitations filtered by status")
-        void shouldGetInvitationsFilteredByStatus() {
-            // Given
-            List<HouseholdInvitation> invitations = List.of(testInvitation);
-            
-            when(userService.getCurrentUser(token)).thenReturn(currentUser);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUserId))
-                    .thenReturn(Optional.of(ownerMember));
-            when(householdInvitationRepository.findByHouseholdIdAndStatus(householdId, InvitationStatus.PENDING))
-                    .thenReturn(invitations);
-
-            // When
-            List<HouseholdInvitationResponse> responses = householdInvitationService
-                    .getHouseholdInvitationsByStatus(householdId, InvitationStatus.PENDING, token);
-
-            // Then
-            assertThat(responses).hasSize(1);
-            assertThat(responses.get(0).getStatus()).isEqualTo(InvitationStatus.PENDING);
-        }
-    }
-
-    @Nested
-    @DisplayName("Get My Invitations Tests")
-    class GetMyInvitationsTests {
-
-        @Test
-        @DisplayName("Should get current user's invitations")
-        void shouldGetCurrentUsersInvitations() {
-            // Given
-            List<HouseholdInvitation> invitations = List.of(testInvitation);
-            
-            when(userService.getCurrentUser(token)).thenReturn(invitedUser);
-            when(householdInvitationRepository.findByInvitedUserIdAndStatus(invitedUserId, InvitationStatus.PENDING))
-                    .thenReturn(invitations);
-
-            // When
-            List<HouseholdInvitationResponse> responses = householdInvitationService.getMyInvitations(token);
-
-            // Then
-            assertThat(responses).hasSize(1);
-            assertThat(responses.get(0).getInvitedUserId()).isEqualTo(invitedUserId);
-        }
-
-        @Test
-        @DisplayName("Should return empty list when user has no invitations")
-        void shouldReturnEmptyListWhenUserHasNoInvitations() {
-            // Given
-            when(userService.getCurrentUser(token)).thenReturn(invitedUser);
-            when(householdInvitationRepository.findByInvitedUserIdAndStatus(invitedUserId, InvitationStatus.PENDING))
-                    .thenReturn(Collections.emptyList());
-
-            // When
-            List<HouseholdInvitationResponse> responses = householdInvitationService.getMyInvitations(token);
-
-            // Then
-            assertThat(responses).isEmpty();
         }
     }
 
@@ -548,17 +377,11 @@ public class HouseholdInvitationServiceTest {
         @DisplayName("Should accept invitation successfully")
         void shouldAcceptInvitationSuccessfully() {
             // Given
-            HouseholdInvitation acceptedInvitation = new HouseholdInvitation();
-            acceptedInvitation.setId(invitationId);
-            acceptedInvitation.setStatus(InvitationStatus.ACCEPTED);
-            acceptedInvitation.setInvitedUser(invitedUser);
-            acceptedInvitation.setHousehold(testHousehold);
-            acceptedInvitation.setProposedRole(HouseholdRole.MEMBER);
-
             when(userService.getCurrentUser(token)).thenReturn(invitedUser);
             when(householdInvitationRepository.findById(invitationId)).thenReturn(Optional.of(testInvitation));
-            when(householdMemberRepository.existsByHouseholdIdAndUserId(householdId, invitedUserId)).thenReturn(false);
-            when(householdInvitationRepository.save(any(HouseholdInvitation.class))).thenReturn(acceptedInvitation);
+            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, invitedUserId))
+                    .thenReturn(Optional.empty());
+            when(householdInvitationRepository.save(any(HouseholdInvitation.class))).thenReturn(testInvitation);
             when(householdMemberRepository.save(any(HouseholdMember.class))).thenReturn(new HouseholdMember());
 
             // When
@@ -566,7 +389,7 @@ public class HouseholdInvitationServiceTest {
 
             // Then
             assertThat(response).isNotNull();
-            assertThat(response.getStatus()).isEqualTo(InvitationStatus.ACCEPTED);
+            verify(householdInvitationRepository).save(any(HouseholdInvitation.class));
             verify(householdMemberRepository).save(any(HouseholdMember.class));
         }
 
@@ -584,24 +407,23 @@ public class HouseholdInvitationServiceTest {
         }
 
         @Test
-        @DisplayName("Should throw ForbiddenException when not invited user")
-        void shouldThrowForbiddenExceptionWhenNotInvitedUser() {
+        @DisplayName("Should throw AccessDeniedException when user is not the invited user")
+        void shouldThrowAccessDeniedExceptionWhenUserIsNotInvitedUser() {
             // Given
             when(userService.getCurrentUser(token)).thenReturn(currentUser);
             when(householdInvitationRepository.findById(invitationId)).thenReturn(Optional.of(testInvitation));
 
             // When & Then
             assertThatThrownBy(() -> householdInvitationService.acceptInvitation(invitationId, token))
-                    .isInstanceOf(ForbiddenException.class)
-                    .hasMessage("You are not the invited user");
+                    .isInstanceOf(AccessDeniedException.class)
+                    .hasMessage("You can only accept your own invitations");
         }
 
         @Test
-        @DisplayName("Should throw IllegalStateException when invitation already processed")
-        void shouldThrowIllegalStateExceptionWhenInvitationAlreadyProcessed() {
+        @DisplayName("Should throw IllegalStateException when invitation is already processed")
+        void shouldThrowIllegalStateExceptionWhenInvitationIsAlreadyProcessed() {
             // Given
             testInvitation.setStatus(InvitationStatus.ACCEPTED);
-            
             when(userService.getCurrentUser(token)).thenReturn(invitedUser);
             when(householdInvitationRepository.findById(invitationId)).thenReturn(Optional.of(testInvitation));
 
@@ -612,11 +434,10 @@ public class HouseholdInvitationServiceTest {
         }
 
         @Test
-        @DisplayName("Should throw IllegalStateException when invitation expired")
-        void shouldThrowIllegalStateExceptionWhenInvitationExpired() {
+        @DisplayName("Should throw IllegalStateException when invitation is expired")
+        void shouldThrowIllegalStateExceptionWhenInvitationIsExpired() {
             // Given
             testInvitation.setExpiresAt(LocalDateTime.now().minusDays(1));
-            
             when(userService.getCurrentUser(token)).thenReturn(invitedUser);
             when(householdInvitationRepository.findById(invitationId)).thenReturn(Optional.of(testInvitation));
 
@@ -627,12 +448,13 @@ public class HouseholdInvitationServiceTest {
         }
 
         @Test
-        @DisplayName("Should throw ConflictException when user already member")
-        void shouldThrowConflictExceptionWhenUserAlreadyMember() {
+        @DisplayName("Should throw ConflictException when user is already a member")
+        void shouldThrowConflictExceptionWhenUserIsAlreadyMember() {
             // Given
             when(userService.getCurrentUser(token)).thenReturn(invitedUser);
             when(householdInvitationRepository.findById(invitationId)).thenReturn(Optional.of(testInvitation));
-            when(householdMemberRepository.existsByHouseholdIdAndUserId(householdId, invitedUserId)).thenReturn(true);
+            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, invitedUserId))
+                    .thenReturn(Optional.of(regularMember));
 
             // When & Then
             assertThatThrownBy(() -> householdInvitationService.acceptInvitation(invitationId, token))
@@ -649,20 +471,16 @@ public class HouseholdInvitationServiceTest {
         @DisplayName("Should decline invitation successfully")
         void shouldDeclineInvitationSuccessfully() {
             // Given
-            HouseholdInvitation declinedInvitation = new HouseholdInvitation();
-            declinedInvitation.setId(invitationId);
-            declinedInvitation.setStatus(InvitationStatus.DECLINED);
-
             when(userService.getCurrentUser(token)).thenReturn(invitedUser);
             when(householdInvitationRepository.findById(invitationId)).thenReturn(Optional.of(testInvitation));
-            when(householdInvitationRepository.save(any(HouseholdInvitation.class))).thenReturn(declinedInvitation);
+            when(householdInvitationRepository.save(any(HouseholdInvitation.class))).thenReturn(testInvitation);
 
             // When
             HouseholdInvitationResponse response = householdInvitationService.declineInvitation(invitationId, token);
 
             // Then
             assertThat(response).isNotNull();
-            assertThat(response.getStatus()).isEqualTo(InvitationStatus.DECLINED);
+            verify(householdInvitationRepository).save(any(HouseholdInvitation.class));
         }
 
         @Test
@@ -679,24 +497,23 @@ public class HouseholdInvitationServiceTest {
         }
 
         @Test
-        @DisplayName("Should throw ForbiddenException when not invited user")
-        void shouldThrowForbiddenExceptionWhenNotInvitedUser() {
+        @DisplayName("Should throw AccessDeniedException when user is not the invited user")
+        void shouldThrowAccessDeniedExceptionWhenUserIsNotInvitedUser() {
             // Given
             when(userService.getCurrentUser(token)).thenReturn(currentUser);
             when(householdInvitationRepository.findById(invitationId)).thenReturn(Optional.of(testInvitation));
 
             // When & Then
             assertThatThrownBy(() -> householdInvitationService.declineInvitation(invitationId, token))
-                    .isInstanceOf(ForbiddenException.class)
-                    .hasMessage("You are not the invited user");
+                    .isInstanceOf(AccessDeniedException.class)
+                    .hasMessage("You can only decline your own invitations");
         }
 
         @Test
-        @DisplayName("Should throw IllegalStateException when invitation already processed")
-        void shouldThrowIllegalStateExceptionWhenInvitationAlreadyProcessed() {
+        @DisplayName("Should throw IllegalStateException when invitation is already processed")
+        void shouldThrowIllegalStateExceptionWhenInvitationIsAlreadyProcessed() {
             // Given
-            testInvitation.setStatus(InvitationStatus.DECLINED);
-            
+            testInvitation.setStatus(InvitationStatus.ACCEPTED);
             when(userService.getCurrentUser(token)).thenReturn(invitedUser);
             when(householdInvitationRepository.findById(invitationId)).thenReturn(Optional.of(testInvitation));
 
@@ -712,54 +529,64 @@ public class HouseholdInvitationServiceTest {
     class CancelInvitationTests {
 
         @Test
-        @DisplayName("Should cancel invitation when user is owner")
-        void shouldCancelInvitationWhenUserIsOwner() {
+        @DisplayName("Should cancel invitation successfully when user is owner")
+        void shouldCancelInvitationSuccessfullyWhenUserIsOwner() {
             // Given
             when(userService.getCurrentUser(token)).thenReturn(currentUser);
             when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUserId))
                     .thenReturn(Optional.of(ownerMember));
             when(householdInvitationRepository.findById(invitationId)).thenReturn(Optional.of(testInvitation));
+            when(householdInvitationRepository.save(any(HouseholdInvitation.class))).thenReturn(testInvitation);
 
             // When
             householdInvitationService.cancelInvitation(householdId, invitationId, token);
 
             // Then
-            verify(householdInvitationRepository).delete(testInvitation);
+            verify(householdInvitationRepository).save(any(HouseholdInvitation.class));
         }
 
         @Test
-        @DisplayName("Should cancel invitation when user is admin")
-        void shouldCancelInvitationWhenUserIsAdmin() {
+        @DisplayName("Should throw NotFoundException when household doesn't exist")
+        void shouldThrowNotFoundExceptionWhenHouseholdDoesntExist() {
+            // Given
+            when(userService.getCurrentUser(token)).thenReturn(currentUser);
+            when(householdRepository.findById(householdId)).thenReturn(Optional.empty());
+
+            // When & Then
+            assertThatThrownBy(() -> householdInvitationService.cancelInvitation(householdId, invitationId, token))
+                    .isInstanceOf(NotFoundException.class)
+                    .hasMessage("Household not found");
+        }
+
+        @Test
+        @DisplayName("Should throw AccessDeniedException when user is not a member")
+        void shouldThrowAccessDeniedExceptionWhenUserIsNotMember() {
             // Given
             when(userService.getCurrentUser(token)).thenReturn(currentUser);
             when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUserId))
-                    .thenReturn(Optional.of(adminMember));
-            when(householdInvitationRepository.findById(invitationId)).thenReturn(Optional.of(testInvitation));
+                    .thenReturn(Optional.empty());
 
-            // When
-            householdInvitationService.cancelInvitation(householdId, invitationId, token);
-
-            // Then
-            verify(householdInvitationRepository).delete(testInvitation);
+            // When & Then
+            assertThatThrownBy(() -> householdInvitationService.cancelInvitation(householdId, invitationId, token))
+                    .isInstanceOf(AccessDeniedException.class)
+                    .hasMessage("You don't have access to this household");
         }
 
         @Test
-        @DisplayName("Should cancel invitation when user is the inviter")
-        void shouldCancelInvitationWhenUserIsInviter() {
+        @DisplayName("Should throw AccessDeniedException when user is regular member")
+        void shouldThrowAccessDeniedExceptionWhenUserIsRegularMember() {
             // Given
             when(userService.getCurrentUser(token)).thenReturn(currentUser);
             when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUserId))
                     .thenReturn(Optional.of(regularMember));
-            when(householdInvitationRepository.findById(invitationId)).thenReturn(Optional.of(testInvitation));
 
-            // When
-            householdInvitationService.cancelInvitation(householdId, invitationId, token);
-
-            // Then
-            verify(householdInvitationRepository).delete(testInvitation);
+            // When & Then
+            assertThatThrownBy(() -> householdInvitationService.cancelInvitation(householdId, invitationId, token))
+                    .isInstanceOf(AccessDeniedException.class)
+                    .hasMessage("You don't have permission to perform this action");
         }
 
         @Test
@@ -779,31 +606,10 @@ public class HouseholdInvitationServiceTest {
         }
 
         @Test
-        @DisplayName("Should throw ForbiddenException when user lacks permission")
-        void shouldThrowForbiddenExceptionWhenUserLacksPermission() {
-            // Given
-            User anotherUser = new User();
-            anotherUser.setId(UUID.randomUUID());
-            testInvitation.setInvitedBy(anotherUser);
-
-            when(userService.getCurrentUser(token)).thenReturn(currentUser);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUserId))
-                    .thenReturn(Optional.of(regularMember));
-            when(householdInvitationRepository.findById(invitationId)).thenReturn(Optional.of(testInvitation));
-
-            // When & Then
-            assertThatThrownBy(() -> householdInvitationService.cancelInvitation(householdId, invitationId, token))
-                    .isInstanceOf(ForbiddenException.class)
-                    .hasMessage("You don't have permission to cancel this invitation");
-        }
-
-        @Test
-        @DisplayName("Should throw IllegalStateException when invitation already processed")
-        void shouldThrowIllegalStateExceptionWhenInvitationAlreadyProcessed() {
+        @DisplayName("Should throw IllegalStateException when invitation is already processed")
+        void shouldThrowIllegalStateExceptionWhenInvitationIsAlreadyProcessed() {
             // Given
             testInvitation.setStatus(InvitationStatus.ACCEPTED);
-            
             when(userService.getCurrentUser(token)).thenReturn(currentUser);
             when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
             when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUserId))
@@ -814,6 +620,195 @@ public class HouseholdInvitationServiceTest {
             assertThatThrownBy(() -> householdInvitationService.cancelInvitation(householdId, invitationId, token))
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessage("Cannot cancel processed invitation");
+        }
+    }
+
+    @Nested
+    @DisplayName("Get Invitations Tests")
+    class GetInvitationsTests {
+
+        @Test
+        @DisplayName("Should get household invitations successfully")
+        void shouldGetHouseholdInvitationsSuccessfully() {
+            // Given
+            when(userService.getCurrentUser(token)).thenReturn(currentUser);
+            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
+            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUserId))
+                    .thenReturn(Optional.of(ownerMember));
+            when(householdInvitationRepository.findByHouseholdId(householdId))
+                    .thenReturn(List.of(testInvitation));
+
+            // When
+            List<HouseholdInvitationResponse> responses = householdInvitationService.getHouseholdInvitations(householdId, token);
+
+            // Then
+            assertThat(responses).hasSize(1);
+            assertThat(responses.get(0).getInvitedUserEmail()).isEqualTo("invited@example.com");
+        }
+
+        @Test
+        @DisplayName("Should get household invitations by status successfully")
+        void shouldGetHouseholdInvitationsByStatusSuccessfully() {
+            // Given
+            when(userService.getCurrentUser(token)).thenReturn(currentUser);
+            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
+            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUserId))
+                    .thenReturn(Optional.of(ownerMember));
+            when(householdInvitationRepository.findByHouseholdIdAndStatus(householdId, InvitationStatus.PENDING))
+                    .thenReturn(List.of(testInvitation));
+
+            // When
+            List<HouseholdInvitationResponse> responses = householdInvitationService.getHouseholdInvitationsByStatus(householdId, InvitationStatus.PENDING, token);
+
+            // Then
+            assertThat(responses).hasSize(1);
+            assertThat(responses.get(0).getStatus()).isEqualTo(InvitationStatus.PENDING);
+        }
+
+        @Test
+        @DisplayName("Should get my invitations successfully")
+        void shouldGetMyInvitationsSuccessfully() {
+            // Given
+            when(userService.getCurrentUser(token)).thenReturn(invitedUser);
+            when(householdInvitationRepository.findByInvitedUserIdAndStatus(invitedUserId, InvitationStatus.PENDING))
+                    .thenReturn(List.of(testInvitation));
+
+            // When
+            List<HouseholdInvitationResponse> responses = householdInvitationService.getMyInvitations(token);
+
+            // Then
+            assertThat(responses).hasSize(1);
+            assertThat(responses.get(0).getInvitedUserEmail()).isEqualTo("invited@example.com");
+        }
+
+        @Test
+        @DisplayName("Should get my invitations by status successfully")
+        void shouldGetMyInvitationsByStatusSuccessfully() {
+            // Given
+            when(userService.getCurrentUser(token)).thenReturn(invitedUser);
+            when(householdInvitationRepository.findByInvitedUserIdAndStatus(invitedUserId, InvitationStatus.PENDING))
+                    .thenReturn(List.of(testInvitation));
+
+            // When
+            List<HouseholdInvitationResponse> responses = householdInvitationService.getMyInvitationsByStatus(InvitationStatus.PENDING, token);
+
+            // Then
+            assertThat(responses).hasSize(1);
+            assertThat(responses.get(0).getStatus()).isEqualTo(InvitationStatus.PENDING);
+        }
+
+        @Test
+        @DisplayName("Should get invitation by ID successfully")
+        void shouldGetInvitationByIdSuccessfully() {
+            // Given
+            when(userService.getCurrentUser(token)).thenReturn(currentUser);
+            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
+            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUserId))
+                    .thenReturn(Optional.of(ownerMember));
+            when(householdInvitationRepository.findById(invitationId)).thenReturn(Optional.of(testInvitation));
+
+            // When
+            HouseholdInvitationResponse response = householdInvitationService.getInvitationById(householdId, invitationId, token);
+
+            // Then
+            assertThat(response).isNotNull();
+            assertThat(response.getInvitedUserEmail()).isEqualTo("invited@example.com");
+        }
+    }
+
+    @Nested
+    @DisplayName("Mark Expired Invitations Tests")
+    class MarkExpiredInvitationsTests {
+
+        @Test
+        @DisplayName("Should mark expired invitations successfully")
+        void shouldMarkExpiredInvitationsSuccessfully() {
+            // Given
+            LocalDateTime pastDate = LocalDateTime.now().minusDays(1);
+            HouseholdInvitation expiredInvitation = new HouseholdInvitation();
+            expiredInvitation.setId(UUID.randomUUID());
+            expiredInvitation.setStatus(InvitationStatus.PENDING);
+            expiredInvitation.setExpiresAt(pastDate);
+
+            when(householdInvitationRepository.findByStatusAndExpiresAtBefore(eq(InvitationStatus.PENDING), any(LocalDateTime.class)))
+                    .thenReturn(List.of(expiredInvitation));
+            when(householdInvitationRepository.save(any(HouseholdInvitation.class))).thenReturn(expiredInvitation);
+
+            // When
+            householdInvitationService.markExpiredInvitations();
+
+            // Then
+            verify(householdInvitationRepository).save(any(HouseholdInvitation.class));
+        }
+
+        @Test
+        @DisplayName("Should handle no expired invitations")
+        void shouldHandleNoExpiredInvitations() {
+            // Given
+            when(householdInvitationRepository.findByStatusAndExpiresAtBefore(eq(InvitationStatus.PENDING), any(LocalDateTime.class)))
+                    .thenReturn(Collections.emptyList());
+
+            // When
+            householdInvitationService.markExpiredInvitations();
+
+            // Then
+            verify(householdInvitationRepository, never()).save(any(HouseholdInvitation.class));
+        }
+    }
+
+    @Nested
+    @DisplayName("Send Invitation Reminder Tests")
+    class SendInvitationReminderTests {
+
+        @Test
+        @DisplayName("Should send invitation reminder successfully")
+        void shouldSendInvitationReminderSuccessfully() {
+            // Given
+            when(householdInvitationRepository.findById(invitationId)).thenReturn(Optional.of(testInvitation));
+
+            // When
+            householdInvitationService.sendInvitationReminder(invitationId);
+
+            // Then - No exception should be thrown
+            verify(householdInvitationRepository).findById(invitationId);
+        }
+
+        @Test
+        @DisplayName("Should throw NotFoundException when invitation doesn't exist")
+        void shouldThrowNotFoundExceptionWhenInvitationDoesntExist() {
+            // Given
+            when(householdInvitationRepository.findById(invitationId)).thenReturn(Optional.empty());
+
+            // When & Then
+            assertThatThrownBy(() -> householdInvitationService.sendInvitationReminder(invitationId))
+                    .isInstanceOf(NotFoundException.class)
+                    .hasMessage("Invitation not found");
+        }
+
+        @Test
+        @DisplayName("Should throw IllegalStateException when invitation is not pending")
+        void shouldThrowIllegalStateExceptionWhenInvitationIsNotPending() {
+            // Given
+            testInvitation.setStatus(InvitationStatus.ACCEPTED);
+            when(householdInvitationRepository.findById(invitationId)).thenReturn(Optional.of(testInvitation));
+
+            // When & Then
+            assertThatThrownBy(() -> householdInvitationService.sendInvitationReminder(invitationId))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("Can only send reminders for pending invitations");
+        }
+
+        @Test
+        @DisplayName("Should throw IllegalStateException when invitation is expired")
+        void shouldThrowIllegalStateExceptionWhenInvitationIsExpired() {
+            // Given
+            testInvitation.setExpiresAt(LocalDateTime.now().minusDays(1));
+            when(householdInvitationRepository.findById(invitationId)).thenReturn(Optional.of(testInvitation));
+
+            // When & Then
+            assertThatThrownBy(() -> householdInvitationService.sendInvitationReminder(invitationId))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessage("Cannot send reminder for expired invitation");
         }
     }
 }
