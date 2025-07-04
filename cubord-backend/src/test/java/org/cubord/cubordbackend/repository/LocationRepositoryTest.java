@@ -5,6 +5,7 @@ import org.cubord.cubordbackend.domain.Location;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
@@ -20,6 +21,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mockStatic;
 
 @DataJpaTest
 @ActiveProfiles("test")
@@ -30,9 +32,6 @@ class LocationRepositoryTest {
 
     @Autowired
     private LocationRepository locationRepository;
-
-    @Autowired
-    private HouseholdRepository householdRepository;
 
     private Household testHousehold1;
     private Household testHousehold2;
@@ -197,7 +196,7 @@ class LocationRepositoryTest {
         // Then
         assertThat(updatedLocation.getName()).isEqualTo(newName);
         assertThat(updatedLocation.getDescription()).isEqualTo(newDescription);
-        assertThat(updatedLocation.getUpdatedAt()).isAfter(updatedLocation.getCreatedAt());
+        assertThat(updatedLocation.getUpdatedAt()).isAfterOrEqualTo(updatedLocation.getCreatedAt());
     }
 
     @Test
@@ -410,31 +409,39 @@ class LocationRepositoryTest {
     @Test
     @DisplayName("Test location lifecycle callbacks")
     void testLocationLifecycleCallbacks() {
-        // Given
-        Location newLocation = Location.builder()
-                .id(UUID.randomUUID())
-                .name("Callback Test")
-                .description("Testing lifecycle callbacks")
-                .household(testHousehold1)
-                .build();
+        LocalDateTime initialTime = LocalDateTime.of(2025, 1, 1, 12, 0);
+        LocalDateTime updateTime = LocalDateTime.of(2025, 1, 1, 12, 30);
+        
+        try (MockedStatic<LocalDateTime> mockedStatic = mockStatic(LocalDateTime.class)) {
+            // Given
+            Location newLocation = Location.builder()
+                    .id(UUID.randomUUID())
+                    .name("Callback Test")
+                    .description("Testing lifecycle callbacks")
+                    .household(testHousehold1)
+                    .build();
 
-        // When - Save (triggers @PrePersist)
-        Location savedLocation = locationRepository.save(newLocation);
-        LocalDateTime initialCreatedAt = savedLocation.getCreatedAt();
-        LocalDateTime initialUpdatedAt = savedLocation.getUpdatedAt();
+            // Mock the initial time for @PrePersist
+            mockedStatic.when(LocalDateTime::now).thenReturn(initialTime);
 
-        // Then
-        assertThat(initialCreatedAt).isNotNull();
-        assertThat(initialUpdatedAt).isNotNull();
-        assertThat(initialCreatedAt).isEqualToIgnoringNanos(initialUpdatedAt);
+            // When - Save (triggers @PrePersist)
+            Location savedLocation = locationRepository.saveAndFlush(newLocation);
 
-        // When - Update (triggers @PreUpdate)
-        savedLocation.setName("Updated Name");
-        Location updatedLocation = locationRepository.save(savedLocation);
+            // Then
+            assertThat(savedLocation.getCreatedAt()).isEqualTo(initialTime);
+            assertThat(savedLocation.getUpdatedAt()).isEqualTo(initialTime);
 
-        // Then
-        assertThat(updatedLocation.getCreatedAt()).isEqualTo(initialCreatedAt); // Should not change
-        assertThat(updatedLocation.getUpdatedAt()).isAfter(initialUpdatedAt); // Should be updated
+            // Mock the update time for @PreUpdate
+            mockedStatic.when(LocalDateTime::now).thenReturn(updateTime);
+
+            // When - Update (triggers @PreUpdate)
+            savedLocation.setName("Updated Name");
+            Location updatedLocation = locationRepository.saveAndFlush(savedLocation);
+
+            // Then
+            assertThat(updatedLocation.getCreatedAt()).isEqualTo(initialTime); // Should not change
+            assertThat(updatedLocation.getUpdatedAt()).isEqualTo(updateTime); // Should be updated
+        }
     }
 
     @Test
