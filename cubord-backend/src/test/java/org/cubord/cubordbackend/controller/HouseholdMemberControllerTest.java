@@ -7,7 +7,6 @@ import org.cubord.cubordbackend.dto.HouseholdMemberResponse;
 import org.cubord.cubordbackend.dto.HouseholdMemberRoleUpdateRequest;
 import org.cubord.cubordbackend.domain.HouseholdRole;
 import org.cubord.cubordbackend.exception.ConflictException;
-import org.cubord.cubordbackend.exception.ForbiddenException;
 import org.cubord.cubordbackend.exception.NotFoundException;
 import org.cubord.cubordbackend.service.HouseholdMemberService;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,6 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.test.context.ActiveProfiles;
@@ -151,7 +151,7 @@ class HouseholdMemberControllerTest {
             request.setRole(HouseholdRole.MEMBER);
 
             when(householdMemberService.addMemberToHousehold(eq(sampleHouseholdId), any(HouseholdMemberRequest.class), any(JwtAuthenticationToken.class)))
-                    .thenThrow(new ForbiddenException("You don't have access to this household"));
+                    .thenThrow(new AccessDeniedException("You don't have access to this household"));
 
             mockMvc.perform(post("/api/households/{householdId}/members", sampleHouseholdId)
                             .with(jwt().jwt(jwt))
@@ -232,7 +232,7 @@ class HouseholdMemberControllerTest {
         @DisplayName("should return 403 when user doesn't have permission")
         void shouldReturn403WhenUserDoesntHavePermission() throws Exception {
             when(householdMemberService.getHouseholdMembers(eq(sampleHouseholdId), any(JwtAuthenticationToken.class)))
-                    .thenThrow(new ForbiddenException("You don't have access to this household"));
+                    .thenThrow(new AccessDeniedException("You don't have access to this household"));
 
             mockMvc.perform(get("/api/households/{householdId}/members", sampleHouseholdId)
                             .with(jwt().jwt(jwt)))
@@ -283,7 +283,7 @@ class HouseholdMemberControllerTest {
         @DisplayName("should return 403 when user doesn't have permission")
         void shouldReturn403WhenUserDoesntHavePermission() throws Exception {
             when(householdMemberService.getMemberById(eq(sampleHouseholdId), eq(sampleMemberId), any(JwtAuthenticationToken.class)))
-                    .thenThrow(new ForbiddenException("You don't have permission"));
+                    .thenThrow(new AccessDeniedException("You don't have permission"));
 
             mockMvc.perform(get("/api/households/{householdId}/members/{memberId}", sampleHouseholdId, sampleMemberId)
                             .with(jwt().jwt(jwt)))
@@ -345,7 +345,7 @@ class HouseholdMemberControllerTest {
         @Test
         @DisplayName("should return 403 when user doesn't have permission")
         void shouldReturn403WhenUserDoesntHavePermission() throws Exception {
-            doThrow(new ForbiddenException("You don't have permission"))
+            doThrow(new AccessDeniedException("You don't have permission"))
                     .when(householdMemberService).removeMember(eq(sampleHouseholdId), eq(sampleMemberId), any(JwtAuthenticationToken.class));
 
             mockMvc.perform(delete("/api/households/{householdId}/members/{memberId}", sampleHouseholdId, sampleMemberId)
@@ -449,7 +449,7 @@ class HouseholdMemberControllerTest {
             request.setRole(HouseholdRole.ADMIN);
 
             when(householdMemberService.updateMemberRole(eq(sampleHouseholdId), eq(sampleMemberId), eq(HouseholdRole.ADMIN), any(JwtAuthenticationToken.class)))
-                    .thenThrow(new ForbiddenException("You don't have permission"));
+                    .thenThrow(new AccessDeniedException("You don't have permission"));
 
             mockMvc.perform(put("/api/households/{householdId}/members/{memberId}/role", sampleHouseholdId, sampleMemberId)
                             .with(jwt().jwt(jwt))

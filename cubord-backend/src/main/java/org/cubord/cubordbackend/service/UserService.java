@@ -2,21 +2,19 @@ package org.cubord.cubordbackend.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.cubord.cubordbackend.domain.HouseholdMember;
 import org.cubord.cubordbackend.domain.User;
 import org.cubord.cubordbackend.dto.UserResponse;
 import org.cubord.cubordbackend.dto.UserUpdateRequest;
-import org.cubord.cubordbackend.exception.ForbiddenException;
 import org.cubord.cubordbackend.exception.NotFoundException;
 import org.cubord.cubordbackend.repository.HouseholdMemberRepository;
 import org.cubord.cubordbackend.repository.UserRepository;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import jakarta.validation.ValidationException;
 import java.util.HashSet;
-import java.util.List;
 import java.util.UUID;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -309,13 +307,13 @@ public class UserService {
      * @param id UUID of the user to delete
      * @param currentUserId UUID of the user requesting the deletion
      * @throws NotFoundException if no user with the given ID exists
-     * @throws ForbiddenException if the current user is not authorized to delete the target user
+     * @throws AccessDeniedException if the current user is not authorized to delete the target user
      */
     @Transactional
     public void deleteUser(UUID id, UUID currentUserId) {
         // Authorization check first
         if (!id.equals(currentUserId)) {
-            throw new ForbiddenException("Cannot delete another user's account");
+            throw new AccessDeniedException("Cannot delete another user's account");
         }
         
         deleteUser(id);

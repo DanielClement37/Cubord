@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.cubord.cubordbackend.config.TestSecurityConfig;
 import org.cubord.cubordbackend.dto.HouseholdRequest;
 import org.cubord.cubordbackend.dto.HouseholdResponse;
-import org.cubord.cubordbackend.exception.ForbiddenException;
 import org.cubord.cubordbackend.exception.NotFoundException;
 import org.cubord.cubordbackend.service.HouseholdService;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.test.context.ActiveProfiles;
@@ -100,7 +100,7 @@ class HouseholdControllerTest {
         @DisplayName("should return 403 when user doesn't have permission")
         void shouldReturn403WhenUserDoesntHavePermission() throws Exception {
             when(householdService.getHouseholdById(eq(sampleHouseholdId), any(JwtAuthenticationToken.class)))
-                    .thenThrow(new ForbiddenException("You don't have access to this household"));
+                    .thenThrow(new AccessDeniedException("You don't have access to this household"));
 
             mockMvc.perform(get("/api/households/{id}", sampleHouseholdId)
                             .with(jwt().jwt(jwt)))
@@ -305,7 +305,7 @@ class HouseholdControllerTest {
             updateRequest.setName("Updated Household");
 
             when(householdService.updateHousehold(eq(sampleHouseholdId), any(HouseholdRequest.class), any(JwtAuthenticationToken.class)))
-                    .thenThrow(new ForbiddenException("You don't have permission to update this household"));
+                    .thenThrow(new AccessDeniedException("You don't have permission to update this household"));
 
             mockMvc.perform(put("/api/households/{id}", sampleHouseholdId)
                             .with(jwt().jwt(jwt))
@@ -394,7 +394,7 @@ class HouseholdControllerTest {
         @Test
         @DisplayName("should return 403 when user is not owner")
         void shouldReturn403WhenUserIsNotOwner() throws Exception {
-            doThrow(new ForbiddenException("Only the owner can delete a household"))
+            doThrow(new AccessDeniedException("Only the owner can delete a household"))
                     .when(householdService).deleteHousehold(eq(sampleHouseholdId), any(JwtAuthenticationToken.class));
 
             mockMvc.perform(delete("/api/households/{id}", sampleHouseholdId)
@@ -434,7 +434,7 @@ class HouseholdControllerTest {
         @Test
         @DisplayName("should return 403 when user is not a member")
         void shouldReturn403WhenUserIsNotMember() throws Exception {
-            doThrow(new ForbiddenException("You are not a member of this household"))
+            doThrow(new AccessDeniedException("You are not a member of this household"))
                     .when(householdService).leaveHousehold(eq(sampleHouseholdId), any(JwtAuthenticationToken.class));
 
             mockMvc.perform(post("/api/households/{id}/leave", sampleHouseholdId)

@@ -8,10 +8,10 @@ import org.cubord.cubordbackend.domain.HouseholdRole;
 import org.cubord.cubordbackend.domain.User;
 import org.cubord.cubordbackend.dto.HouseholdRequest;
 import org.cubord.cubordbackend.dto.HouseholdResponse;
-import org.cubord.cubordbackend.exception.ForbiddenException;
 import org.cubord.cubordbackend.exception.NotFoundException;
 import org.cubord.cubordbackend.repository.HouseholdMemberRepository;
 import org.cubord.cubordbackend.repository.HouseholdRepository;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -79,7 +79,7 @@ public class HouseholdService {
      * @param token       JWT authentication token of the current user
      * @return HouseholdResponse containing the household's details
      * @throws NotFoundException  if the household doesn't exist
-     * @throws ForbiddenException if the current user is not a member of the household
+     * @throws AccessDeniedException if the current user is not a member of the household
      */
     @Transactional(readOnly = true)
     public HouseholdResponse getHouseholdById(UUID householdId, JwtAuthenticationToken token) {
@@ -91,7 +91,7 @@ public class HouseholdService {
 
         // Check if user is a member
         householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUser.getId())
-                .orElseThrow(() -> new ForbiddenException("You don't have access to this household"));
+                .orElseThrow(() -> new AccessDeniedException("You don't have access to this household"));
 
         // Convert to response DTO
         return mapToHouseholdResponse(household);
@@ -124,7 +124,7 @@ public class HouseholdService {
      * @param token       JWT authentication token of the current user
      * @return HouseholdResponse containing the updated household's details
      * @throws NotFoundException     if the household doesn't exist
-     * @throws ForbiddenException    if the current user lacks permission to update the household
+     * @throws AccessDeniedException    if the current user lacks permission to update the household
      * @throws IllegalStateException if the new name is already used by another household
      */
     @Transactional
@@ -137,11 +137,11 @@ public class HouseholdService {
 
         // Check if user is a member with appropriate permissions
         HouseholdMember member = householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUser.getId())
-                .orElseThrow(() -> new ForbiddenException("You don't have access to this household"));
+                .orElseThrow(() -> new AccessDeniedException("You don't have access to this household"));
 
         // Check if user has permissions to update
         if (member.getRole() != HouseholdRole.OWNER && member.getRole() != HouseholdRole.ADMIN) {
-            throw new ForbiddenException("You don't have permission to update this household");
+            throw new AccessDeniedException("You don't have permission to update this household");
         }
 
         // Check if name is already used by a different household
@@ -166,7 +166,7 @@ public class HouseholdService {
      * @param householdId UUID of the household to delete
      * @param token       JWT authentication token of the current user
      * @throws NotFoundException  if the household doesn't exist
-     * @throws ForbiddenException if the current user is not the owner of the household
+     * @throws AccessDeniedException if the current user is not the owner of the household
      */
     @Transactional
     public void deleteHousehold(UUID householdId, JwtAuthenticationToken token) {
@@ -178,10 +178,10 @@ public class HouseholdService {
 
         // Check if user is the owner
         HouseholdMember member = householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUser.getId())
-                .orElseThrow(() -> new ForbiddenException("You don't have access to this household"));
+                .orElseThrow(() -> new AccessDeniedException("You don't have access to this household"));
 
         if (member.getRole() != HouseholdRole.OWNER) {
-            throw new ForbiddenException("Only the owner can delete a household");
+            throw new AccessDeniedException("Only the owner can delete a household");
         }
 
         // Delete household
@@ -194,7 +194,7 @@ public class HouseholdService {
      * @param householdId UUID of the household to leave
      * @param token       JWT authentication token of the current user
      * @throws NotFoundException     if the household doesn't exist
-     * @throws ForbiddenException    if the current user is not a member of the household
+     * @throws AccessDeniedException    if the current user is not a member of the household
      * @throws IllegalStateException if the current user is the owner of the household
      */
     @Transactional
@@ -203,7 +203,7 @@ public class HouseholdService {
 
         // Check if user is a member
         HouseholdMember member = householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUser.getId())
-                .orElseThrow(() -> new ForbiddenException("You are not a member of this household"));
+                .orElseThrow(() -> new AccessDeniedException("You are not a member of this household"));
 
         // Owners cannot leave, they must transfer ownership first
         if (member.getRole() == HouseholdRole.OWNER) {
@@ -221,7 +221,7 @@ public class HouseholdService {
      * @param newOwnerId  UUID of the member to become the new owner
      * @param token       JWT authentication token of the current user
      * @throws NotFoundException  if the household or new owner doesn't exist
-     * @throws ForbiddenException if the current user is not the owner of the household
+     * @throws AccessDeniedException if the current user is not the owner of the household
      */
     @Transactional
     public void transferOwnership(UUID householdId, UUID newOwnerId, JwtAuthenticationToken token) {
@@ -229,10 +229,10 @@ public class HouseholdService {
 
         // Check if current user is the owner
         HouseholdMember currentMember = householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUser.getId())
-                .orElseThrow(() -> new ForbiddenException("You don't have access to this household"));
+                .orElseThrow(() -> new AccessDeniedException("You don't have access to this household"));
 
         if (currentMember.getRole() != HouseholdRole.OWNER) {
-            throw new ForbiddenException("Only the owner can transfer ownership");
+            throw new AccessDeniedException("Only the owner can transfer ownership");
         }
 
         // Check if new owner is a member
@@ -278,7 +278,7 @@ public class HouseholdService {
      * @param role        New role to assign to the member
      * @param token       JWT authentication token of the current user
      * @throws NotFoundException        if the household or member doesn't exist
-     * @throws ForbiddenException       if the current user lacks permission to change roles
+     * @throws AccessDeniedException       if the current user lacks permission to change roles
      * @throws IllegalArgumentException if attempting to set role to OWNER through this method
      */
     @Transactional
@@ -291,10 +291,10 @@ public class HouseholdService {
 
         // Check if current user is a member with appropriate permissions
         HouseholdMember currentMember = householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUser.getId())
-                .orElseThrow(() -> new ForbiddenException("You don't have access to this household"));
+                .orElseThrow(() -> new AccessDeniedException("You don't have access to this household"));
 
         if (currentMember.getRole() != HouseholdRole.OWNER && currentMember.getRole() != HouseholdRole.ADMIN) {
-            throw new ForbiddenException("You don't have permission to change member roles");
+            throw new AccessDeniedException("You don't have permission to change member roles");
         }
 
         // Find target member
@@ -304,7 +304,7 @@ public class HouseholdService {
         // Admins can't change owner or other admin roles
         if (currentMember.getRole() == HouseholdRole.ADMIN &&
                 (targetMember.getRole() == HouseholdRole.OWNER || targetMember.getRole() == HouseholdRole.ADMIN)) {
-            throw new ForbiddenException("Only an owner can change the role of another owner or admin");
+            throw new AccessDeniedException("Only an owner can change the role of another owner or admin");
         }
 
         // Update role
@@ -322,7 +322,7 @@ public class HouseholdService {
      * @param token       JWT authentication token of the current user
      * @return HouseholdResponse containing the updated household's details
      * @throws NotFoundException     if the household doesn't exist
-     * @throws ForbiddenException    if the current user lacks permission to update the household
+     * @throws AccessDeniedException    if the current user lacks permission to update the household
      * @throws IllegalStateException if the new name is already used by another household
      */
     @Transactional
@@ -335,11 +335,11 @@ public class HouseholdService {
 
         // Check if user is a member with appropriate permissions
         HouseholdMember member = householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUser.getId())
-                .orElseThrow(() -> new ForbiddenException("You don't have access to this household"));
+                .orElseThrow(() -> new AccessDeniedException("You don't have access to this household"));
 
         // Check if user has permissions to update
         if (member.getRole() != HouseholdRole.OWNER && member.getRole() != HouseholdRole.ADMIN) {
-            throw new ForbiddenException("You don't have permission to update this household");
+            throw new AccessDeniedException("You don't have permission to update this household");
         }
 
         // Apply patches to the fields

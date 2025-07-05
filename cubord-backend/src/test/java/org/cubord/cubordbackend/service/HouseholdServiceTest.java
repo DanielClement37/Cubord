@@ -3,7 +3,6 @@ package org.cubord.cubordbackend.service;
 import org.cubord.cubordbackend.domain.*;
 import org.cubord.cubordbackend.dto.HouseholdRequest;
 import org.cubord.cubordbackend.dto.HouseholdResponse;
-import org.cubord.cubordbackend.exception.ForbiddenException;
 import org.cubord.cubordbackend.exception.NotFoundException;
 import org.cubord.cubordbackend.repository.HouseholdMemberRepository;
 import org.cubord.cubordbackend.repository.HouseholdRepository;
@@ -15,6 +14,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
 import java.time.LocalDateTime;
@@ -184,7 +184,7 @@ public class HouseholdServiceTest {
 
             // When/Then
             assertThatThrownBy(() -> householdService.getHouseholdById(householdId, token))
-                    .isInstanceOf(ForbiddenException.class)
+                    .isInstanceOf(AccessDeniedException.class)
                     .hasMessageContaining("access to this household");
 
             verify(householdRepository).findById(householdId);
@@ -291,7 +291,7 @@ public class HouseholdServiceTest {
 
             // When/Then
             assertThatThrownBy(() -> householdService.updateHousehold(householdId, request, token))
-                    .isInstanceOf(ForbiddenException.class)
+                    .isInstanceOf(AccessDeniedException.class)
                     .hasMessageContaining("permission to update");
 
             verify(householdRepository).findById(householdId);
@@ -364,7 +364,7 @@ public class HouseholdServiceTest {
 
             // When/Then
             assertThatThrownBy(() -> householdService.deleteHousehold(householdId, token))
-                    .isInstanceOf(ForbiddenException.class)
+                    .isInstanceOf(AccessDeniedException.class)
                     .hasMessageContaining("Only the owner can delete");
 
             verify(householdRepository).findById(householdId);
@@ -471,7 +471,7 @@ public class HouseholdServiceTest {
 
             // When/Then
             assertThatThrownBy(() -> householdService.transferOwnership(householdId, newOwnerId, token))
-                    .isInstanceOf(ForbiddenException.class)
+                    .isInstanceOf(AccessDeniedException.class)
                     .hasMessageContaining("Only the owner can transfer ownership");
 
             // Don't verify findById call since it's not made
@@ -662,7 +662,7 @@ public class HouseholdServiceTest {
 
             // When/Then
             assertThatThrownBy(() -> householdService.changeMemberRole(householdId, ownerId, HouseholdRole.MEMBER, token))
-                    .isInstanceOf(ForbiddenException.class)
+                    .isInstanceOf(AccessDeniedException.class)
                     .hasMessageContaining("Only an owner can change the role of another owner or admin");
 
             verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
@@ -685,7 +685,7 @@ public class HouseholdServiceTest {
 
             // When/Then
             assertThatThrownBy(() -> householdService.changeMemberRole(householdId, memberId, HouseholdRole.ADMIN, token))
-                    .isInstanceOf(ForbiddenException.class)
+                    .isInstanceOf(AccessDeniedException.class)
                     .hasMessageContaining("You don't have permission to change member roles");
 
             verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
@@ -822,7 +822,7 @@ public class HouseholdServiceTest {
 
             // When/Then
             assertThatThrownBy(() -> householdService.patchHousehold(householdId, patchFields, token))
-                    .isInstanceOf(ForbiddenException.class)
+                    .isInstanceOf(AccessDeniedException.class)
                     .hasMessageContaining("don't have permission");
 
             verify(householdRepository).findById(householdId);
@@ -846,7 +846,7 @@ public class HouseholdServiceTest {
 
             // When/Then
             assertThatThrownBy(() -> householdService.changeMemberRole(householdId, memberId, HouseholdRole.ADMIN, token))
-                    .isInstanceOf(ForbiddenException.class)
+                    .isInstanceOf(AccessDeniedException.class)
                     .hasMessageContaining("You don't have permission to change member roles");
 
             verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);

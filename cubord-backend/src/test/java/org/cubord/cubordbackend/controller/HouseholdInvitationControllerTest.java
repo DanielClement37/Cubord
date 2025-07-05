@@ -10,7 +10,6 @@ import org.cubord.cubordbackend.dto.HouseholdInvitationResponse;
 import org.cubord.cubordbackend.dto.HouseholdInvitationUpdateRequest;
 import org.cubord.cubordbackend.dto.ResendInvitationRequest;
 import org.cubord.cubordbackend.exception.ConflictException;
-import org.cubord.cubordbackend.exception.ForbiddenException;
 import org.cubord.cubordbackend.exception.NotFoundException;
 import org.cubord.cubordbackend.service.HouseholdInvitationService;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,6 +20,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.test.context.ActiveProfiles;
@@ -278,7 +278,7 @@ class HouseholdInvitationControllerTest {
                     .build();
 
             when(householdInvitationService.sendInvitation(eq(householdId), any(HouseholdInvitationRequest.class), any(JwtAuthenticationToken.class)))
-                    .thenThrow(new ForbiddenException("You don't have permission to send invitations"));
+                    .thenThrow(new AccessDeniedException("You don't have permission to send invitations"));
 
             mockMvc.perform(post("/api/households/{householdId}/invitations", householdId)
                             .with(jwt().jwt(jwt))
@@ -454,7 +454,7 @@ class HouseholdInvitationControllerTest {
         @DisplayName("should return 403 when user lacks permission")
         void shouldReturn403WhenUserLacksPermission() throws Exception {
             when(householdInvitationService.getHouseholdInvitations(eq(householdId), any(JwtAuthenticationToken.class)))
-                    .thenThrow(new ForbiddenException("You don't have permission to view invitations"));
+                    .thenThrow(new AccessDeniedException("You don't have permission to view invitations"));
 
             mockMvc.perform(get("/api/households/{householdId}/invitations", householdId)
                             .with(jwt().jwt(jwt)))
@@ -503,7 +503,7 @@ class HouseholdInvitationControllerTest {
         @DisplayName("should return 403 when user lacks permission")
         void shouldReturn403WhenUserLacksPermission() throws Exception {
             when(householdInvitationService.getInvitationById(eq(householdId), eq(invitationId), any(JwtAuthenticationToken.class)))
-                    .thenThrow(new ForbiddenException("You don't have permission to view this invitation"));
+                    .thenThrow(new AccessDeniedException("You don't have permission to view this invitation"));
 
             mockMvc.perform(get("/api/households/{householdId}/invitations/{invitationId}", householdId, invitationId)
                             .with(jwt().jwt(jwt)))
@@ -619,7 +619,7 @@ class HouseholdInvitationControllerTest {
         @DisplayName("should return 403 when not invited user")
         void shouldReturn403WhenNotInvitedUser() throws Exception {
             when(householdInvitationService.acceptInvitation(eq(invitationId), any(JwtAuthenticationToken.class)))
-                    .thenThrow(new ForbiddenException("You are not the invited user"));
+                    .thenThrow(new AccessDeniedException("You are not the invited user"));
 
             mockMvc.perform(post("/api/invitations/{invitationId}/accept", invitationId)
                             .with(jwt().jwt(jwt)))
@@ -712,7 +712,7 @@ class HouseholdInvitationControllerTest {
         @DisplayName("should return 403 when not invited user")
         void shouldReturn403WhenNotInvitedUser() throws Exception {
             when(householdInvitationService.declineInvitation(eq(invitationId), any(JwtAuthenticationToken.class)))
-                    .thenThrow(new ForbiddenException("You are not the invited user"));
+                    .thenThrow(new AccessDeniedException("You are not the invited user"));
 
             mockMvc.perform(post("/api/invitations/{invitationId}/decline", invitationId)
                             .with(jwt().jwt(jwt)))
@@ -774,7 +774,7 @@ class HouseholdInvitationControllerTest {
         @Test
         @DisplayName("should return 403 when user lacks permission")
         void shouldReturn403WhenUserLacksPermission() throws Exception {
-            doThrow(new ForbiddenException("You don't have permission to cancel this invitation"))
+            doThrow(new AccessDeniedException("You don't have permission to cancel this invitation"))
                     .when(householdInvitationService).cancelInvitation(eq(householdId), eq(invitationId), any(JwtAuthenticationToken.class));
 
             mockMvc.perform(delete("/api/households/{householdId}/invitations/{invitationId}", householdId, invitationId)
