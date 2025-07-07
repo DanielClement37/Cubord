@@ -30,38 +30,34 @@ public class LocationController {
 
     /**
      * Creates a new location in a household.
-     * 
-     * @param householdId The UUID of the household
+     *
      * @param request DTO containing location information
      * @param token JWT authentication token of the current user
      * @return ResponseEntity containing the created location's details
      */
     @PostMapping
     public ResponseEntity<LocationResponse> createLocation(
-            @PathVariable UUID householdId,
             @Valid @RequestBody LocationRequest request,
             JwtAuthenticationToken token) {
         
-        // TODO: Implement this method
-        throw new UnsupportedOperationException("Not implemented yet");
+        LocationResponse response = locationService.createLocation(request, token);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     /**
      * Retrieves a specific location by ID.
-     * 
-     * @param householdId The UUID of the household
+     *
      * @param locationId The UUID of the location
      * @param token JWT authentication token of the current user
      * @return ResponseEntity containing the location's details
      */
     @GetMapping("/{locationId}")
     public ResponseEntity<LocationResponse> getLocationById(
-            @PathVariable UUID householdId,
             @PathVariable UUID locationId,
             JwtAuthenticationToken token) {
         
-        // TODO: Implement this method
-        throw new UnsupportedOperationException("Not implemented yet");
+        LocationResponse response = locationService.getLocationById(locationId, token);
+        return ResponseEntity.ok(response);
     }
 
     /**
@@ -76,14 +72,13 @@ public class LocationController {
             @PathVariable UUID householdId,
             JwtAuthenticationToken token) {
         
-        // TODO: Implement this method
-        throw new UnsupportedOperationException("Not implemented yet");
+        List<LocationResponse> locations = locationService.getLocationsByHousehold(householdId, token);
+        return ResponseEntity.ok(locations);
     }
 
     /**
      * Updates a location completely.
-     * 
-     * @param householdId The UUID of the household
+     *
      * @param locationId The UUID of the location
      * @param request DTO containing updated location information
      * @param token JWT authentication token of the current user
@@ -91,19 +86,17 @@ public class LocationController {
      */
     @PutMapping("/{locationId}")
     public ResponseEntity<LocationResponse> updateLocation(
-            @PathVariable UUID householdId,
             @PathVariable UUID locationId,
             @Valid @RequestBody LocationUpdateRequest request,
             JwtAuthenticationToken token) {
         
-        // TODO: Implement this method
-        throw new UnsupportedOperationException("Not implemented yet");
+        LocationResponse response = locationService.updateLocation(locationId, request, token);
+        return ResponseEntity.ok(response);
     }
 
     /**
      * Partially updates a location.
-     * 
-     * @param householdId The UUID of the household
+     *
      * @param locationId The UUID of the location
      * @param updates Map containing fields to update
      * @param token JWT authentication token of the current user
@@ -111,31 +104,28 @@ public class LocationController {
      */
     @PatchMapping("/{locationId}")
     public ResponseEntity<LocationResponse> patchLocation(
-            @PathVariable UUID householdId,
             @PathVariable UUID locationId,
             @RequestBody Map<String, Object> updates,
             JwtAuthenticationToken token) {
         
-        // TODO: Implement this method
-        throw new UnsupportedOperationException("Not implemented yet");
+        LocationResponse response = locationService.patchLocation(locationId, updates, token);
+        return ResponseEntity.ok(response);
     }
 
     /**
      * Deletes a location from a household.
-     * 
-     * @param householdId The UUID of the household
+     *
      * @param locationId The UUID of the location to delete
      * @param token JWT authentication token of the current user
      * @return ResponseEntity with no content
      */
     @DeleteMapping("/{locationId}")
     public ResponseEntity<Void> deleteLocation(
-            @PathVariable UUID householdId,
             @PathVariable UUID locationId,
             JwtAuthenticationToken token) {
         
-        // TODO: Implement this method
-        throw new UnsupportedOperationException("Not implemented yet");
+        locationService.deleteLocation(locationId, token);
+        return ResponseEntity.noContent().build();
     }
 
     /**
@@ -152,8 +142,8 @@ public class LocationController {
             @RequestParam String query,
             JwtAuthenticationToken token) {
         
-        // TODO: Implement this method
-        throw new UnsupportedOperationException("Not implemented yet");
+        List<LocationResponse> locations = locationService.searchLocations(householdId, query, token);
+        return ResponseEntity.ok(locations);
     }
 
     /**
@@ -170,7 +160,7 @@ public class LocationController {
             @RequestParam String name,
             JwtAuthenticationToken token) {
         
-        // TODO: Implement this method
-        throw new UnsupportedOperationException("Not implemented yet");
+        Boolean isAvailable = locationService.isLocationNameAvailable(householdId, name, token);
+        return ResponseEntity.ok(isAvailable);
     }
 }

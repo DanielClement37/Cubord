@@ -1,19 +1,25 @@
-
 package org.cubord.cubordbackend.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.cubord.cubordbackend.config.TestSecurityConfig;
 import org.cubord.cubordbackend.dto.LocationRequest;
 import org.cubord.cubordbackend.dto.LocationResponse;
 import org.cubord.cubordbackend.dto.LocationUpdateRequest;
 import org.cubord.cubordbackend.service.LocationService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -25,6 +31,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(LocationController.class)
+@Import(TestSecurityConfig.class)
+@ActiveProfiles("test")
 class LocationControllerTest {
 
     @Autowired
@@ -38,6 +46,20 @@ class LocationControllerTest {
 
     private final UUID householdId = UUID.randomUUID();
     private final UUID locationId = UUID.randomUUID();
+    private Jwt jwt;
+
+    @BeforeEach
+    void setUp() {
+        // Create a valid JWT token for testing
+        jwt = Jwt.withTokenValue("test-token")
+                .header("alg", "RS256")
+                .subject(UUID.randomUUID().toString())
+                .claim("email", "test@example.com")
+                .claim("name", "Test User")
+                .issuedAt(Instant.now())
+                .expiresAt(Instant.now().plusSeconds(3600)) // Valid for 1 hour
+                .build();
+    }
 
     @Test
     void createLocation_ShouldReturnCreatedLocation() throws Exception {
@@ -45,6 +67,7 @@ class LocationControllerTest {
         LocationRequest request = new LocationRequest();
         request.setName("Kitchen");
         request.setDescription("Main kitchen area");
+        request.setHouseholdId(householdId);
 
         LocationResponse expectedResponse = new LocationResponse();
         expectedResponse.setId(locationId);
@@ -57,6 +80,7 @@ class LocationControllerTest {
 
         // Act & Assert
         mockMvc.perform(post("/api/households/{householdId}/locations", householdId)
+                        .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
@@ -79,7 +103,8 @@ class LocationControllerTest {
                 .thenReturn(expectedResponse);
 
         // Act & Assert
-        mockMvc.perform(get("/api/households/{householdId}/locations/{locationId}", householdId, locationId))
+        mockMvc.perform(get("/api/households/{householdId}/locations/{locationId}", householdId, locationId)
+                        .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(locationId.toString()))
                 .andExpect(jsonPath("$.name").value("Kitchen"))
@@ -106,7 +131,8 @@ class LocationControllerTest {
                 .thenReturn(expectedResponse);
 
         // Act & Assert
-        mockMvc.perform(get("/api/households/{householdId}/locations", householdId))
+        mockMvc.perform(get("/api/households/{householdId}/locations", householdId)
+                        .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray())
                 .andExpect(jsonPath("$.length()").value(2))
@@ -132,6 +158,7 @@ class LocationControllerTest {
 
         // Act & Assert
         mockMvc.perform(put("/api/households/{householdId}/locations/{locationId}", householdId, locationId)
+                        .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
@@ -160,6 +187,7 @@ class LocationControllerTest {
 
         // Act & Assert
         mockMvc.perform(patch("/api/households/{householdId}/locations/{locationId}", householdId, locationId)
+                        .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(patchRequest)))
                 .andExpect(status().isOk())
@@ -175,7 +203,8 @@ class LocationControllerTest {
         doNothing().when(locationService).deleteLocation(eq(locationId), any(JwtAuthenticationToken.class));
 
         // Act & Assert
-        mockMvc.perform(delete("/api/households/{householdId}/locations/{locationId}", householdId, locationId))
+        mockMvc.perform(delete("/api/households/{householdId}/locations/{locationId}", householdId, locationId)
+                        .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt)))
                 .andExpect(status().isNoContent());
     }
 
@@ -199,6 +228,7 @@ class LocationControllerTest {
 
         // Act & Assert
         mockMvc.perform(get("/api/households/{householdId}/locations/search", householdId)
+                        .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
                         .param("query", "kitchen"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isArray())
@@ -215,6 +245,7 @@ class LocationControllerTest {
 
         // Act & Assert
         mockMvc.perform(get("/api/households/{householdId}/locations/check-availability", householdId)
+                        .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
                         .param("name", "New Location"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").value(true));
@@ -228,6 +259,7 @@ class LocationControllerTest {
 
         // Act & Assert
         mockMvc.perform(get("/api/households/{householdId}/locations/check-availability", householdId)
+                        .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
                         .param("name", "Kitchen"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").value(false));
@@ -241,6 +273,7 @@ class LocationControllerTest {
 
         // Act & Assert
         mockMvc.perform(post("/api/households/{householdId}/locations", householdId)
+                        .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(invalidRequest)))
                 .andExpect(status().isBadRequest());
@@ -254,6 +287,7 @@ class LocationControllerTest {
 
         // Act & Assert
         mockMvc.perform(put("/api/households/{householdId}/locations/{locationId}", householdId, locationId)
+                        .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(invalidRequest)))
                 .andExpect(status().isBadRequest());

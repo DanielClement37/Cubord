@@ -1,5 +1,6 @@
 package org.cubord.cubordbackend.dto;
 
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -12,6 +13,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class LocationUpdateRequest {
     
+    @NotBlank(message = "Location name is required")
     @Size(max = 255, message = "Location name must not exceed 255 characters")
     private String name;
     
