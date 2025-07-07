@@ -1,8 +1,6 @@
 package org.cubord.cubordbackend.repository;
 
 import org.cubord.cubordbackend.domain.Location;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -27,11 +25,6 @@ public interface LocationRepository extends JpaRepository<Location, UUID> {
     List<Location> findByHouseholdId(UUID householdId, Sort sort);
     
     /**
-     * Find all locations belonging to a specific household with pagination
-     */
-    Page<Location> findByHouseholdId(UUID householdId, Pageable pageable);
-    
-    /**
      * Find a location by household ID and name
      */
     Optional<Location> findByHouseholdIdAndName(UUID householdId, String name);
@@ -42,53 +35,21 @@ public interface LocationRepository extends JpaRepository<Location, UUID> {
     boolean existsByHouseholdIdAndName(UUID householdId, String name);
     
     /**
-     * Find all locations by household ID ordered by name ascending
-     */
-    List<Location> findByHouseholdIdOrderByNameAsc(UUID householdId);
-    
-    /**
-     * Find all locations by household ID ordered by name descending
-     */
-    List<Location> findByHouseholdIdOrderByNameDesc(UUID householdId);
-    
-    /**
      * Count locations in a specific household
      */
     long countByHouseholdId(UUID householdId);
     
     /**
-     * Find locations by household ID and name containing (case-insensitive)
+     * Simple search across both name and description fields
      */
-    List<Location> findByHouseholdIdAndNameContainingIgnoreCase(UUID householdId, String nameFragment);
-    
-    /**
-     * Find locations by household ID and description containing (case-insensitive)
-     */
-    List<Location> findByHouseholdIdAndDescriptionContainingIgnoreCase(UUID householdId, String descriptionFragment);
+    @Query("SELECT l FROM Location l WHERE l.household.id = :householdId " +
+           "AND (LOWER(l.name) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+           "OR LOWER(COALESCE(l.description, '')) LIKE LOWER(CONCAT('%', :searchTerm, '%')))")
+    List<Location> searchByNameOrDescription(@Param("householdId") UUID householdId, 
+                                           @Param("searchTerm") String searchTerm);
     
     /**
      * Delete all locations belonging to a specific household
      */
     void deleteByHouseholdId(UUID householdId);
-    
-    /**
-     * Custom query to find locations with optional name filtering
-     */
-    @Query("SELECT l FROM Location l WHERE l.household.id = :householdId " +
-           "AND (:name IS NULL OR LOWER(l.name) LIKE LOWER(CONCAT('%', :name, '%')))")
-    List<Location> findLocationsByHouseholdIdWithOptionalNameFilter(
-            @Param("householdId") UUID householdId, 
-            @Param("name") String name);
-    
-    /**
-     * Custom query to find locations with optional name and description filtering
-     */
-    @Query("SELECT l FROM Location l WHERE l.household.id = :householdId " +
-           "AND (:name IS NULL OR LOWER(l.name) LIKE LOWER(CONCAT('%', :name, '%'))) " +
-           "AND (:description IS NULL OR LOWER(l.description) LIKE LOWER(CONCAT('%', :description, '%')))")
-    Page<Location> findLocationsByHouseholdIdWithFilters(
-            @Param("householdId") UUID householdId, 
-            @Param("name") String name,
-            @Param("description") String description,
-            Pageable pageable);
 }
