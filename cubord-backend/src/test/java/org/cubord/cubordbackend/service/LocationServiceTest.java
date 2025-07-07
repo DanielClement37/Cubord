@@ -118,7 +118,6 @@ class LocationServiceTest {
         @DisplayName("Should create location successfully")
         void should_CreateLocation_When_ValidDataProvided() {
             // Given
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(locationRepository.existsByHouseholdIdAndName(householdId, locationRequest.getName()))
                     .thenReturn(false);
             when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
@@ -137,7 +136,6 @@ class LocationServiceTest {
         @DisplayName("Should throw ConflictException when location name already exists")
         void should_ThrowConflictException_When_LocationNameExists() {
             // Given
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(locationRepository.existsByHouseholdIdAndName(householdId, locationRequest.getName()))
                     .thenReturn(true);
 
@@ -198,7 +196,6 @@ class LocationServiceTest {
         @DisplayName("Should update location successfully")
         void should_UpdateLocation_When_ValidDataProvided() {
             // Given
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(locationRepository.findById(locationId)).thenReturn(Optional.of(testLocation));
             when(locationRepository.existsByHouseholdIdAndName(householdId, locationUpdateRequest.getName()))
                     .thenReturn(false);
@@ -222,7 +219,6 @@ class LocationServiceTest {
         void should_PatchLocation_When_ValidDataProvided() {
             // Given
             Map<String, Object> patchData = Map.of("name", "Updated Kitchen");
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(locationRepository.findById(locationId)).thenReturn(Optional.of(testLocation));
             when(locationRepository.existsByHouseholdIdAndName(householdId, "Updated Kitchen"))
                     .thenReturn(false);
@@ -245,7 +241,6 @@ class LocationServiceTest {
         @DisplayName("Should delete location successfully")
         void should_DeleteLocation_When_UserHasAccess() {
             // Given
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(locationRepository.findById(locationId)).thenReturn(Optional.of(testLocation));
 
             // When
