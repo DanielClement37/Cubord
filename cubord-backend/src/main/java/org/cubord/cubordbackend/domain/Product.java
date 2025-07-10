@@ -24,6 +24,15 @@ public class Product {
     private String brand;
     private String category;
     private Integer defaultExpirationDays;
+    
+    // Retry mechanism fields
+    private Boolean requiresApiRetry;
+    private Integer retryAttempts;
+    private LocalDateTime lastRetryAttempt;
+    
+    @Enumerated(EnumType.STRING)
+    private ProductDataSource dataSource;
+    
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
