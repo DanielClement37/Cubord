@@ -30,6 +30,11 @@ public class User {
     @Column(name = "display_name")
     private String displayName;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "role")
+    @Builder.Default
+    private UserRole role = UserRole.USER;
+
     @OneToMany(mappedBy = "user")
     private Set<HouseholdMember> householdMembers;
 
