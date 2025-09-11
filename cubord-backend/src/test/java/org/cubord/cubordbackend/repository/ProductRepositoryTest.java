@@ -38,7 +38,7 @@ class ProductRepositoryTest {
                 .brand("Test Brand")
                 .category("Test Category")
                 .defaultExpirationDays(30)
-                .dataSource(ProductDataSource.UPC_API)
+                .dataSource(ProductDataSource.OPEN_FOOD_FACTS)
                 .requiresApiRetry(false)
                 .retryAttempts(0)
                 .build();
@@ -94,7 +94,7 @@ class ProductRepositoryTest {
                 .id(UUID.randomUUID())
                 .upc("123456789014")
                 .name("API Product")
-                .dataSource(ProductDataSource.UPC_API)
+                .dataSource(ProductDataSource.OPEN_FOOD_FACTS)
                 .requiresApiRetry(false)
                 .retryAttempts(0)
                 .build();
@@ -170,7 +170,7 @@ class ProductRepositoryTest {
                 .id(UUID.randomUUID())
                 .upc("123456789013")
                 .name("API Product")
-                .dataSource(ProductDataSource.UPC_API)
+                .dataSource(ProductDataSource.OPEN_FOOD_FACTS)
                 .build();
         
         Product hybridProduct = Product.builder()
@@ -186,7 +186,7 @@ class ProductRepositoryTest {
 
         // When
         List<Product> manualProducts = productRepository.findByDataSource(ProductDataSource.MANUAL);
-        List<Product> apiProducts = productRepository.findByDataSource(ProductDataSource.UPC_API);
+        List<Product> apiProducts = productRepository.findByDataSource(ProductDataSource.OPEN_FOOD_FACTS);
 
         // Then
         assertThat(manualProducts).hasSize(1);
@@ -379,7 +379,7 @@ class ProductRepositoryTest {
                 .brand("Test Brand")
                 .category("Test Category")
                 .defaultExpirationDays(60)
-                .dataSource(ProductDataSource.UPC_API)
+                .dataSource(ProductDataSource.OPEN_FOOD_FACTS)
                 .requiresApiRetry(false)
                 .retryAttempts(0)
                 .build();
@@ -404,7 +404,7 @@ class ProductRepositoryTest {
         assertThat(retrieved.getBrand()).isEqualTo("Test Brand");
         assertThat(retrieved.getCategory()).isEqualTo("Test Category");
         assertThat(retrieved.getDefaultExpirationDays()).isEqualTo(60);
-        assertThat(retrieved.getDataSource()).isEqualTo(ProductDataSource.UPC_API);
+        assertThat(retrieved.getDataSource()).isEqualTo(ProductDataSource.OPEN_FOOD_FACTS);
         assertThat(retrieved.getRequiresApiRetry()).isFalse();
         assertThat(retrieved.getRetryAttempts()).isEqualTo(0);
         assertThat(retrieved.getCreatedAt()).isNotNull();
@@ -480,7 +480,7 @@ class ProductRepositoryTest {
                 .id(UUID.randomUUID())
                 .upc("123456789013")
                 .name("API Product")
-                .dataSource(ProductDataSource.UPC_API)
+                .dataSource(ProductDataSource.OPEN_FOOD_FACTS)
                 .requiresApiRetry(false)
                 .category("Food")
                 .build();
@@ -489,7 +489,7 @@ class ProductRepositoryTest {
                 .id(UUID.randomUUID())
                 .upc("123456789014")
                 .name("Beverage Product")
-                .dataSource(ProductDataSource.UPC_API)
+                .dataSource(ProductDataSource.OPEN_FOOD_FACTS)
                 .requiresApiRetry(false)
                 .category("Beverages")
                 .build();
@@ -501,7 +501,7 @@ class ProductRepositoryTest {
         // When & Then
         assertThat(productRepository.count()).isEqualTo(3);
         assertThat(productRepository.countByRequiresApiRetryTrue()).isEqualTo(1);
-        assertThat(productRepository.countByDataSource(ProductDataSource.UPC_API)).isEqualTo(2);
+        assertThat(productRepository.countByDataSource(ProductDataSource.OPEN_FOOD_FACTS)).isEqualTo(2);
         assertThat(productRepository.countByCategory("Food")).isEqualTo(2);
     }
 }

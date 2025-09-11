@@ -28,7 +28,7 @@ class ProductDomainTest {
         Boolean requiresApiRetry = false;
         Integer retryAttempts = 0;
         LocalDateTime lastRetryAttempt = LocalDateTime.now();
-        ProductDataSource dataSource = ProductDataSource.UPC_API;
+        ProductDataSource dataSource = ProductDataSource.OPEN_FOOD_FACTS;
         LocalDateTime createdAt = LocalDateTime.now();
         LocalDateTime updatedAt = LocalDateTime.now();
 
@@ -355,7 +355,7 @@ class ProductDomainTest {
         Product apiProduct = Product.builder()
                 .id(id1)
                 .name("API Product")
-                .dataSource(ProductDataSource.UPC_API)
+                .dataSource(ProductDataSource.OPEN_FOOD_FACTS)
                 .requiresApiRetry(false)
                 .build();
                 
@@ -376,7 +376,7 @@ class ProductDomainTest {
                 .build();
 
         // Then
-        assertThat(apiProduct.getDataSource()).isEqualTo(ProductDataSource.UPC_API);
+        assertThat(apiProduct.getDataSource()).isEqualTo(ProductDataSource.OPEN_FOOD_FACTS);
         assertThat(apiProduct.getRequiresApiRetry()).isFalse();
         
         assertThat(manualProduct.getDataSource()).isEqualTo(ProductDataSource.MANUAL);
@@ -425,13 +425,13 @@ class ProductDomainTest {
     void testProductDataSourceEnumValues() {
         // Given & When & Then
         assertThat(ProductDataSource.values()).containsExactly(
-            ProductDataSource.UPC_API,
+            ProductDataSource.OPEN_FOOD_FACTS,
             ProductDataSource.MANUAL,
             ProductDataSource.HYBRID
         );
         
         // Test enum string values
-        assertThat(ProductDataSource.UPC_API.name()).isEqualTo("UPC_API");
+        assertThat(ProductDataSource.OPEN_FOOD_FACTS.name()).isEqualTo("OPEN_FOOD_FACTS");
         assertThat(ProductDataSource.MANUAL.name()).isEqualTo("MANUAL");
         assertThat(ProductDataSource.HYBRID.name()).isEqualTo("HYBRID");
     }

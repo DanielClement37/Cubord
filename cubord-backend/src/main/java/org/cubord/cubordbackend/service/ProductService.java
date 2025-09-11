@@ -82,7 +82,7 @@ public class ProductService {
         try {
             ProductResponse apiData = upcApiService.fetchProductData(request.getUpc());
             enrichProductWithApiData(product, apiData);
-            product.setDataSource(ProductDataSource.UPC_API);
+            product.setDataSource(ProductDataSource.OPEN_FOOD_FACTS);
             product.setRequiresApiRetry(false);
         } catch (Exception e) {
             log.warn("Failed to fetch API data for UPC: {}, creating manual entry", request.getUpc());
@@ -414,7 +414,7 @@ public class ProductService {
         
         return Map.of(
                 "total", productRepository.count(),
-                "apiSource", productRepository.countByDataSource(ProductDataSource.UPC_API),
+                "apiSource", productRepository.countByDataSource(ProductDataSource.OPEN_FOOD_FACTS),
                 "manualSource", productRepository.countByDataSource(ProductDataSource.MANUAL),
                 "hybridSource", productRepository.countByDataSource(ProductDataSource.HYBRID),
                 "pendingRetry", productRepository.countByRequiresApiRetryTrue()
