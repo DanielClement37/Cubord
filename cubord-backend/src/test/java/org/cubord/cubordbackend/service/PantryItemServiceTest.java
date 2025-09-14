@@ -523,7 +523,7 @@ class PantryItemServiceTest {
             // Then
             assertThat(response).isNotNull();
             assertThat(response.getContent()).hasSize(1);
-            assertThat(response.getContent().get(0).getId()).isEqualTo(testPantryItem.getId());
+            assertThat(response.getContent().getFirst().getId()).isEqualTo(testPantryItem.getId());
         }
 
         @Test
@@ -567,7 +567,7 @@ class PantryItemServiceTest {
             // Then
             assertThat(response).isNotNull();
             assertThat(response).hasSize(1);
-            assertThat(response.get(0).getId()).isEqualTo(testPantryItem.getId());
+            assertThat(response.getFirst().getId()).isEqualTo(testPantryItem.getId());
         }
 
         @Test
@@ -610,7 +610,7 @@ class PantryItemServiceTest {
             // Then
             assertThat(response).isNotNull();
             assertThat(response).hasSize(1);
-            assertThat(response.get(0).getId()).isEqualTo(testPantryItem.getId());
+            assertThat(response.getFirst().getId()).isEqualTo(testPantryItem.getId());
         }
 
         @Test
@@ -655,7 +655,7 @@ class PantryItemServiceTest {
             // Then
             assertThat(response).isNotNull();
             assertThat(response).hasSize(1);
-            assertThat(response.get(0).getId()).isEqualTo(testPantryItem.getId());
+            assertThat(response.getFirst().getId()).isEqualTo(testPantryItem.getId());
         }
     }
 
@@ -684,7 +684,7 @@ class PantryItemServiceTest {
             // Then
             assertThat(response).isNotNull();
             assertThat(response).hasSize(1);
-            assertThat(response.get(0).getId()).isEqualTo(testPantryItem.getId());
+            assertThat(response.getFirst().getId()).isEqualTo(testPantryItem.getId());
         }
 
         @Test
@@ -734,7 +734,7 @@ class PantryItemServiceTest {
             // Then
             assertThat(response).isNotNull();
             assertThat(response).hasSize(1);
-            assertThat(response.get(0).getId()).isEqualTo(testPantryItem.getId());
+            assertThat(response.getFirst().getId()).isEqualTo(testPantryItem.getId());
 
             verify(pantryItemRepository).save(any(PantryItem.class));
         }
