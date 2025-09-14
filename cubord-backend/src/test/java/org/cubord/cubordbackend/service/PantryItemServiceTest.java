@@ -4,7 +4,6 @@ import org.cubord.cubordbackend.domain.*;
 import org.cubord.cubordbackend.dto.CreatePantryItemRequest;
 import org.cubord.cubordbackend.dto.PantryItemResponse;
 import org.cubord.cubordbackend.dto.UpdatePantryItemRequest;
-import org.cubord.cubordbackend.exception.ConflictException;
 import org.cubord.cubordbackend.exception.NotFoundException;
 import org.cubord.cubordbackend.repository.HouseholdMemberRepository;
 import org.cubord.cubordbackend.repository.LocationRepository;
@@ -158,7 +157,7 @@ class PantryItemServiceTest {
             when(locationRepository.findById(testLocation.getId())).thenReturn(Optional.of(testLocation));
             when(productRepository.findById(testProduct.getId())).thenReturn(Optional.of(testProduct));
             when(householdMemberRepository.existsByHouseholdIdAndUserId
-(testUser.getId(), testHousehold.getId()))
+                    (testHousehold.getId(), testUser.getId()))
                     .thenReturn(true);
             when(pantryItemRepository.findByLocationIdAndProductId(testLocation.getId(), testProduct.getId()))
                     .thenReturn(Optional.empty());
@@ -174,7 +173,7 @@ class PantryItemServiceTest {
             assertThat(response.getUnitOfMeasure()).isEqualTo(testPantryItem.getUnitOfMeasure());
 
             verify(pantryItemRepository).save(any(PantryItem.class));
-            verify(pantryItemRepository, never()).findByLocationIdAndProductId(any(), any());
+            verify(pantryItemRepository).findByLocationIdAndProductId(testLocation.getId(), testProduct.getId());
         }
 
         @Test
@@ -210,7 +209,7 @@ class PantryItemServiceTest {
             when(locationRepository.findById(testLocation.getId())).thenReturn(Optional.of(testLocation));
             when(productRepository.findById(testProduct.getId())).thenReturn(Optional.of(testProduct));
             when(householdMemberRepository.existsByHouseholdIdAndUserId
-(testUser.getId(), testHousehold.getId()))
+                    (testHousehold.getId(), testUser.getId()))
                     .thenReturn(true);
             when(pantryItemRepository.findByLocationIdAndProductId(testLocation.getId(), testProduct.getId()))
                     .thenReturn(Optional.of(existingItem));
@@ -243,7 +242,7 @@ class PantryItemServiceTest {
             when(locationRepository.findById(testLocation.getId())).thenReturn(Optional.of(testLocation));
             when(productRepository.findById(testProduct.getId())).thenReturn(Optional.of(testProduct));
             when(householdMemberRepository.existsByHouseholdIdAndUserId
-(otherUser.getId(), testHousehold.getId()))
+                    (testHousehold.getId(), otherUser.getId()))
                     .thenReturn(false);
 
             // When & Then
@@ -326,7 +325,7 @@ class PantryItemServiceTest {
             when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(pantryItemRepository.findById(testPantryItem.getId())).thenReturn(Optional.of(testPantryItem));
             when(householdMemberRepository.existsByHouseholdIdAndUserId
-(testUser.getId(), testHousehold.getId()))
+                    (testHousehold.getId(), testUser.getId()))
                     .thenReturn(true);
 
             // When
@@ -358,8 +357,7 @@ class PantryItemServiceTest {
             // Given
             when(userService.getCurrentUser(token)).thenReturn(otherUser);
             when(pantryItemRepository.findById(testPantryItem.getId())).thenReturn(Optional.of(testPantryItem));
-            when(householdMemberRepository.existsByHouseholdIdAndUserId
-(otherUser.getId(), testHousehold.getId()))
+            when(householdMemberRepository.existsByHouseholdIdAndUserId(testHousehold.getId(), otherUser.getId()))
                     .thenReturn(false);
 
             // When & Then
@@ -397,7 +395,7 @@ class PantryItemServiceTest {
             when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(pantryItemRepository.findById(testPantryItem.getId())).thenReturn(Optional.of(testPantryItem));
             when(householdMemberRepository.existsByHouseholdIdAndUserId
-(testUser.getId(), testHousehold.getId()))
+                    (testHousehold.getId(), testUser.getId()))
                     .thenReturn(true);
             when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(updatedItem);
 
@@ -432,7 +430,7 @@ class PantryItemServiceTest {
             when(pantryItemRepository.findById(testPantryItem.getId())).thenReturn(Optional.of(testPantryItem));
             when(locationRepository.findById(newLocation.getId())).thenReturn(Optional.of(newLocation));
             when(householdMemberRepository.existsByHouseholdIdAndUserId
-(testUser.getId(), testHousehold.getId()))
+                    (testHousehold.getId(), testUser.getId()))
                     .thenReturn(true);
             when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(testPantryItem);
 
@@ -456,7 +454,7 @@ class PantryItemServiceTest {
             when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(pantryItemRepository.findById(testPantryItem.getId())).thenReturn(Optional.of(testPantryItem));
             when(householdMemberRepository.existsByHouseholdIdAndUserId
-(testUser.getId(), testHousehold.getId()))
+                    (testHousehold.getId(), testUser.getId()))
                     .thenReturn(true);
 
             // When
@@ -488,8 +486,7 @@ class PantryItemServiceTest {
             // Given
             when(userService.getCurrentUser(token)).thenReturn(otherUser);
             when(pantryItemRepository.findById(testPantryItem.getId())).thenReturn(Optional.of(testPantryItem));
-            when(householdMemberRepository.existsByHouseholdIdAndUserId
-(otherUser.getId(), testHousehold.getId()))
+            when(householdMemberRepository.existsByHouseholdIdAndUserId(testHousehold.getId(), otherUser.getId()))
                     .thenReturn(false);
 
             // When & Then
@@ -514,7 +511,7 @@ class PantryItemServiceTest {
 
             when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(householdMemberRepository.existsByHouseholdIdAndUserId
-(testUser.getId(), testHousehold.getId()))
+                    (testHousehold.getId(), testUser.getId()))
                     .thenReturn(true);
             when(pantryItemRepository.findByLocation_HouseholdId(testHousehold.getId(), pageable))
                     .thenReturn(pantryItemPage);
@@ -535,8 +532,7 @@ class PantryItemServiceTest {
             // Given
             Pageable pageable = PageRequest.of(0, 10);
             when(userService.getCurrentUser(token)).thenReturn(otherUser);
-            when(householdMemberRepository.existsByHouseholdIdAndUserId
-(otherUser.getId(), testHousehold.getId()))
+            when(householdMemberRepository.existsByHouseholdIdAndUserId(testHousehold.getId(), otherUser.getId()))
                     .thenReturn(false);
 
             // When & Then
@@ -559,7 +555,7 @@ class PantryItemServiceTest {
             when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(locationRepository.findById(testLocation.getId())).thenReturn(Optional.of(testLocation));
             when(householdMemberRepository.existsByHouseholdIdAndUserId
-(testUser.getId(), testHousehold.getId()))
+                    (testHousehold.getId(), testUser.getId()))
                     .thenReturn(true);
             when(pantryItemRepository.findByLocationId(testLocation.getId()))
                     .thenReturn(pantryItems);
@@ -602,7 +598,7 @@ class PantryItemServiceTest {
 
             when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(householdMemberRepository.existsByHouseholdIdAndUserId
-(testUser.getId(), testHousehold.getId()))
+                    (testHousehold.getId(), testUser.getId()))
                     .thenReturn(true);
             when(pantryItemRepository.findLowStockItemsInHousehold(testHousehold.getId(), threshold))
                     .thenReturn(lowStockItems);
@@ -623,8 +619,7 @@ class PantryItemServiceTest {
             // Given
             Integer threshold = 5;
             when(userService.getCurrentUser(token)).thenReturn(otherUser);
-            when(householdMemberRepository.existsByHouseholdIdAndUserId
-(otherUser.getId(), testHousehold.getId()))
+            when(householdMemberRepository.existsByHouseholdIdAndUserId(testHousehold.getId(), otherUser.getId()))
                     .thenReturn(false);
 
             // When & Then
@@ -648,7 +643,7 @@ class PantryItemServiceTest {
 
             when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(householdMemberRepository.existsByHouseholdIdAndUserId
-(testUser.getId(), testHousehold.getId()))
+                    (testHousehold.getId(), testUser.getId()))
                     .thenReturn(true);
             when(pantryItemRepository.findExpiringItemsInHouseholdBetweenDates(testHousehold.getId(), startDate, endDate))
                     .thenReturn(expiringItems);
@@ -677,7 +672,7 @@ class PantryItemServiceTest {
 
             when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(householdMemberRepository.existsByHouseholdIdAndUserId
-(testUser.getId(), testHousehold.getId()))
+                    (testHousehold.getId(), testUser.getId()))
                     .thenReturn(true);
             when(pantryItemRepository.searchItemsInHousehold(testHousehold.getId(), searchTerm))
                     .thenReturn(searchResults);
@@ -695,9 +690,6 @@ class PantryItemServiceTest {
         @Test
         @DisplayName("Should throw IllegalArgumentException for empty search term")
         void shouldThrowIllegalArgumentExceptionForEmptySearchTerm() {
-            // Given
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-
             // When & Then
             assertThrows(IllegalArgumentException.class, () ->
                     pantryItemService.searchPantryItems(testHousehold.getId(), "", token)
@@ -730,7 +722,7 @@ class PantryItemServiceTest {
             when(locationRepository.findById(testLocation.getId())).thenReturn(Optional.of(testLocation));
             when(productRepository.findById(testProduct.getId())).thenReturn(Optional.of(testProduct));
             when(householdMemberRepository.existsByHouseholdIdAndUserId
-(testUser.getId(), testHousehold.getId()))
+                    (testHousehold.getId(), testUser.getId()))
                     .thenReturn(true);
             when(pantryItemRepository.findByLocationIdAndProductId(testLocation.getId(), testProduct.getId()))
                     .thenReturn(Optional.empty());
@@ -756,7 +748,7 @@ class PantryItemServiceTest {
             when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(pantryItemRepository.findById(testPantryItem.getId())).thenReturn(Optional.of(testPantryItem));
             when(householdMemberRepository.existsByHouseholdIdAndUserId
-(testUser.getId(), testHousehold.getId()))
+                    (testHousehold.getId(), testUser.getId()))
                     .thenReturn(true);
 
             // When
