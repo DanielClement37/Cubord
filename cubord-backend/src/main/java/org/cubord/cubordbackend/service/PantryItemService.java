@@ -43,91 +43,97 @@ public class PantryItemService {
     private final UserService userService;
 
     /**
-     * Creates a new pantry item or consolidates with existing item if duplicate found.
-     * Implements duplicate consolidation logic for same product in same location.
-     *
-     * @param request DTO containing pantry item information
-     * @param token   JWT authentication token of the current user
-     * @return PantryItemResponse containing the created or updated pantry item's details
-     * @throws IllegalArgumentException if request or token is null
-     * @throws NotFoundException        if location or product not found
-     * @throws AccessDeniedException    if user is not a member of the household
-     * @throws ValidationException      if request data is invalid
-     */
-    @Transactional
-    public PantryItemResponse createPantryItem(CreatePantryItemRequest request, JwtAuthenticationToken token) {
-        // Validation
-        if (request == null) {
-            throw new IllegalArgumentException("Create request cannot be null");
-        }
-        if (token == null) {
-            throw new IllegalArgumentException("Authentication token cannot be null");
-        }
-
-        validateCreateRequest(request);
-
-        User currentUser = userService.getCurrentUser(token);
-        log.debug("User {} creating pantry item for product {} in location {}",
-                currentUser.getId(), request.getProductId(), request.getLocationId());
-
-        // Fetch and validate location
-        Location location = locationRepository.findById(request.getLocationId())
-                .orElseThrow(() -> new NotFoundException("Location not found"));
-
-        // Fetch and validate product
-        Product product = productRepository.findById(request.getProductId())
-                .orElseThrow(() -> new NotFoundException("Product not found"));
-
-        // Check if user is member of household
-        if (!householdMemberRepository.existsByHouseholdIdAndUserId(location.getHousehold().getId(), currentUser.getId())) {
-            throw new AccessDeniedException("You are not a member of this household");
-        }
-
-        // Check for existing item (duplicate consolidation)
-        Optional<PantryItem> existingItem = pantryItemRepository.findByLocationIdAndProductId(
-                request.getLocationId(), request.getProductId());
-
-        if (existingItem.isPresent()) {
-            // Consolidate quantities
-            PantryItem item = existingItem.get();
-            int currentQuantity = item.getQuantity() != null ? item.getQuantity() : 0;
-            int newQuantity = request.getQuantity() != null ? request.getQuantity() : 0;
-            item.setQuantity(currentQuantity + newQuantity);
-
-            // Update other fields if provided
-            if (request.getExpirationDate() != null) {
-                item.setExpirationDate(request.getExpirationDate());
-            }
-            if (request.getUnitOfMeasure() != null) {
-                item.setUnitOfMeasure(request.getUnitOfMeasure());
-            }
-            if (request.getNotes() != null) {
-                item.setNotes(request.getNotes());
-            }
-
-            item.setUpdatedAt(LocalDateTime.now());
-
-            PantryItem savedItem = pantryItemRepository.save(item);
-            log.debug("Consolidated pantry item {} with new quantity {}", savedItem.getId(), savedItem.getQuantity());
-            return mapToResponse(savedItem);
-        } else {
-            // Create new item
-            PantryItem newItem = new PantryItem();
-            newItem.setId(UUID.randomUUID());
-            newItem.setProduct(product);
-            newItem.setLocation(location);
-            newItem.setQuantity(request.getQuantity());
-            newItem.setUnitOfMeasure(request.getUnitOfMeasure());
-            newItem.setExpirationDate(request.getExpirationDate());
-            newItem.setNotes(request.getNotes());
-            newItem.setCreatedAt(LocalDateTime.now());
-            newItem.setUpdatedAt(LocalDateTime.now());
-
-            PantryItem savedItem = pantryItemRepository.save(newItem);
-            log.debug("Created new pantry item {}", savedItem.getId());
-            return mapToResponse(savedItem);
-        }
+/**
+ * Creates a new pantry item or consolidates with existing item if duplicate found.
+ * Only consolidates items with matching expiration dates (including null matches).
+ * Items with different expiration dates are kept separate.
+ *
+ * @param request DTO containing pantry item information
+ * @param token   JWT authentication token of the current user
+ * @return PantryItemResponse containing the created or updated pantry item's details
+ * @throws IllegalArgumentException if request or token is null
+ * @throws NotFoundException        if location or product not found
+ * @throws AccessDeniedException    if user is not a member of the household
+ * @throws ValidationException      if request data is invalid
+ */
+@Transactional
+public PantryItemResponse createPantryItem(CreatePantryItemRequest request, JwtAuthenticationToken token) {
+    // Validation
+    if (request == null) {
+        throw new IllegalArgumentException("Create request cannot be null");
     }
+    if (token == null) {
+        throw new IllegalArgumentException("Authentication token cannot be null");
+    }
+
+    validateCreateRequest(request);
+
+    User currentUser = userService.getCurrentUser(token);
+    log.debug("User {} creating pantry item for product {} in location {} with expiration date {}",
+            currentUser.getId(), request.getProductId(), request.getLocationId(), request.getExpirationDate());
+
+    // Fetch and validate location
+    Location location = locationRepository.findById(request.getLocationId())
+            .orElseThrow(() -> new NotFoundException("Location not found"));
+
+    // Fetch and validate product
+    Product product = productRepository.findById(request.getProductId())
+            .orElseThrow(() -> new NotFoundException("Product not found"));
+
+    // Check if user is member of household
+    if (!householdMemberRepository.existsByHouseholdIdAndUserId(location.getHousehold().getId(), currentUser.getId())) {
+        throw new AccessDeniedException("You are not a member of this household");
+    }
+
+    // Check for existing item with matching expiration date (expiration-date-aware duplicate detection)
+    Optional<PantryItem> existingItem;
+    if (request.getExpirationDate() != null) {
+        existingItem = pantryItemRepository.findByLocationIdAndProductIdAndExpirationDate(
+                request.getLocationId(), request.getProductId(), request.getExpirationDate());
+    } else {
+        existingItem = pantryItemRepository.findByLocationIdAndProductIdAndExpirationDateIsNull(
+                request.getLocationId(), request.getProductId());
+    }
+
+    if (existingItem.isPresent()) {
+        // Consolidate quantities for items with matching expiration dates
+        PantryItem item = existingItem.get();
+        int currentQuantity = item.getQuantity() != null ? item.getQuantity() : 0;
+        int newQuantity = request.getQuantity() != null ? request.getQuantity() : 0;
+        item.setQuantity(currentQuantity + newQuantity);
+
+        // Update other fields if provided
+        if (request.getUnitOfMeasure() != null) {
+            item.setUnitOfMeasure(request.getUnitOfMeasure());
+        }
+        if (request.getNotes() != null) {
+            item.setNotes(request.getNotes());
+        }
+
+        item.setUpdatedAt(LocalDateTime.now());
+
+        PantryItem savedItem = pantryItemRepository.save(item);
+        log.debug("Consolidated pantry item {} with matching expiration date, new quantity {}", 
+                savedItem.getId(), savedItem.getQuantity());
+        return mapToResponse(savedItem);
+    } else {
+        // Create new item (no existing item with matching expiration date)
+        PantryItem newItem = new PantryItem();
+        newItem.setId(UUID.randomUUID());
+        newItem.setProduct(product);
+        newItem.setLocation(location);
+        newItem.setQuantity(request.getQuantity());
+        newItem.setUnitOfMeasure(request.getUnitOfMeasure());
+        newItem.setExpirationDate(request.getExpirationDate());
+        newItem.setNotes(request.getNotes());
+        newItem.setCreatedAt(LocalDateTime.now());
+        newItem.setUpdatedAt(LocalDateTime.now());
+
+        PantryItem savedItem = pantryItemRepository.save(newItem);
+        log.debug("Created new pantry item {} with expiration date {}", savedItem.getId(), savedItem.getExpirationDate());
+        return mapToResponse(savedItem);
+    }
+}
 
     /**
      * Retrieves a pantry item by its ID if the user has access to it.
@@ -697,6 +703,117 @@ public class PantryItemService {
         statistics.put("generatedAt", LocalDateTime.now());
 
         return statistics;
+    }
+
+    /**
+     * Gets all variants of a product in a specific location, ordered by expiration date.
+     *
+     * @param locationId UUID of the location
+     * @param productId  UUID of the product
+     * @param token      JWT authentication token of the current user
+     * @return List of PantryItemResponse objects for all variants of the product
+     * @throws NotFoundException     if location or product not found
+     * @throws AccessDeniedException if user is not a member of the household
+     */
+    @Transactional(readOnly = true)
+    public List<PantryItemResponse> getProductVariantsByLocation(UUID locationId, UUID productId, JwtAuthenticationToken token) {
+        if (locationId == null || productId == null || token == null) {
+            throw new IllegalArgumentException("Location ID, product ID, and token cannot be null");
+        }
+
+        User currentUser = userService.getCurrentUser(token);
+        log.debug("User {} retrieving product variants for product {} in location {}",
+                currentUser.getId(), productId, locationId);
+
+        Location location = locationRepository.findById(locationId)
+                .orElseThrow(() -> new NotFoundException("Location not found"));
+
+        // Check if user is member of household
+        if (!householdMemberRepository.existsByHouseholdIdAndUserId(location.getHousehold().getId(), currentUser.getId())) {
+            throw new AccessDeniedException("You are not a member of this household");
+        }
+
+        // Verify product exists
+        productRepository.findById(productId)
+                .orElseThrow(() -> new NotFoundException("Product not found"));
+
+        List<PantryItem> variants = pantryItemRepository.findByLocationIdAndProductIdOrderByExpirationDateNullsLast(locationId, productId);
+        return variants.stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Checks if a specific product variant exists in a location.
+     *
+     * @param locationId     UUID of the location
+     * @param productId      UUID of the product
+     * @param expirationDate Expiration date to check (null for items without expiration)
+     * @param token          JWT authentication token of the current user
+     * @return true if the variant exists, false otherwise
+     * @throws NotFoundException     if location not found
+     * @throws AccessDeniedException if user is not a member of the household
+     */
+    @Transactional(readOnly = true)
+    public boolean productVariantExists(UUID locationId, UUID productId, LocalDate expirationDate, JwtAuthenticationToken token) {
+        if (locationId == null || productId == null || token == null) {
+            throw new IllegalArgumentException("Location ID, product ID, and token cannot be null");
+        }
+
+        User currentUser = userService.getCurrentUser(token);
+        Location location = locationRepository.findById(locationId)
+                .orElseThrow(() -> new NotFoundException("Location not found"));
+
+        // Check if user is member of household
+        if (!householdMemberRepository.existsByHouseholdIdAndUserId(location.getHousehold().getId(), currentUser.getId())) {
+            throw new AccessDeniedException("You are not a member of this household");
+        }
+
+        if (expirationDate != null) {
+            return pantryItemRepository.existsByLocationIdAndProductIdAndExpirationDate(locationId, productId, expirationDate);
+        } else {
+            return pantryItemRepository.existsByLocationIdAndProductIdAndExpirationDateIsNull(locationId, productId);
+        }
+    }
+
+    /**
+     * Deletes a specific product variant from a location.
+     *
+     * @param locationId     UUID of the location
+     * @param productId      UUID of the product
+     * @param expirationDate Expiration date of the variant to delete (null for items without expiration)
+     * @param token          JWT authentication token of the current user
+     * @return number of items deleted
+     * @throws NotFoundException     if location not found
+     * @throws AccessDeniedException if user is not a member of the household
+     */
+    @Transactional
+    public int deleteProductVariant(UUID locationId, UUID productId, LocalDate expirationDate, JwtAuthenticationToken token) {
+        if (locationId == null || productId == null || token == null) {
+            throw new IllegalArgumentException("Location ID, product ID, and token cannot be null");
+        }
+
+        User currentUser = userService.getCurrentUser(token);
+        log.debug("User {} deleting product variant for product {} in location {} with expiration date {}",
+                currentUser.getId(), productId, locationId, expirationDate);
+
+        Location location = locationRepository.findById(locationId)
+                .orElseThrow(() -> new NotFoundException("Location not found"));
+
+        // Check if user is member of household
+        if (!householdMemberRepository.existsByHouseholdIdAndUserId(location.getHousehold().getId(), currentUser.getId())) {
+            throw new AccessDeniedException("You are not a member of this household");
+        }
+
+        int deletedCount;
+        if (expirationDate != null) {
+            deletedCount = pantryItemRepository.deleteByLocationIdAndProductIdAndExpirationDate(locationId, productId, expirationDate);
+        } else {
+            deletedCount = pantryItemRepository.deleteByLocationIdAndProductIdAndExpirationDateIsNull(locationId, productId);
+        }
+
+        log.debug("Deleted {} product variants", deletedCount);
+        return deletedCount;
     }
 
     // Private helper methods

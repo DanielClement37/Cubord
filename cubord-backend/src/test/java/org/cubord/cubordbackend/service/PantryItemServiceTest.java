@@ -1,3 +1,4 @@
+
 package org.cubord.cubordbackend.service;
 
 import org.cubord.cubordbackend.domain.*;
@@ -159,7 +160,8 @@ class PantryItemServiceTest {
             when(householdMemberRepository.existsByHouseholdIdAndUserId
                     (testHousehold.getId(), testUser.getId()))
                     .thenReturn(true);
-            when(pantryItemRepository.findByLocationIdAndProductId(testLocation.getId(), testProduct.getId()))
+            when(pantryItemRepository.findByLocationIdAndProductIdAndExpirationDate(
+                    testLocation.getId(), testProduct.getId(), request.getExpirationDate()))
                     .thenReturn(Optional.empty());
             when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(testPantryItem);
 
@@ -173,19 +175,21 @@ class PantryItemServiceTest {
             assertThat(response.getUnitOfMeasure()).isEqualTo(testPantryItem.getUnitOfMeasure());
 
             verify(pantryItemRepository).save(any(PantryItem.class));
-            verify(pantryItemRepository).findByLocationIdAndProductId(testLocation.getId(), testProduct.getId());
+            verify(pantryItemRepository).findByLocationIdAndProductIdAndExpirationDate(
+                    testLocation.getId(), testProduct.getId(), request.getExpirationDate());
         }
 
         @Test
-        @DisplayName("Should consolidate quantity when item already exists")
-        void shouldConsolidateQuantityWhenItemAlreadyExists() {
+        @DisplayName("Should consolidate quantity when item with same expiration date exists")
+        void shouldConsolidateQuantityWhenItemWithSameExpirationDateExists() {
             // Given
+            LocalDate expirationDate = LocalDate.now().plusDays(7);
             CreatePantryItemRequest request = CreatePantryItemRequest.builder()
                     .productId(testProduct.getId())
                     .locationId(testLocation.getId())
                     .quantity(3)
                     .unitOfMeasure("liters")
-                    .expirationDate(LocalDate.now().plusDays(7))
+                    .expirationDate(expirationDate)
                     .notes("Additional milk")
                     .build();
 
@@ -195,6 +199,7 @@ class PantryItemServiceTest {
                     .location(testLocation)
                     .quantity(2)
                     .unitOfMeasure("liters")
+                    .expirationDate(expirationDate)
                     .build();
 
             PantryItem updatedItem = PantryItem.builder()
@@ -203,6 +208,7 @@ class PantryItemServiceTest {
                     .location(testLocation)
                     .quantity(5) // 2 + 3
                     .unitOfMeasure("liters")
+                    .expirationDate(expirationDate)
                     .build();
 
             when(userService.getCurrentUser(token)).thenReturn(testUser);
@@ -211,7 +217,8 @@ class PantryItemServiceTest {
             when(householdMemberRepository.existsByHouseholdIdAndUserId
                     (testHousehold.getId(), testUser.getId()))
                     .thenReturn(true);
-            when(pantryItemRepository.findByLocationIdAndProductId(testLocation.getId(), testProduct.getId()))
+            when(pantryItemRepository.findByLocationIdAndProductIdAndExpirationDate(
+                    testLocation.getId(), testProduct.getId(), expirationDate))
                     .thenReturn(Optional.of(existingItem));
             when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(updatedItem);
 
@@ -222,9 +229,163 @@ class PantryItemServiceTest {
             assertThat(response).isNotNull();
             assertThat(response.getQuantity()).isEqualTo(5); // Consolidated quantity
 
-            verify(pantryItemRepository).findByLocationIdAndProductId(testLocation.getId(), testProduct.getId());
+            verify(pantryItemRepository).findByLocationIdAndProductIdAndExpirationDate(
+                    testLocation.getId(), testProduct.getId(), expirationDate);
             verify(pantryItemRepository).save(existingItem);
             verify(pantryItemRepository, never()).save(argThat(item -> !item.getId().equals(existingItem.getId())));
+        }
+
+        @Test
+        @DisplayName("Should create separate item when item with different expiration date exists")
+        void shouldCreateSeparateItemWhenItemWithDifferentExpirationDateExists() {
+            // Given
+            LocalDate existingExpirationDate = LocalDate.now().plusDays(5);
+            LocalDate newExpirationDate = LocalDate.now().plusDays(10);
+
+            CreatePantryItemRequest request = CreatePantryItemRequest.builder()
+                    .productId(testProduct.getId())
+                    .locationId(testLocation.getId())
+                    .quantity(3)
+                    .unitOfMeasure("liters")
+                    .expirationDate(newExpirationDate)
+                    .notes("Fresh milk")
+                    .build();
+
+            // Create an existing item with different expiration date
+            PantryItem existingItem = PantryItem.builder()
+                    .id(UUID.randomUUID())
+                    .product(testProduct)
+                    .location(testLocation)
+                    .quantity(2)
+                    .expirationDate(existingExpirationDate)
+                    .build();
+
+            when(userService.getCurrentUser(token)).thenReturn(testUser);
+            when(locationRepository.findById(testLocation.getId())).thenReturn(Optional.of(testLocation));
+            when(productRepository.findById(testProduct.getId())).thenReturn(Optional.of(testProduct));
+            when(householdMemberRepository.existsByHouseholdIdAndUserId(
+                    testHousehold.getId(), testUser.getId()))
+                    .thenReturn(true);
+
+            when(pantryItemRepository.findByLocationIdAndProductIdAndExpirationDate(
+                    testLocation.getId(), testProduct.getId(), existingExpirationDate))
+                    .thenReturn(Optional.of(existingItem));
+
+            when(pantryItemRepository.findByLocationIdAndProductIdAndExpirationDate(
+                    testLocation.getId(), testProduct.getId(), newExpirationDate))
+                    .thenReturn(Optional.empty());
+
+            when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(testPantryItem);
+
+            // When
+            PantryItemResponse response = pantryItemService.createPantryItem(request, token);
+
+            // Then
+            assertThat(response).isNotNull();
+            assertThat(response.getId()).isEqualTo(testPantryItem.getId());
+
+            // Verify it checked for the NEW expiration date (not existing)
+            verify(pantryItemRepository).findByLocationIdAndProductIdAndExpirationDate(
+                    testLocation.getId(), testProduct.getId(), newExpirationDate);
+
+            // Verify a NEW item was saved (not consolidated)
+            verify(pantryItemRepository).save(any(PantryItem.class));
+
+            // Verify it did NOT try to consolidate with the existing item
+            verify(pantryItemRepository, never()).save(existingItem);
+        }
+
+        @Test
+        @DisplayName("Should consolidate items with null expiration dates")
+        void shouldConsolidateItemsWithNullExpirationDates() {
+            // Given
+            CreatePantryItemRequest request = CreatePantryItemRequest.builder()
+                    .productId(testProduct.getId())
+                    .locationId(testLocation.getId())
+                    .quantity(3)
+                    .unitOfMeasure("liters")
+                    .expirationDate(null)
+                    .notes("Non-perishable item")
+                    .build();
+
+            PantryItem existingItem = PantryItem.builder()
+                    .id(UUID.randomUUID())
+                    .product(testProduct)
+                    .location(testLocation)
+                    .quantity(2)
+                    .unitOfMeasure("liters")
+                    .expirationDate(null)
+                    .build();
+
+            PantryItem updatedItem = PantryItem.builder()
+                    .id(existingItem.getId())
+                    .product(testProduct)
+                    .location(testLocation)
+                    .quantity(5) // 2 + 3
+                    .unitOfMeasure("liters")
+                    .expirationDate(null)
+                    .build();
+
+            when(userService.getCurrentUser(token)).thenReturn(testUser);
+            when(locationRepository.findById(testLocation.getId())).thenReturn(Optional.of(testLocation));
+            when(productRepository.findById(testProduct.getId())).thenReturn(Optional.of(testProduct));
+            when(householdMemberRepository.existsByHouseholdIdAndUserId
+                    (testHousehold.getId(), testUser.getId()))
+                    .thenReturn(true);
+            when(pantryItemRepository.findByLocationIdAndProductIdAndExpirationDateIsNull(
+                    testLocation.getId(), testProduct.getId()))
+                    .thenReturn(Optional.of(existingItem));
+            when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(updatedItem);
+
+            // When
+            PantryItemResponse response = pantryItemService.createPantryItem(request, token);
+
+            // Then
+            assertThat(response).isNotNull();
+            assertThat(response.getQuantity()).isEqualTo(5); // Consolidated quantity
+
+            verify(pantryItemRepository).findByLocationIdAndProductIdAndExpirationDateIsNull(
+                    testLocation.getId(), testProduct.getId());
+            verify(pantryItemRepository).save(existingItem);
+        }
+
+        @Test
+        @DisplayName("Should not consolidate null expiration item with dated expiration item")
+        void shouldNotConsolidateNullExpirationItemWithDatedExpirationItem() {
+            // Given
+            CreatePantryItemRequest request = CreatePantryItemRequest.builder()
+                    .productId(testProduct.getId())
+                    .locationId(testLocation.getId())
+                    .quantity(3)
+                    .unitOfMeasure("liters")
+                    .expirationDate(null)
+                    .notes("Non-perishable item")
+                    .build();
+
+            when(userService.getCurrentUser(token)).thenReturn(testUser);
+            when(locationRepository.findById(testLocation.getId())).thenReturn(Optional.of(testLocation));
+            when(productRepository.findById(testProduct.getId())).thenReturn(Optional.of(testProduct));
+            when(householdMemberRepository.existsByHouseholdIdAndUserId
+                    (testHousehold.getId(), testUser.getId()))
+                    .thenReturn(true);
+            when(pantryItemRepository.findByLocationIdAndProductIdAndExpirationDateIsNull(
+                    testLocation.getId(), testProduct.getId()))
+                    .thenReturn(Optional.empty());
+            when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(testPantryItem);
+
+            // When
+            PantryItemResponse response = pantryItemService.createPantryItem(request, token);
+
+            // Then
+            assertThat(response).isNotNull();
+            assertThat(response.getId()).isEqualTo(testPantryItem.getId());
+
+            verify(pantryItemRepository).findByLocationIdAndProductIdAndExpirationDateIsNull(
+                    testLocation.getId(), testProduct.getId());
+            verify(pantryItemRepository).save(any(PantryItem.class));
+            // Should not look for items with specific expiration dates when request has null expiration
+            verify(pantryItemRepository, never()).findByLocationIdAndProductIdAndExpirationDate(
+                    any(UUID.class), any(UUID.class), any(LocalDate.class));
         }
 
         @Test
@@ -706,17 +867,46 @@ class PantryItemServiceTest {
     class BulkOperationsTests {
 
         @Test
-        @DisplayName("Should create multiple pantry items")
-        void shouldCreateMultiplePantryItems() {
+        @DisplayName("Should create multiple pantry items with expiration-date-aware logic")
+        void shouldCreateMultiplePantryItemsWithExpirationDateAwareLogic() {
             // Given
+            LocalDate expirationDate1 = LocalDate.now().plusDays(7);
+            LocalDate expirationDate2 = LocalDate.now().plusDays(14);
+
             List<CreatePantryItemRequest> requests = List.of(
                     CreatePantryItemRequest.builder()
                             .productId(testProduct.getId())
                             .locationId(testLocation.getId())
                             .quantity(2)
                             .unitOfMeasure("liters")
+                            .expirationDate(expirationDate1)
+                            .build(),
+                    CreatePantryItemRequest.builder()
+                            .productId(testProduct.getId())
+                            .locationId(testLocation.getId())
+                            .quantity(3)
+                            .unitOfMeasure("liters")
+                            .expirationDate(expirationDate2)
                             .build()
             );
+
+            PantryItem savedItem1 = PantryItem.builder()
+                    .id(UUID.randomUUID())
+                    .product(testProduct)
+                    .location(testLocation)
+                    .quantity(2)
+                    .unitOfMeasure("liters")
+                    .expirationDate(expirationDate1)
+                    .build();
+
+            PantryItem savedItem2 = PantryItem.builder()
+                    .id(UUID.randomUUID())
+                    .product(testProduct)
+                    .location(testLocation)
+                    .quantity(3)
+                    .unitOfMeasure("liters")
+                    .expirationDate(expirationDate2)
+                    .build();
 
             when(userService.getCurrentUser(token)).thenReturn(testUser);
             when(locationRepository.findById(testLocation.getId())).thenReturn(Optional.of(testLocation));
@@ -724,19 +914,30 @@ class PantryItemServiceTest {
             when(householdMemberRepository.existsByHouseholdIdAndUserId
                     (testHousehold.getId(), testUser.getId()))
                     .thenReturn(true);
-            when(pantryItemRepository.findByLocationIdAndProductId(testLocation.getId(), testProduct.getId()))
+            when(pantryItemRepository.findByLocationIdAndProductIdAndExpirationDate(
+                    testLocation.getId(), testProduct.getId(), expirationDate1))
                     .thenReturn(Optional.empty());
-            when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(testPantryItem);
+            when(pantryItemRepository.findByLocationIdAndProductIdAndExpirationDate(
+                    testLocation.getId(), testProduct.getId(), expirationDate2))
+                    .thenReturn(Optional.empty());
+            when(pantryItemRepository.save(any(PantryItem.class)))
+                    .thenReturn(savedItem1)
+                    .thenReturn(savedItem2);
 
             // When
             List<PantryItemResponse> response = pantryItemService.createMultiplePantryItems(requests, token);
 
             // Then
             assertThat(response).isNotNull();
-            assertThat(response).hasSize(1);
-            assertThat(response.getFirst().getId()).isEqualTo(testPantryItem.getId());
+            assertThat(response).hasSize(2);
+            assertThat(response.get(0).getId()).isEqualTo(savedItem1.getId());
+            assertThat(response.get(1).getId()).isEqualTo(savedItem2.getId());
 
-            verify(pantryItemRepository).save(any(PantryItem.class));
+            verify(pantryItemRepository, times(2)).save(any(PantryItem.class));
+            verify(pantryItemRepository).findByLocationIdAndProductIdAndExpirationDate(
+                    testLocation.getId(), testProduct.getId(), expirationDate1);
+            verify(pantryItemRepository).findByLocationIdAndProductIdAndExpirationDate(
+                    testLocation.getId(), testProduct.getId(), expirationDate2);
         }
 
         @Test
@@ -757,6 +958,178 @@ class PantryItemServiceTest {
             // Then
             assertThat(deletedCount).isEqualTo(1);
             verify(pantryItemRepository).delete(testPantryItem);
+        }
+    }
+
+    @Nested
+    @DisplayName("Product Variant Tests")
+    class ProductVariantTests {
+
+        @Test
+        @DisplayName("Should get product variants by location ordered by expiration date")
+        void shouldGetProductVariantsByLocationOrderedByExpirationDate() {
+            // Given
+            LocalDate expirationDate1 = LocalDate.now().plusDays(5);
+            LocalDate expirationDate2 = LocalDate.now().plusDays(10);
+
+            PantryItem variant1 = PantryItem.builder()
+                    .id(UUID.randomUUID())
+                    .product(testProduct)
+                    .location(testLocation)
+                    .quantity(2)
+                    .expirationDate(expirationDate1)
+                    .build();
+
+            PantryItem variant2 = PantryItem.builder()
+                    .id(UUID.randomUUID())
+                    .product(testProduct)
+                    .location(testLocation)
+                    .quantity(3)
+                    .expirationDate(expirationDate2)
+                    .build();
+
+            List<PantryItem> variants = List.of(variant1, variant2);
+
+            when(userService.getCurrentUser(token)).thenReturn(testUser);
+            when(locationRepository.findById(testLocation.getId())).thenReturn(Optional.of(testLocation));
+            when(productRepository.findById(testProduct.getId())).thenReturn(Optional.of(testProduct));
+            when(householdMemberRepository.existsByHouseholdIdAndUserId(testHousehold.getId(), testUser.getId()))
+                    .thenReturn(true);
+            when(pantryItemRepository.findByLocationIdAndProductIdOrderByExpirationDateNullsLast(
+                    testLocation.getId(), testProduct.getId()))
+                    .thenReturn(variants);
+
+            // When
+            List<PantryItemResponse> response = pantryItemService.getProductVariantsByLocation(
+                    testLocation.getId(), testProduct.getId(), token);
+
+            // Then
+            assertThat(response).isNotNull();
+            assertThat(response).hasSize(2);
+            assertThat(response.get(0).getId()).isEqualTo(variant1.getId());
+            assertThat(response.get(1).getId()).isEqualTo(variant2.getId());
+
+            verify(pantryItemRepository).findByLocationIdAndProductIdOrderByExpirationDateNullsLast(
+                    testLocation.getId(), testProduct.getId());
+        }
+
+        @Test
+        @DisplayName("Should check if product variant exists with expiration date")
+        void shouldCheckIfProductVariantExistsWithExpirationDate() {
+            // Given
+            LocalDate expirationDate = LocalDate.now().plusDays(7);
+
+            when(userService.getCurrentUser(token)).thenReturn(testUser);
+            when(locationRepository.findById(testLocation.getId())).thenReturn(Optional.of(testLocation));
+            when(householdMemberRepository.existsByHouseholdIdAndUserId(testHousehold.getId(), testUser.getId()))
+                    .thenReturn(true);
+            when(pantryItemRepository.existsByLocationIdAndProductIdAndExpirationDate(
+                    testLocation.getId(), testProduct.getId(), expirationDate))
+                    .thenReturn(true);
+
+            // When
+            boolean exists = pantryItemService.productVariantExists(
+                    testLocation.getId(), testProduct.getId(), expirationDate, token);
+
+            // Then
+            assertThat(exists).isTrue();
+
+            verify(pantryItemRepository).existsByLocationIdAndProductIdAndExpirationDate(
+                    testLocation.getId(), testProduct.getId(), expirationDate);
+        }
+
+        @Test
+        @DisplayName("Should check if product variant exists without expiration date")
+        void shouldCheckIfProductVariantExistsWithoutExpirationDate() {
+            // Given
+            when(userService.getCurrentUser(token)).thenReturn(testUser);
+            when(locationRepository.findById(testLocation.getId())).thenReturn(Optional.of(testLocation));
+            when(householdMemberRepository.existsByHouseholdIdAndUserId(testHousehold.getId(), testUser.getId()))
+                    .thenReturn(true);
+            when(pantryItemRepository.existsByLocationIdAndProductIdAndExpirationDateIsNull(
+                    testLocation.getId(), testProduct.getId()))
+                    .thenReturn(false);
+
+            // When
+            boolean exists = pantryItemService.productVariantExists(
+                    testLocation.getId(), testProduct.getId(), null, token);
+
+            // Then
+            assertThat(exists).isFalse();
+
+            verify(pantryItemRepository).existsByLocationIdAndProductIdAndExpirationDateIsNull(
+                    testLocation.getId(), testProduct.getId());
+        }
+
+        @Test
+        @DisplayName("Should delete product variant with expiration date")
+        void shouldDeleteProductVariantWithExpirationDate() {
+            // Given
+            LocalDate expirationDate = LocalDate.now().plusDays(7);
+
+            when(userService.getCurrentUser(token)).thenReturn(testUser);
+            when(locationRepository.findById(testLocation.getId())).thenReturn(Optional.of(testLocation));
+            when(householdMemberRepository.existsByHouseholdIdAndUserId(testHousehold.getId(), testUser.getId()))
+                    .thenReturn(true);
+            when(pantryItemRepository.deleteByLocationIdAndProductIdAndExpirationDate(
+                    testLocation.getId(), testProduct.getId(), expirationDate))
+                    .thenReturn(1);
+
+            // When
+            int deletedCount = pantryItemService.deleteProductVariant(
+                    testLocation.getId(), testProduct.getId(), expirationDate, token);
+
+            // Then
+            assertThat(deletedCount).isEqualTo(1);
+
+            verify(pantryItemRepository).deleteByLocationIdAndProductIdAndExpirationDate(
+                    testLocation.getId(), testProduct.getId(), expirationDate);
+        }
+
+        @Test
+        @DisplayName("Should delete product variant without expiration date")
+        void shouldDeleteProductVariantWithoutExpirationDate() {
+            // Given
+            when(userService.getCurrentUser(token)).thenReturn(testUser);
+            when(locationRepository.findById(testLocation.getId())).thenReturn(Optional.of(testLocation));
+            when(householdMemberRepository.existsByHouseholdIdAndUserId(testHousehold.getId(), testUser.getId()))
+                    .thenReturn(true);
+            when(pantryItemRepository.deleteByLocationIdAndProductIdAndExpirationDateIsNull(
+                    testLocation.getId(), testProduct.getId()))
+                    .thenReturn(2);
+
+            // When
+            int deletedCount = pantryItemService.deleteProductVariant(
+                    testLocation.getId(), testProduct.getId(), null, token);
+
+            // Then
+            assertThat(deletedCount).isEqualTo(2);
+
+            verify(pantryItemRepository).deleteByLocationIdAndProductIdAndExpirationDateIsNull(
+                    testLocation.getId(), testProduct.getId());
+        }
+
+        @Test
+        @DisplayName("Should throw AccessDeniedException for unauthorized user in product variant operations")
+        void shouldThrowAccessDeniedExceptionForUnauthorizedUserInProductVariantOperations() {
+            // Given
+            when(userService.getCurrentUser(token)).thenReturn(otherUser);
+            when(locationRepository.findById(testLocation.getId())).thenReturn(Optional.of(testLocation));
+            when(householdMemberRepository.existsByHouseholdIdAndUserId(testHousehold.getId(), otherUser.getId()))
+                    .thenReturn(false);
+
+            // When & Then
+            assertThrows(AccessDeniedException.class, () ->
+                    pantryItemService.getProductVariantsByLocation(testLocation.getId(), testProduct.getId(), token)
+            );
+
+            assertThrows(AccessDeniedException.class, () ->
+                    pantryItemService.productVariantExists(testLocation.getId(), testProduct.getId(), LocalDate.now(), token)
+            );
+
+            assertThrows(AccessDeniedException.class, () ->
+                    pantryItemService.deleteProductVariant(testLocation.getId(), testProduct.getId(), LocalDate.now(), token)
+            );
         }
     }
 }

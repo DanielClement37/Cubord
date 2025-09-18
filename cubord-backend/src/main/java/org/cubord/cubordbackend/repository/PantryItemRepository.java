@@ -26,10 +26,21 @@ public interface PantryItemRepository extends JpaRepository<PantryItem, UUID> {
     // Basic product-based queries
     List<PantryItem> findByProductId(UUID productId);
     
-    // Duplicate item detection queries (key for your business requirement)
-    Optional<PantryItem> findByLocationIdAndProductId(UUID locationId, UUID productId);
-    boolean existsByLocationIdAndProductId(UUID locationId, UUID productId);
-    int deleteByLocationIdAndProductId(UUID locationId, UUID productId);
+    // Expiration-date-aware duplicate detection queries
+    Optional<PantryItem> findByLocationIdAndProductIdAndExpirationDate(UUID locationId, UUID productId, LocalDate expirationDate);
+    Optional<PantryItem> findByLocationIdAndProductIdAndExpirationDateIsNull(UUID locationId, UUID productId);
+    boolean existsByLocationIdAndProductIdAndExpirationDate(UUID locationId, UUID productId, LocalDate expirationDate);
+    boolean existsByLocationIdAndProductIdAndExpirationDateIsNull(UUID locationId, UUID productId);
+    int deleteByLocationIdAndProductIdAndExpirationDate(UUID locationId, UUID productId, LocalDate expirationDate);
+    int deleteByLocationIdAndProductIdAndExpirationDateIsNull(UUID locationId, UUID productId);
+    
+    // Product variant queries (all variants of same product in location)
+    List<PantryItem> findByLocationIdAndProductIdOrderByExpirationDateAsc(UUID locationId, UUID productId);
+    @Query("SELECT p FROM PantryItem p WHERE p.location.id = :locationId AND p.product.id = :productId " +
+           "ORDER BY p.expirationDate ASC NULLS LAST")
+    List<PantryItem> findByLocationIdAndProductIdOrderByExpirationDateNullsLast(
+            @Param("locationId") UUID locationId, 
+            @Param("productId") UUID productId);
     
     // Household-based queries (through location relationship)
     List<PantryItem> findByLocation_HouseholdId(UUID householdId);
@@ -40,8 +51,10 @@ public interface PantryItemRepository extends JpaRepository<PantryItem, UUID> {
     List<PantryItem> findByExpirationDateBefore(LocalDate date);
     List<PantryItem> findByExpirationDateBetween(LocalDate startDate, LocalDate endDate);
     List<PantryItem> findByExpirationDateBeforeAndLocation_HouseholdId(LocalDate date, UUID householdId);
+    List<PantryItem> findByExpirationDateIsNull();
+    List<PantryItem> findByExpirationDateIsNullAndLocation_HouseholdId(UUID householdId);
     
-    // Low stock notification queries (key for your business requirement)
+    // Low stock notification queries
     List<PantryItem> findByQuantityLessThanEqual(Integer quantity);
     List<PantryItem> findByQuantityLessThanEqualAndLocation_HouseholdId(Integer quantity, UUID householdId);
     
@@ -80,4 +93,24 @@ public interface PantryItemRepository extends JpaRepository<PantryItem, UUID> {
     List<PantryItem> searchItemsInHousehold(
             @Param("householdId") UUID householdId,
             @Param("searchTerm") String searchTerm);
+    
+    // Enhanced queries for better UI support
+    @Query("SELECT p FROM PantryItem p WHERE p.location.household.id = :householdId " +
+           "ORDER BY p.product.name ASC, p.expirationDate ASC NULLS LAST")
+    List<PantryItem> findByLocation_HouseholdIdOrderByProductAndExpiration(UUID householdId);
+    
+    @Query("SELECT p FROM PantryItem p WHERE p.location.id = :locationId " +
+           "ORDER BY p.product.name ASC, p.expirationDate ASC NULLS LAST")
+    List<PantryItem> findByLocationIdOrderByProductAndExpiration(UUID locationId);
+    
+    // Aggregate queries for statistics
+    @Query("SELECT COUNT(DISTINCT p.product.id) FROM PantryItem p WHERE p.location.household.id = :householdId")
+    long countDistinctProductsByHouseholdId(@Param("householdId") UUID householdId);
+    
+    @Query("SELECT COUNT(p) FROM PantryItem p WHERE p.location.household.id = :householdId " +
+           "AND p.expirationDate IS NOT NULL AND p.expirationDate <= :date")
+    long countExpiringItemsByHouseholdIdAndDate(@Param("householdId") UUID householdId, @Param("date") LocalDate date);
+    
+    @Query("SELECT SUM(p.quantity) FROM PantryItem p WHERE p.location.id = :locationId AND p.product.id = :productId")
+    Integer sumQuantityByLocationAndProduct(@Param("locationId") UUID locationId, @Param("productId") UUID productId);
 }
