@@ -816,6 +816,120 @@ public PantryItemResponse createPantryItem(CreatePantryItemRequest request, JwtA
         return deletedCount;
     }
 
+    /**
+     * Partially updates a pantry item's information using PATCH semantics.
+     * Only the fields provided in the patch map will be updated.
+     *
+     * @param pantryItemId UUID of the pantry item to patch
+     * @param patchFields  Map containing field names and values to update
+     * @param token        JWT authentication token of the current user
+     * @return PantryItemResponse containing the updated pantry item's details
+     * @throws IllegalArgumentException if pantry item ID, patch fields, or token is null
+     * @throws NotFoundException        if pantry item or location not found
+     * @throws AccessDeniedException    if user is not a member of the household
+     * @throws ValidationException      if patch data is invalid
+     */
+    @Transactional
+    public PantryItemResponse patchPantryItem(UUID pantryItemId, Map<String, Object> patchFields, JwtAuthenticationToken token) {
+        if (pantryItemId == null || patchFields == null || token == null) {
+            throw new IllegalArgumentException("Pantry item ID, patch fields, and token cannot be null");
+        }
+
+        if (patchFields.isEmpty()) {
+            throw new IllegalArgumentException("Patch fields cannot be empty");
+        }
+
+        User currentUser = userService.getCurrentUser(token);
+        log.debug("User {} patching pantry item {} with fields: {}",
+                currentUser.getId(), pantryItemId, patchFields.keySet());
+
+        PantryItem pantryItem = pantryItemRepository.findById(pantryItemId)
+                .orElseThrow(() -> new NotFoundException("Pantry item not found"));
+
+        // Check if user is member of household
+        UUID householdId = pantryItem.getLocation().getHousehold().getId();
+        if (!householdMemberRepository.existsByHouseholdIdAndUserId(householdId, currentUser.getId())) {
+            throw new AccessDeniedException("You are not a member of this household");
+        }
+
+        // Apply patches
+        for (Map.Entry<String, Object> entry : patchFields.entrySet()) {
+            String field = entry.getKey();
+            Object value = entry.getValue();
+
+            switch (field) {
+                case "locationId":
+                    if (value != null) {
+                        UUID locationId;
+                        try {
+                            locationId = UUID.fromString(value.toString());
+                        } catch (IllegalArgumentException e) {
+                            throw new ValidationException("Invalid location ID format");
+                        }
+
+                        Location newLocation = locationRepository.findById(locationId)
+                                .orElseThrow(() -> new NotFoundException("Location not found"));
+
+                        // Check if new location belongs to same household
+                        if (!newLocation.getHousehold().getId().equals(householdId)) {
+                            throw new AccessDeniedException("Cannot move item to location in different household");
+                        }
+
+                        pantryItem.setLocation(newLocation);
+                    }
+                    break;
+
+                case "quantity":
+                    if (value != null) {
+                        int quantity;
+                        try {
+                            quantity = Integer.parseInt(value.toString());
+                        } catch (NumberFormatException e) {
+                            throw new ValidationException("Invalid quantity format");
+                        }
+                        if (quantity <= 0) {
+                            throw new ValidationException("Quantity must be greater than 0");
+                        }
+                        pantryItem.setQuantity(quantity);
+                    }
+                    break;
+
+                case "unitOfMeasure":
+                    pantryItem.setUnitOfMeasure(value != null ? value.toString() : null);
+                    break;
+
+                case "expirationDate":
+                    if (value != null) {
+                        LocalDate expirationDate;
+                        try {
+                            expirationDate = LocalDate.parse(value.toString());
+                        } catch (Exception e) {
+                            throw new ValidationException("Invalid expiration date format. Expected YYYY-MM-DD");
+                        }
+                        pantryItem.setExpirationDate(expirationDate);
+                    } else {
+                        pantryItem.setExpirationDate(null);
+                    }
+                    break;
+
+                case "notes":
+                    pantryItem.setNotes(value != null ? value.toString() : null);
+                    break;
+
+                default:
+                    log.warn("Unknown field '{}' in patch request, ignoring", field);
+                    break;
+            }
+        }
+
+        pantryItem.setUpdatedAt(LocalDateTime.now());
+
+        PantryItem savedItem = pantryItemRepository.save(pantryItem);
+        log.debug("Successfully patched pantry item {}", pantryItemId);
+
+        return mapToResponse(savedItem);
+    }
+
     // Private helper methods
 
     /**
@@ -929,4 +1043,6 @@ public PantryItemResponse createPantryItem(CreatePantryItemRequest request, JwtA
             throw new ValidationException("Threshold must be greater than 0");
         }
     }
+
+
 }

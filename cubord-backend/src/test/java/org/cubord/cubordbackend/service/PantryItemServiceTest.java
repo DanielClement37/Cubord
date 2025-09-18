@@ -6,6 +6,7 @@ import org.cubord.cubordbackend.dto.CreatePantryItemRequest;
 import org.cubord.cubordbackend.dto.PantryItemResponse;
 import org.cubord.cubordbackend.dto.UpdatePantryItemRequest;
 import org.cubord.cubordbackend.exception.NotFoundException;
+import org.cubord.cubordbackend.exception.ValidationException;
 import org.cubord.cubordbackend.repository.HouseholdMemberRepository;
 import org.cubord.cubordbackend.repository.LocationRepository;
 import org.cubord.cubordbackend.repository.PantryItemRepository;
@@ -27,9 +28,7 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -266,10 +265,6 @@ class PantryItemServiceTest {
             when(householdMemberRepository.existsByHouseholdIdAndUserId(
                     testHousehold.getId(), testUser.getId()))
                     .thenReturn(true);
-
-            when(pantryItemRepository.findByLocationIdAndProductIdAndExpirationDate(
-                    testLocation.getId(), testProduct.getId(), existingExpirationDate))
-                    .thenReturn(Optional.of(existingItem));
 
             when(pantryItemRepository.findByLocationIdAndProductIdAndExpirationDate(
                     testLocation.getId(), testProduct.getId(), newExpirationDate))
@@ -745,6 +740,475 @@ class PantryItemServiceTest {
             );
         }
     }
+
+    @Nested
+    @DisplayName("Patch Pantry Item Tests")
+    class PatchPantryItemTests {
+
+        @Test
+        @DisplayName("Should patch single field successfully")
+        void shouldPatchSingleFieldSuccessfully() {
+            // Given
+            Map<String, Object> patchFields = Map.of("quantity", 10);
+
+            PantryItem updatedItem = PantryItem.builder()
+                    .id(testPantryItem.getId())
+                    .product(testPantryItem.getProduct())
+                    .location(testPantryItem.getLocation())
+                    .quantity(10)
+                    .unitOfMeasure(testPantryItem.getUnitOfMeasure())
+                    .expirationDate(testPantryItem.getExpirationDate())
+                    .notes(testPantryItem.getNotes())
+                    .build();
+
+            when(userService.getCurrentUser(token)).thenReturn(testUser);
+            when(pantryItemRepository.findById(testPantryItem.getId())).thenReturn(Optional.of(testPantryItem));
+            when(householdMemberRepository.existsByHouseholdIdAndUserId(testHousehold.getId(), testUser.getId()))
+                    .thenReturn(true);
+            when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(updatedItem);
+
+            // When
+            PantryItemResponse response = pantryItemService.patchPantryItem(testPantryItem.getId(), patchFields, token);
+
+            // Then
+            assertThat(response).isNotNull();
+            assertThat(response.getQuantity()).isEqualTo(10);
+
+            verify(pantryItemRepository).save(any(PantryItem.class));
+        }
+
+        @Test
+        @DisplayName("Should patch multiple fields successfully")
+        void shouldPatchMultipleFieldsSuccessfully() {
+            // Given
+            Map<String, Object> patchFields = Map.of(
+                    "quantity", 15,
+                    "unitOfMeasure", "kg",
+                    "notes", "Updated notes",
+                    "expirationDate", "2025-01-01"
+            );
+
+            PantryItem updatedItem = PantryItem.builder()
+                    .id(testPantryItem.getId())
+                    .product(testPantryItem.getProduct())
+                    .location(testPantryItem.getLocation())
+                    .quantity(15)
+                    .unitOfMeasure("kg")
+                    .expirationDate(LocalDate.of(2025, 1, 1))
+                    .notes("Updated notes")
+                    .build();
+
+            when(userService.getCurrentUser(token)).thenReturn(testUser);
+            when(pantryItemRepository.findById(testPantryItem.getId())).thenReturn(Optional.of(testPantryItem));
+            when(householdMemberRepository.existsByHouseholdIdAndUserId(testHousehold.getId(), testUser.getId()))
+                    .thenReturn(true);
+            when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(updatedItem);
+
+            // When
+            PantryItemResponse response = pantryItemService.patchPantryItem(testPantryItem.getId(), patchFields, token);
+
+            // Then
+            assertThat(response).isNotNull();
+            assertThat(response.getQuantity()).isEqualTo(15);
+            assertThat(response.getUnitOfMeasure()).isEqualTo("kg");
+            assertThat(response.getNotes()).isEqualTo("Updated notes");
+            assertThat(response.getExpirationDate()).isEqualTo(LocalDate.of(2025, 1, 1));
+
+            verify(pantryItemRepository).save(any(PantryItem.class));
+        }
+
+        @Test
+        @DisplayName("Should patch location successfully")
+        void shouldPatchLocationSuccessfully() {
+            // Given
+            Location newLocation = Location.builder()
+                    .id(UUID.randomUUID())
+                    .name("Freezer")
+                    .household(testHousehold) // Same household
+                    .build();
+
+            Map<String, Object> patchFields = Map.of("locationId", newLocation.getId().toString());
+
+            when(userService.getCurrentUser(token)).thenReturn(testUser);
+            when(pantryItemRepository.findById(testPantryItem.getId())).thenReturn(Optional.of(testPantryItem));
+            when(householdMemberRepository.existsByHouseholdIdAndUserId(testHousehold.getId(), testUser.getId()))
+                    .thenReturn(true);
+            when(locationRepository.findById(newLocation.getId())).thenReturn(Optional.of(newLocation));
+            when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(testPantryItem);
+
+            // When
+            PantryItemResponse response = pantryItemService.patchPantryItem(testPantryItem.getId(), patchFields, token);
+
+            // Then
+            assertThat(response).isNotNull();
+
+            verify(locationRepository).findById(newLocation.getId());
+            verify(pantryItemRepository).save(any(PantryItem.class));
+        }
+
+        @Test
+        @DisplayName("Should set expiration date to null when null value provided")
+        void shouldSetExpirationDateToNullWhenNullValueProvided() {
+            // Given
+            Map<String, Object> patchFields = new HashMap<>();
+            patchFields.put("expirationDate", null);
+
+            PantryItem updatedItem = PantryItem.builder()
+                    .id(testPantryItem.getId())
+                    .product(testPantryItem.getProduct())
+                    .location(testPantryItem.getLocation())
+                    .quantity(testPantryItem.getQuantity())
+                    .unitOfMeasure(testPantryItem.getUnitOfMeasure())
+                    .expirationDate(null)
+                    .notes(testPantryItem.getNotes())
+                    .build();
+
+            when(userService.getCurrentUser(token)).thenReturn(testUser);
+            when(pantryItemRepository.findById(testPantryItem.getId())).thenReturn(Optional.of(testPantryItem));
+            when(householdMemberRepository.existsByHouseholdIdAndUserId(testHousehold.getId(), testUser.getId()))
+                    .thenReturn(true);
+            when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(updatedItem);
+
+            // When
+            PantryItemResponse response = pantryItemService.patchPantryItem(testPantryItem.getId(), patchFields, token);
+
+            // Then
+            assertThat(response).isNotNull();
+            assertThat(response.getExpirationDate()).isNull();
+
+            verify(pantryItemRepository).save(any(PantryItem.class));
+        }
+
+        @Test
+        @DisplayName("Should set unit of measure and notes to null when null values provided")
+        void shouldSetFieldsToNullWhenNullValuesProvided() {
+            // Given
+            Map<String, Object> patchFields = new HashMap<>();
+            patchFields.put("unitOfMeasure", null);
+            patchFields.put("notes", null);
+
+            PantryItem updatedItem = PantryItem.builder()
+                    .id(testPantryItem.getId())
+                    .product(testPantryItem.getProduct())
+                    .location(testPantryItem.getLocation())
+                    .quantity(testPantryItem.getQuantity())
+                    .unitOfMeasure(null)
+                    .expirationDate(testPantryItem.getExpirationDate())
+                    .notes(null)
+                    .build();
+
+            when(userService.getCurrentUser(token)).thenReturn(testUser);
+            when(pantryItemRepository.findById(testPantryItem.getId())).thenReturn(Optional.of(testPantryItem));
+            when(householdMemberRepository.existsByHouseholdIdAndUserId(testHousehold.getId(), testUser.getId()))
+                    .thenReturn(true);
+            when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(updatedItem);
+
+            // When
+            PantryItemResponse response = pantryItemService.patchPantryItem(testPantryItem.getId(), patchFields, token);
+
+            // Then
+            assertThat(response).isNotNull();
+            assertThat(response.getUnitOfMeasure()).isNull();
+            assertThat(response.getNotes()).isNull();
+
+            verify(pantryItemRepository).save(any(PantryItem.class));
+        }
+
+        @Test
+        @DisplayName("Should ignore unknown fields")
+        void shouldIgnoreUnknownFields() {
+            // Given
+            Map<String, Object> patchFields = Map.of(
+                    "quantity", 5,
+                    "unknownField", "unknown value",
+                    "anotherUnknownField", 123
+            );
+
+            PantryItem updatedItem = PantryItem.builder()
+                    .id(testPantryItem.getId())
+                    .product(testPantryItem.getProduct())
+                    .location(testPantryItem.getLocation())
+                    .quantity(5)
+                    .unitOfMeasure(testPantryItem.getUnitOfMeasure())
+                    .expirationDate(testPantryItem.getExpirationDate())
+                    .notes(testPantryItem.getNotes())
+                    .build();
+
+            when(userService.getCurrentUser(token)).thenReturn(testUser);
+            when(pantryItemRepository.findById(testPantryItem.getId())).thenReturn(Optional.of(testPantryItem));
+            when(householdMemberRepository.existsByHouseholdIdAndUserId(testHousehold.getId(), testUser.getId()))
+                    .thenReturn(true);
+            when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(updatedItem);
+
+            // When
+            PantryItemResponse response = pantryItemService.patchPantryItem(testPantryItem.getId(), patchFields, token);
+
+            // Then
+            assertThat(response).isNotNull();
+            assertThat(response.getQuantity()).isEqualTo(5);
+
+            verify(pantryItemRepository).save(any(PantryItem.class));
+        }
+
+        // Bad path tests
+
+        @Test
+        @DisplayName("Should throw IllegalArgumentException when pantry item ID is null")
+        void shouldThrowIllegalArgumentExceptionWhenPantryItemIdIsNull() {
+            // Given
+            Map<String, Object> patchFields = Map.of("quantity", 5);
+
+            // When & Then
+            assertThrows(IllegalArgumentException.class, () ->
+                    pantryItemService.patchPantryItem(null, patchFields, token)
+            );
+
+            verify(pantryItemRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Should throw IllegalArgumentException when patch fields is null")
+        void shouldThrowIllegalArgumentExceptionWhenPatchFieldsIsNull() {
+            // When & Then
+            assertThrows(IllegalArgumentException.class, () ->
+                    pantryItemService.patchPantryItem(testPantryItem.getId(), null, token)
+            );
+
+            verify(pantryItemRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Should throw IllegalArgumentException when token is null")
+        void shouldThrowIllegalArgumentExceptionWhenTokenIsNull() {
+            // Given
+            Map<String, Object> patchFields = Map.of("quantity", 5);
+
+            // When & Then
+            assertThrows(IllegalArgumentException.class, () ->
+                    pantryItemService.patchPantryItem(testPantryItem.getId(), patchFields, null)
+            );
+
+            verify(pantryItemRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Should throw IllegalArgumentException when patch fields is empty")
+        void shouldThrowIllegalArgumentExceptionWhenPatchFieldsIsEmpty() {
+            // Given
+            Map<String, Object> patchFields = new HashMap<>();
+
+            // When & Then
+            assertThrows(IllegalArgumentException.class, () ->
+                    pantryItemService.patchPantryItem(testPantryItem.getId(), patchFields, token)
+            );
+
+            verify(pantryItemRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Should throw NotFoundException when pantry item not found")
+        void shouldThrowNotFoundExceptionWhenPantryItemNotFound() {
+            // Given
+            UUID nonExistentId = UUID.randomUUID();
+            Map<String, Object> patchFields = Map.of("quantity", 5);
+
+            when(userService.getCurrentUser(token)).thenReturn(testUser);
+            when(pantryItemRepository.findById(nonExistentId)).thenReturn(Optional.empty());
+
+            // When & Then
+            assertThrows(NotFoundException.class, () ->
+                    pantryItemService.patchPantryItem(nonExistentId, patchFields, token)
+            );
+
+            verify(pantryItemRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Should throw AccessDeniedException when user not member of household")
+        void shouldThrowAccessDeniedExceptionWhenUserNotMemberOfHousehold() {
+            // Given
+            Map<String, Object> patchFields = Map.of("quantity", 5);
+
+            when(userService.getCurrentUser(token)).thenReturn(otherUser);
+            when(pantryItemRepository.findById(testPantryItem.getId())).thenReturn(Optional.of(testPantryItem));
+            when(householdMemberRepository.existsByHouseholdIdAndUserId(testHousehold.getId(), otherUser.getId()))
+                    .thenReturn(false);
+
+            // When & Then
+            assertThrows(AccessDeniedException.class, () ->
+                    pantryItemService.patchPantryItem(testPantryItem.getId(), patchFields, token)
+            );
+
+            verify(pantryItemRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Should throw ValidationException for invalid location ID format")
+        void shouldThrowValidationExceptionForInvalidLocationIdFormat() {
+            // Given
+            Map<String, Object> patchFields = Map.of("locationId", "invalid-uuid-format");
+
+            when(userService.getCurrentUser(token)).thenReturn(testUser);
+            when(pantryItemRepository.findById(testPantryItem.getId())).thenReturn(Optional.of(testPantryItem));
+            when(householdMemberRepository.existsByHouseholdIdAndUserId(testHousehold.getId(), testUser.getId()))
+                    .thenReturn(true);
+
+            // When & Then
+            assertThrows(ValidationException.class, () ->
+                    pantryItemService.patchPantryItem(testPantryItem.getId(), patchFields, token)
+            );
+
+            verify(pantryItemRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Should throw NotFoundException when new location not found")
+        void shouldThrowNotFoundExceptionWhenNewLocationNotFound() {
+            // Given
+            UUID nonExistentLocationId = UUID.randomUUID();
+            Map<String, Object> patchFields = Map.of("locationId", nonExistentLocationId.toString());
+
+            when(userService.getCurrentUser(token)).thenReturn(testUser);
+            when(pantryItemRepository.findById(testPantryItem.getId())).thenReturn(Optional.of(testPantryItem));
+            when(householdMemberRepository.existsByHouseholdIdAndUserId(testHousehold.getId(), testUser.getId()))
+                    .thenReturn(true);
+            when(locationRepository.findById(nonExistentLocationId)).thenReturn(Optional.empty());
+
+            // When & Then
+            assertThrows(NotFoundException.class, () ->
+                    pantryItemService.patchPantryItem(testPantryItem.getId(), patchFields, token)
+            );
+
+            verify(pantryItemRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Should throw AccessDeniedException when trying to move item to different household")
+        void shouldThrowAccessDeniedExceptionWhenTryingToMoveItemToDifferentHousehold() {
+            // Given
+            Location locationInDifferentHousehold = Location.builder()
+                    .id(UUID.randomUUID())
+                    .name("Other Kitchen")
+                    .household(otherHousehold)
+                    .build();
+
+            Map<String, Object> patchFields = Map.of("locationId", locationInDifferentHousehold.getId().toString());
+
+            when(userService.getCurrentUser(token)).thenReturn(testUser);
+            when(pantryItemRepository.findById(testPantryItem.getId())).thenReturn(Optional.of(testPantryItem));
+            when(householdMemberRepository.existsByHouseholdIdAndUserId(testHousehold.getId(), testUser.getId()))
+                    .thenReturn(true);
+            when(locationRepository.findById(locationInDifferentHousehold.getId()))
+                    .thenReturn(Optional.of(locationInDifferentHousehold));
+
+            // When & Then
+            assertThrows(AccessDeniedException.class, () ->
+                    pantryItemService.patchPantryItem(testPantryItem.getId(), patchFields, token)
+            );
+
+            verify(pantryItemRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Should throw ValidationException for invalid quantity format")
+        void shouldThrowValidationExceptionForInvalidQuantityFormat() {
+            // Given
+            Map<String, Object> patchFields = Map.of("quantity", "not-a-number");
+
+            when(userService.getCurrentUser(token)).thenReturn(testUser);
+            when(pantryItemRepository.findById(testPantryItem.getId())).thenReturn(Optional.of(testPantryItem));
+            when(householdMemberRepository.existsByHouseholdIdAndUserId(testHousehold.getId(), testUser.getId()))
+                    .thenReturn(true);
+
+            // When & Then
+            assertThrows(ValidationException.class, () ->
+                    pantryItemService.patchPantryItem(testPantryItem.getId(), patchFields, token)
+            );
+
+            verify(pantryItemRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Should throw ValidationException for zero quantity")
+        void shouldThrowValidationExceptionForZeroQuantity() {
+            // Given
+            Map<String, Object> patchFields = Map.of("quantity", 0);
+
+            when(userService.getCurrentUser(token)).thenReturn(testUser);
+            when(pantryItemRepository.findById(testPantryItem.getId())).thenReturn(Optional.of(testPantryItem));
+            when(householdMemberRepository.existsByHouseholdIdAndUserId(testHousehold.getId(), testUser.getId()))
+                    .thenReturn(true);
+
+            // When & Then
+            assertThrows(ValidationException.class, () ->
+                    pantryItemService.patchPantryItem(testPantryItem.getId(), patchFields, token)
+            );
+
+            verify(pantryItemRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Should throw ValidationException for negative quantity")
+        void shouldThrowValidationExceptionForNegativeQuantity() {
+            // Given
+            Map<String, Object> patchFields = Map.of("quantity", -5);
+
+            when(userService.getCurrentUser(token)).thenReturn(testUser);
+            when(pantryItemRepository.findById(testPantryItem.getId())).thenReturn(Optional.of(testPantryItem));
+            when(householdMemberRepository.existsByHouseholdIdAndUserId(testHousehold.getId(), testUser.getId()))
+                    .thenReturn(true);
+
+            // When & Then
+            assertThrows(ValidationException.class, () ->
+                    pantryItemService.patchPantryItem(testPantryItem.getId(), patchFields, token)
+            );
+
+            verify(pantryItemRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Should throw ValidationException for invalid expiration date format")
+        void shouldThrowValidationExceptionForInvalidExpirationDateFormat() {
+            // Given
+            Map<String, Object> patchFields = Map.of("expirationDate", "invalid-date-format");
+
+            when(userService.getCurrentUser(token)).thenReturn(testUser);
+            when(pantryItemRepository.findById(testPantryItem.getId())).thenReturn(Optional.of(testPantryItem));
+            when(householdMemberRepository.existsByHouseholdIdAndUserId(testHousehold.getId(), testUser.getId()))
+                    .thenReturn(true);
+
+            // When & Then
+            assertThrows(ValidationException.class, () ->
+                    pantryItemService.patchPantryItem(testPantryItem.getId(), patchFields, token)
+            );
+
+            verify(pantryItemRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Should handle mixed valid and invalid fields gracefully")
+        void shouldHandleMixedValidAndInvalidFieldsGracefully() {
+            // Given - Mix of valid fields, unknown fields, and one invalid field
+            Map<String, Object> patchFields = Map.of(
+                    "notes", "Valid notes update",
+                    "unknownField", "unknown value",
+                    "quantity", -1 // This should cause a ValidationException
+            );
+
+            when(userService.getCurrentUser(token)).thenReturn(testUser);
+            when(pantryItemRepository.findById(testPantryItem.getId())).thenReturn(Optional.of(testPantryItem));
+            when(householdMemberRepository.existsByHouseholdIdAndUserId(testHousehold.getId(), testUser.getId()))
+                    .thenReturn(true);
+
+            // When & Then
+            assertThrows(ValidationException.class, () ->
+                    pantryItemService.patchPantryItem(testPantryItem.getId(), patchFields, token)
+            );
+
+            verify(pantryItemRepository, never()).save(any());
+        }
+    }
+
 
     @Nested
     @DisplayName("Low Stock Items Tests")
