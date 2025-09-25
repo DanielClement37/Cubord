@@ -1,4 +1,4 @@
-package org.cubord.cubordbackend.dto;
+package org.cubord.cubordbackend.dto.householdInvitation;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotNull;

@@ -2,10 +2,10 @@ package org.cubord.cubordbackend.controller;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.cubord.cubordbackend.dto.HouseholdInvitationRequest;
-import org.cubord.cubordbackend.dto.HouseholdInvitationResponse;
-import org.cubord.cubordbackend.dto.HouseholdInvitationUpdateRequest;
-import org.cubord.cubordbackend.dto.ResendInvitationRequest;
+import org.cubord.cubordbackend.dto.householdInvitation.HouseholdInvitationRequest;
+import org.cubord.cubordbackend.dto.householdInvitation.HouseholdInvitationResponse;
+import org.cubord.cubordbackend.dto.householdInvitation.HouseholdInvitationUpdateRequest;
+import org.cubord.cubordbackend.dto.householdInvitation.ResendInvitationRequest;
 import org.cubord.cubordbackend.domain.InvitationStatus;
 import org.cubord.cubordbackend.service.HouseholdInvitationService;
 import org.springframework.http.HttpStatus;

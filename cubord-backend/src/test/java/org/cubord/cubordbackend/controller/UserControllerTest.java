@@ -2,8 +2,8 @@ package org.cubord.cubordbackend.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.cubord.cubordbackend.config.TestSecurityConfig;
-import org.cubord.cubordbackend.dto.UserResponse;
-import org.cubord.cubordbackend.dto.UserUpdateRequest;
+import org.cubord.cubordbackend.dto.user.UserResponse;
+import org.cubord.cubordbackend.dto.user.UserUpdateRequest;
 import org.cubord.cubordbackend.exception.NotFoundException;
 import org.cubord.cubordbackend.service.UserService;
 import org.junit.jupiter.api.BeforeEach;

@@ -1,6 +1,6 @@
 package org.cubord.cubordbackend.service;
 import org.cubord.cubordbackend.domain.User;
-import org.cubord.cubordbackend.dto.UserResponse;
+import org.cubord.cubordbackend.dto.user.UserResponse;
 import org.cubord.cubordbackend.exception.NotFoundException;
 import org.cubord.cubordbackend.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,7 +24,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
-import org.cubord.cubordbackend.dto.UserUpdateRequest;
+import org.cubord.cubordbackend.dto.user.UserUpdateRequest;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.Set;

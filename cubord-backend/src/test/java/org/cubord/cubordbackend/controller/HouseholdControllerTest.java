@@ -2,8 +2,8 @@ package org.cubord.cubordbackend.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.cubord.cubordbackend.config.TestSecurityConfig;
-import org.cubord.cubordbackend.dto.HouseholdRequest;
-import org.cubord.cubordbackend.dto.HouseholdResponse;
+import org.cubord.cubordbackend.dto.household.HouseholdRequest;
+import org.cubord.cubordbackend.dto.household.HouseholdResponse;
 import org.cubord.cubordbackend.exception.NotFoundException;
 import org.cubord.cubordbackend.service.HouseholdService;
 import org.junit.jupiter.api.BeforeEach;

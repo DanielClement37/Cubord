@@ -2,9 +2,9 @@ package org.cubord.cubordbackend.controller;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.cubord.cubordbackend.dto.HouseholdMemberRequest;
-import org.cubord.cubordbackend.dto.HouseholdMemberResponse;
-import org.cubord.cubordbackend.dto.HouseholdMemberRoleUpdateRequest;
+import org.cubord.cubordbackend.dto.householdMember.HouseholdMemberRequest;
+import org.cubord.cubordbackend.dto.householdMember.HouseholdMemberResponse;
+import org.cubord.cubordbackend.dto.householdMember.HouseholdMemberRoleUpdateRequest;
 import org.cubord.cubordbackend.service.HouseholdMemberService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

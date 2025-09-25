@@ -1,8 +1,8 @@
 package org.cubord.cubordbackend.service;
 
 import org.cubord.cubordbackend.domain.*;
-import org.cubord.cubordbackend.dto.HouseholdRequest;
-import org.cubord.cubordbackend.dto.HouseholdResponse;
+import org.cubord.cubordbackend.dto.household.HouseholdRequest;
+import org.cubord.cubordbackend.dto.household.HouseholdResponse;
 import org.cubord.cubordbackend.exception.NotFoundException;
 import org.cubord.cubordbackend.repository.HouseholdMemberRepository;
 import org.cubord.cubordbackend.repository.HouseholdRepository;

@@ -7,7 +7,7 @@ import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.cubord.cubordbackend.domain.ProductDataSource;
-import org.cubord.cubordbackend.dto.ProductResponse;
+import org.cubord.cubordbackend.dto.product.ProductResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;

@@ -1,4 +1,4 @@
-package org.cubord.cubordbackend.dto;
+package org.cubord.cubordbackend.dto.pantryItem;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

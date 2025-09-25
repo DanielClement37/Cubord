@@ -1,9 +1,11 @@
-package org.cubord.cubordbackend.dto;
+package org.cubord.cubordbackend.dto.pantryItem;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.cubord.cubordbackend.dto.location.LocationResponse;
+import org.cubord.cubordbackend.dto.product.ProductResponse;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;

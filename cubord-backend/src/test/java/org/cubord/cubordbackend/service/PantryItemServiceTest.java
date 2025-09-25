@@ -2,9 +2,9 @@
 package org.cubord.cubordbackend.service;
 
 import org.cubord.cubordbackend.domain.*;
-import org.cubord.cubordbackend.dto.CreatePantryItemRequest;
-import org.cubord.cubordbackend.dto.PantryItemResponse;
-import org.cubord.cubordbackend.dto.UpdatePantryItemRequest;
+import org.cubord.cubordbackend.dto.pantryItem.CreatePantryItemRequest;
+import org.cubord.cubordbackend.dto.pantryItem.PantryItemResponse;
+import org.cubord.cubordbackend.dto.pantryItem.UpdatePantryItemRequest;
 import org.cubord.cubordbackend.exception.NotFoundException;
 import org.cubord.cubordbackend.exception.ValidationException;
 import org.cubord.cubordbackend.repository.HouseholdMemberRepository;

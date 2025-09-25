@@ -2,9 +2,9 @@ package org.cubord.cubordbackend.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.cubord.cubordbackend.config.TestSecurityConfig;
-import org.cubord.cubordbackend.dto.HouseholdMemberRequest;
-import org.cubord.cubordbackend.dto.HouseholdMemberResponse;
-import org.cubord.cubordbackend.dto.HouseholdMemberRoleUpdateRequest;
+import org.cubord.cubordbackend.dto.householdMember.HouseholdMemberRequest;
+import org.cubord.cubordbackend.dto.householdMember.HouseholdMemberResponse;
+import org.cubord.cubordbackend.dto.householdMember.HouseholdMemberRoleUpdateRequest;
 import org.cubord.cubordbackend.domain.HouseholdRole;
 import org.cubord.cubordbackend.exception.ConflictException;
 import org.cubord.cubordbackend.exception.NotFoundException;

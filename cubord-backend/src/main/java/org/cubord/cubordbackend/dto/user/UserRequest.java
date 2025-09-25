@@ -1,4 +1,4 @@
-package org.cubord.cubordbackend.dto;
+package org.cubord.cubordbackend.dto.user;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;

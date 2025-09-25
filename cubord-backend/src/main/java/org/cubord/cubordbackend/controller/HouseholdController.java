@@ -2,8 +2,8 @@ package org.cubord.cubordbackend.controller;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.cubord.cubordbackend.dto.HouseholdRequest;
-import org.cubord.cubordbackend.dto.HouseholdResponse;
+import org.cubord.cubordbackend.dto.household.HouseholdRequest;
+import org.cubord.cubordbackend.dto.household.HouseholdResponse;
 import org.cubord.cubordbackend.service.HouseholdService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

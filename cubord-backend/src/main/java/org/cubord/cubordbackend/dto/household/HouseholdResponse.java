@@ -1,4 +1,4 @@
-package org.cubord.cubordbackend.dto;
+package org.cubord.cubordbackend.dto.household;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -12,13 +12,9 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class LocationResponse {
-    
+public class HouseholdResponse {
     private UUID id;
     private String name;
-    private String description;
-    private UUID householdId;
-    private String householdName;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

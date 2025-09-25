@@ -1,4 +1,4 @@
-package org.cubord.cubordbackend.dto;
+package org.cubord.cubordbackend.dto.householdMember;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

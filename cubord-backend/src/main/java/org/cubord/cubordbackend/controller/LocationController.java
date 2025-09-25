@@ -2,9 +2,9 @@ package org.cubord.cubordbackend.controller;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.cubord.cubordbackend.dto.LocationRequest;
-import org.cubord.cubordbackend.dto.LocationResponse;
-import org.cubord.cubordbackend.dto.LocationUpdateRequest;
+import org.cubord.cubordbackend.dto.location.LocationRequest;
+import org.cubord.cubordbackend.dto.location.LocationResponse;
+import org.cubord.cubordbackend.dto.location.LocationUpdateRequest;
 import org.cubord.cubordbackend.service.LocationService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;

@@ -2,7 +2,6 @@
 package org.cubord.cubordbackend.exception;
 
 import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.ResponseStatus;
 
 /**
  * Exception thrown when a resource conflict occurs (e.g., duplicate name).

@@ -3,7 +3,7 @@ package org.cubord.cubordbackend.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.cubord.cubordbackend.domain.ProductDataSource;
-import org.cubord.cubordbackend.dto.ProductResponse;
+import org.cubord.cubordbackend.dto.product.ProductResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;

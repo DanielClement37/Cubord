@@ -1,4 +1,4 @@
-package org.cubord.cubordbackend.dto;
+package org.cubord.cubordbackend.dto.location;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;

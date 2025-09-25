@@ -1,5 +1,5 @@
 
-package org.cubord.cubordbackend.dto;
+package org.cubord.cubordbackend.dto.householdInvitation;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;

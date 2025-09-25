@@ -1,4 +1,4 @@
-package org.cubord.cubordbackend.dto;
+package org.cubord.cubordbackend.dto.location;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -12,10 +12,13 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class UserResponse {
+public class LocationResponse {
+    
     private UUID id;
-    private String username;
-    private String email;
-    private String displayName;
+    private String name;
+    private String description;
+    private UUID householdId;
+    private String householdName;
     private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 }

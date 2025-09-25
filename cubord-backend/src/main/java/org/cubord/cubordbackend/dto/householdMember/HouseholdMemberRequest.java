@@ -1,4 +1,4 @@
-package org.cubord.cubordbackend.dto;
+package org.cubord.cubordbackend.dto.householdMember;
 
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
@@ -7,16 +7,16 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.cubord.cubordbackend.domain.HouseholdRole;
 
-/**
- * Request body for changing a member’s role in a household.
- * Example JSON: { "role": "ADMIN" }
- */
+import java.util.UUID;
+
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class HouseholdMemberRoleUpdateRequest {
-
+public class HouseholdMemberRequest {
+    @NotNull(message = "User ID is required")
+    private UUID userId;
+    
     @NotNull(message = "Role is required")
     private HouseholdRole role;
 }

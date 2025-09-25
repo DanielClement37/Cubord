@@ -1,6 +1,7 @@
 package org.cubord.cubordbackend.exception;
 
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.cubord.cubordbackend.dto.error.ErrorResponse;
@@ -72,8 +73,8 @@ public class RestExceptionHandler {
         Map<String, Object> details = ex.getConstraintViolations().stream()
                 .collect(Collectors.toMap(
                         violation -> violation.getPropertyPath().toString(),
-                        violation -> violation.getMessage(),
-                        (existing, replacement) -> existing
+                        ConstraintViolation::getMessage,
+                        (existing, _) -> existing
                 ));
 
         log.debug("Constraint violation: {} [correlation_id={}]", ex.getMessage(), correlationId);
@@ -97,7 +98,7 @@ public class RestExceptionHandler {
                 .collect(Collectors.toMap(
                         FieldError::getField,
                         fieldError -> fieldError.getDefaultMessage() != null ? fieldError.getDefaultMessage() : "Invalid value",
-                        (existing, replacement) -> existing
+                        (existing, _) -> existing
                 ));
 
         log.debug("Method argument validation failed: {} fields [correlation_id={}]", details.size(), correlationId);
@@ -139,7 +140,7 @@ public class RestExceptionHandler {
 
         log.debug("Method argument type mismatch: {} [correlation_id={}]", ex.getMessage(), correlationId);
 
-        String parameterName = ex.getName() != null ? MessageSanitizer.sanitizeMessage(ex.getName()) : "parameter";
+        String parameterName = MessageSanitizer.sanitizeMessage(ex.getName());
         String expectedType = ex.getRequiredType() != null ? ex.getRequiredType().getSimpleName() : "valid type";
         
         String message = String.format("Invalid parameter '%s': expected %s", parameterName, expectedType);
@@ -160,9 +161,7 @@ public class RestExceptionHandler {
 
         log.debug("Missing parameter: {} [correlation_id={}]", ex.getMessage(), correlationId);
 
-        String parameterName = ex.getParameterName() != null 
-            ? MessageSanitizer.sanitizeMessage(ex.getParameterName()) 
-            : "unknown";
+        String parameterName = MessageSanitizer.sanitizeMessage(ex.getParameterName());
         
         String message = String.format("Missing required parameter: %s", parameterName);
         ErrorResponse error = ErrorResponse.of("MISSING_PARAMETER", message, correlationId);
@@ -188,7 +187,7 @@ public class RestExceptionHandler {
     }
     
     /**
-     * Handles data integrity violations from database.
+     * Handles data integrity violations from a database.
      */
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(

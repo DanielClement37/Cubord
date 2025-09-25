@@ -1,4 +1,4 @@
-package org.cubord.cubordbackend.dto;
+package org.cubord.cubordbackend.dto.pantryItem;
 
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;

@@ -2,8 +2,8 @@ package org.cubord.cubordbackend.service;
 
 import org.cubord.cubordbackend.domain.HouseholdRole;
 import org.cubord.cubordbackend.domain.InvitationStatus;
-import org.cubord.cubordbackend.dto.HouseholdInvitationRequest;
-import org.cubord.cubordbackend.dto.HouseholdInvitationResponse;
+import org.cubord.cubordbackend.dto.householdInvitation.HouseholdInvitationRequest;
+import org.cubord.cubordbackend.dto.householdInvitation.HouseholdInvitationResponse;
 import org.cubord.cubordbackend.domain.*;
 import org.cubord.cubordbackend.exception.ConflictException;
 import org.cubord.cubordbackend.exception.NotFoundException;
