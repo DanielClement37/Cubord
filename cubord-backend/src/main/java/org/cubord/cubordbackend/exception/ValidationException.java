@@ -1,7 +1,13 @@
 package org.cubord.cubordbackend.exception;
 
-public class ValidationException extends RuntimeException {
+import org.springframework.http.HttpStatus;
+
+public class ValidationException extends CubordException {
     public ValidationException(String message) {
-        super(message);
+        super("VALIDATION_ERROR", message, HttpStatus.BAD_REQUEST);
+    }
+
+    public ValidationException(String message, Throwable cause) {
+        super("VALIDATION_ERROR", message, HttpStatus.BAD_REQUEST, cause);
     }
 }

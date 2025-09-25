@@ -7,14 +7,12 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 /**
  * Exception thrown when a resource conflict occurs (e.g., duplicate name).
  */
-@ResponseStatus(HttpStatus.CONFLICT)
-public class ConflictException extends RuntimeException {
-    /**
-     * Creates a new ConflictException with the specified error message.
-     *
-     * @param message The error message describing the conflict
-     */
+public class ConflictException extends CubordException {
     public ConflictException(String message) {
-        super(message);
+        super("RESOURCE_CONFLICT", message, HttpStatus.CONFLICT);
+    }
+
+    public ConflictException(String message, Throwable cause) {
+        super("RESOURCE_CONFLICT", message, HttpStatus.CONFLICT, cause);
     }
 }
