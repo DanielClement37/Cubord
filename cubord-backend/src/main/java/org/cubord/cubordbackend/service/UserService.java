@@ -12,7 +12,6 @@ import org.cubord.cubordbackend.exception.InsufficientPermissionException;
 import org.cubord.cubordbackend.exception.NotFoundException;
 import org.cubord.cubordbackend.exception.TokenExpiredException;
 import org.cubord.cubordbackend.exception.ValidationException;
-import org.cubord.cubordbackend.repository.HouseholdMemberRepository;
 import org.cubord.cubordbackend.repository.UserRepository;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
@@ -28,7 +27,6 @@ import java.util.regex.Pattern;
 @Slf4j
 public class UserService {
     private final UserRepository userRepository;
-    private final HouseholdMemberRepository householdMemberRepository;
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,6}$");
 
     /**

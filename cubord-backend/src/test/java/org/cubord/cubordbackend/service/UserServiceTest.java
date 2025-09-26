@@ -67,7 +67,7 @@ class UserServiceTest {
         sampleUser.setCreatedAt(LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()));
         sampleUser.setHouseholdMembers(new HashSet<>());
 
-        // Create mock JWT token
+        // Create a mock JWT token
         Jwt jwt = Jwt.withTokenValue("token")
                 .header("alg", "none")
                 .subject(sampleUserId.toString())
