@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.cubord.cubordbackend.domain.ProductDataSource;
 import org.cubord.cubordbackend.dto.product.ProductResponse;
+import org.cubord.cubordbackend.exception.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -25,12 +26,13 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThatCode;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+
 @ExtendWith(MockitoExtension.class)
 class UpcApiServiceTest {
 
     @Mock
     private RestTemplate restTemplate;
-    
+
     @Spy
     private ObjectMapper objectMapper = new ObjectMapper();
 
@@ -47,7 +49,6 @@ class UpcApiServiceTest {
     private String successfulApiResponse;
     private String detailedSuccessfulResponse;
     private String notFoundApiResponse;
-    private String malformedApiResponse;
     private String responseWithoutProduct;
     private String responseWithoutName;
     private String responseWithGenericName;
@@ -107,11 +108,11 @@ class UpcApiServiceTest {
             }
             """;
 
-        malformedApiResponse = """
-            {
-                "invalid": "response"
-            }
-            """;
+        String malformedApiResponse = """
+                {
+                    "invalid": "response"
+                }
+                """;
 
         responseWithoutProduct = """
             {
@@ -304,39 +305,57 @@ class UpcApiServiceTest {
     class InputValidationTests {
 
         @Test
-        @DisplayName("Should throw IllegalArgumentException when UPC is null")
-        void should_ThrowException_When_UpcIsNull() {
+        @DisplayName("Should throw ValidationException when UPC is null")
+        void should_ThrowValidationException_When_UpcIsNull() {
             // When & Then
             assertThatThrownBy(() -> upcApiService.fetchProductData(null))
-                    .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessage("UPC cannot be null or empty");
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessage("UPC cannot be null");
         }
 
         @Test
-        @DisplayName("Should throw IllegalArgumentException when UPC is empty")
-        void should_ThrowException_When_UpcIsEmpty() {
+        @DisplayName("Should throw ValidationException when UPC is empty")
+        void should_ThrowValidationException_When_UpcIsEmpty() {
             // When & Then
             assertThatThrownBy(() -> upcApiService.fetchProductData(EMPTY_UPC))
-                    .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessage("UPC cannot be null or empty");
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessage("UPC cannot be empty or whitespace");
         }
 
         @Test
-        @DisplayName("Should throw IllegalArgumentException when UPC is whitespace")
-        void should_ThrowException_When_UpcIsWhitespace() {
+        @DisplayName("Should throw ValidationException when UPC is whitespace")
+        void should_ThrowValidationException_When_UpcIsWhitespace() {
             // When & Then
             assertThatThrownBy(() -> upcApiService.fetchProductData(WHITESPACE_UPC))
-                    .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessage("UPC cannot be null or empty");
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessage("UPC cannot be empty or whitespace");
         }
 
         @Test
-        @DisplayName("Should throw IllegalArgumentException for null UPC in detailed fetch")
-        void should_ThrowException_When_DetailedFetchUpcIsNull() {
+        @DisplayName("Should throw ValidationException for null UPC in detailed fetch")
+        void should_ThrowValidationException_When_DetailedFetchUpcIsNull() {
             // When & Then
             assertThatThrownBy(() -> upcApiService.fetchDetailedProductData(null))
-                    .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessage("UPC cannot be null or empty");
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessage("UPC cannot be null");
+        }
+
+        @Test
+        @DisplayName("Should throw ValidationException for empty UPC in detailed fetch")
+        void should_ThrowValidationException_When_DetailedFetchUpcIsEmpty() {
+            // When & Then
+            assertThatThrownBy(() -> upcApiService.fetchDetailedProductData(EMPTY_UPC))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessage("UPC cannot be empty or whitespace");
+        }
+
+        @Test
+        @DisplayName("Should throw ValidationException for whitespace UPC in detailed fetch")
+        void should_ThrowValidationException_When_DetailedFetchUpcIsWhitespace() {
+            // When & Then
+            assertThatThrownBy(() -> upcApiService.fetchDetailedProductData(WHITESPACE_UPC))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessage("UPC cannot be empty or whitespace");
         }
     }
 
@@ -345,22 +364,77 @@ class UpcApiServiceTest {
     class ErrorHandlingTests {
 
         @Test
-        @DisplayName("Should handle RestClientException")
-        void should_ThrowRuntimeException_When_RestClientExceptionOccurs() {
+        @DisplayName("Should throw ServiceUnavailableException for network connectivity issues")
+        void should_ThrowServiceUnavailableException_When_NetworkConnectivityIssues() {
             // Given
             when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
-                    .thenThrow(new RestClientException("Network error"));
+                    .thenThrow(new org.springframework.web.client.ResourceAccessException("Connection timeout"));
 
             // When & Then
             assertThatThrownBy(() -> upcApiService.fetchProductData(VALID_UPC))
-                    .isInstanceOf(RuntimeException.class)
-                    .hasMessage("Failed to fetch product data from Open Food Facts API")
+                    .isInstanceOf(ServiceUnavailableException.class)
+                    .hasMessageContaining("Network connectivity issues")
+                    .hasCauseInstanceOf(org.springframework.web.client.ResourceAccessException.class);
+        }
+
+        @Test
+        @DisplayName("Should throw RateLimitExceededException for HTTP 429 responses")
+        void should_ThrowRateLimitExceededException_When_Http429Response() {
+            // Given
+            when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
+                    .thenThrow(new org.springframework.web.client.HttpClientErrorException(HttpStatus.TOO_MANY_REQUESTS));
+
+            // When & Then
+            assertThatThrownBy(() -> upcApiService.fetchProductData(VALID_UPC))
+                    .isInstanceOf(RateLimitExceededException.class)
+                    .hasMessage("Open Food Facts API rate limit exceeded");
+        }
+
+        @Test
+        @DisplayName("Should throw ExternalServiceException for other client errors")
+        void should_ThrowExternalServiceException_When_ClientError() {
+            // Given
+            when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
+                    .thenThrow(new org.springframework.web.client.HttpClientErrorException(HttpStatus.BAD_REQUEST, "Bad Request"));
+
+            // When & Then
+            assertThatThrownBy(() -> upcApiService.fetchProductData(VALID_UPC))
+                    .isInstanceOf(ExternalServiceException.class)
+                    .hasMessageContaining("Client error: 400 BAD_REQUEST")
+                    .hasCauseInstanceOf(org.springframework.web.client.HttpClientErrorException.class);
+        }
+
+        @Test
+        @DisplayName("Should throw ServiceUnavailableException for server errors")
+        void should_ThrowServiceUnavailableException_When_ServerError() {
+            // Given
+            when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
+                    .thenThrow(new org.springframework.web.client.HttpServerErrorException(HttpStatus.INTERNAL_SERVER_ERROR, "Internal Server Error"));
+
+            // When & Then
+            assertThatThrownBy(() -> upcApiService.fetchProductData(VALID_UPC))
+                    .isInstanceOf(ServiceUnavailableException.class)
+                    .hasMessageContaining("Server error: 500 INTERNAL_SERVER_ERROR")
+                    .hasCauseInstanceOf(org.springframework.web.client.HttpServerErrorException.class);
+        }
+
+        @Test
+        @DisplayName("Should throw ExternalServiceException for generic REST client errors")
+        void should_ThrowExternalServiceException_When_GenericRestClientError() {
+            // Given
+            when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
+                    .thenThrow(new RestClientException("Generic REST error"));
+
+            // When & Then
+            assertThatThrownBy(() -> upcApiService.fetchProductData(VALID_UPC))
+                    .isInstanceOf(ExternalServiceException.class)
+                    .hasMessageContaining("REST client error: Generic REST error")
                     .hasCauseInstanceOf(RestClientException.class);
         }
 
         @Test
-        @DisplayName("Should handle empty response body")
-        void should_ThrowRuntimeException_When_ResponseBodyIsEmpty() {
+        @DisplayName("Should throw ExternalServiceException when response body is empty")
+        void should_ThrowExternalServiceException_When_ResponseBodyIsEmpty() {
             // Given
             ResponseEntity<String> mockResponse = new ResponseEntity<>(null, HttpStatus.OK);
             when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
@@ -368,45 +442,189 @@ class UpcApiServiceTest {
 
             // When & Then
             assertThatThrownBy(() -> upcApiService.fetchProductData(VALID_UPC))
-                    .isInstanceOf(RuntimeException.class)
-                    .hasMessage("Empty response from Open Food Facts API");
+                    .isInstanceOf(ExternalServiceException.class)
+                    .hasMessage("External service Open Food Facts API error: Empty response received");
         }
 
         @Test
-        @DisplayName("Should handle JSON parsing error by testing parseOpenFoodFactsResponse directly")
-        void should_ThrowRuntimeException_When_JsonParsingFails() {
+        @DisplayName("Should throw UnsupportedFormatException for JSON parsing errors")
+        void should_ThrowUnsupportedFormatException_When_JsonParsingFails() {
             // Given
-            ResponseEntity<String> mockResponse = new ResponseEntity<>(successfulApiResponse, HttpStatus.OK);
+            String malformedJson = "{ invalid json }";
+            ResponseEntity<String> mockResponse = new ResponseEntity<>(malformedJson, HttpStatus.OK);
             when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
                     .thenReturn(mockResponse);
-            
-            // Force the parsing to fail by making the ObjectMapper spy throw JsonProcessingException
-            // We need to do this carefully to avoid the general exception handler catching it first
-            try {
-                doThrow(new JsonProcessingException("Invalid JSON") {})
-                        .when(objectMapper).readTree(anyString());
-            } catch (JsonProcessingException e) {
-                throw new RuntimeException(e);
-            }
 
             // When & Then
             assertThatThrownBy(() -> upcApiService.fetchProductData(VALID_UPC))
-                    .isInstanceOf(RuntimeException.class)
-                    .hasMessage("Failed to parse Open Food Facts API response");
+                    .isInstanceOf(UnsupportedFormatException.class)
+                    .hasMessageContaining("Invalid JSON format");
         }
 
         @Test
-        @DisplayName("Should handle detailed fetch RestClientException")
-        void should_ThrowRuntimeException_When_DetailedFetchNetworkError() {
+        @DisplayName("Should throw ExternalServiceException for unexpected errors")
+        void should_ThrowExternalServiceException_When_UnexpectedError() {
             // Given
             when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
-                    .thenThrow(new RestClientException("Network error"));
+                    .thenThrow(new RuntimeException("Unexpected error"));
+
+            // When & Then
+            assertThatThrownBy(() -> upcApiService.fetchProductData(VALID_UPC))
+                    .isInstanceOf(ExternalServiceException.class)
+                    .hasMessageContaining("Unexpected error during API call")
+                    .hasCauseInstanceOf(RuntimeException.class);
+        }
+    }
+
+    @Nested
+    @DisplayName("Detailed Fetch Error Handling Tests")
+    class DetailedFetchErrorHandlingTests {
+
+        @Test
+        @DisplayName("Should throw ServiceUnavailableException for detailed fetch network errors")
+        void should_ThrowServiceUnavailableException_When_DetailedFetchNetworkError() {
+            // Given
+            when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
+                    .thenThrow(new org.springframework.web.client.ResourceAccessException("Network timeout"));
 
             // When & Then
             assertThatThrownBy(() -> upcApiService.fetchDetailedProductData(VALID_UPC))
-                    .isInstanceOf(RuntimeException.class)
-                    .hasMessage("Failed to fetch detailed product data from Open Food Facts API")
-                    .hasCauseInstanceOf(RestClientException.class);
+                    .isInstanceOf(ServiceUnavailableException.class)
+                    .hasMessageContaining("Network connectivity issues")
+                    .hasCauseInstanceOf(org.springframework.web.client.ResourceAccessException.class);
+        }
+
+        @Test
+        @DisplayName("Should throw ExternalServiceException for detailed fetch empty response")
+        void should_ThrowExternalServiceException_When_DetailedFetchResponseEmpty() {
+            // Given
+            ResponseEntity<String> mockResponse = new ResponseEntity<>(null, HttpStatus.OK);
+            when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
+                    .thenReturn(mockResponse);
+
+            // When & Then
+            assertThatThrownBy(() -> upcApiService.fetchDetailedProductData(VALID_UPC))
+                    .isInstanceOf(ExternalServiceException.class)
+                    .hasMessage("External service Open Food Facts API error: Empty response received for detailed request");
+        }
+
+        @Test
+        @DisplayName("Should throw UnsupportedFormatException for detailed fetch JSON parsing errors")
+        void should_ThrowUnsupportedFormatException_When_DetailedFetchJsonParsingFails() {
+            // Given
+            String malformedJson = "{ invalid json }";
+            ResponseEntity<String> mockResponse = new ResponseEntity<>(malformedJson, HttpStatus.OK);
+            when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
+                    .thenReturn(mockResponse);
+
+            // When & Then
+            assertThatThrownBy(() -> upcApiService.fetchDetailedProductData(VALID_UPC))
+                    .isInstanceOf(UnsupportedFormatException.class)
+                    .hasMessageContaining("Invalid JSON format");
+        }
+
+        @Test
+        @DisplayName("Should handle detailed fetch product not found")
+        void should_HandleDetailedFetchProductNotFound_When_InvalidUpcProvided() {
+            // Given
+            ResponseEntity<String> mockResponse = new ResponseEntity<>(notFoundApiResponse, HttpStatus.OK);
+            when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
+                    .thenReturn(mockResponse);
+
+            // When
+            ProductResponse result = upcApiService.fetchDetailedProductData(INVALID_UPC);
+
+            // Then
+            assertThat(result).isNotNull();
+            assertThat(result.getUpc()).isEqualTo(INVALID_UPC);
+            assertThat(result.getName()).isEqualTo("Product not found");
+            assertThat(result.getRequiresApiRetry()).isTrue();
+        }
+    }
+
+    @Nested
+    @DisplayName("Configuration Validation Tests")
+    class ConfigurationValidationTests {
+
+        @Test
+        @DisplayName("Should throw ConfigurationException when base URL is null")
+        void should_ThrowConfigurationException_When_BaseUrlIsNull() {
+            // Given
+            ReflectionTestUtils.setField(upcApiService, "baseUrl", null);
+
+            // When & Then
+            assertThatThrownBy(() -> {
+                // Trigger @PostConstruct manually for testing
+                java.lang.reflect.Method method = UpcApiService.class.getDeclaredMethod("validateConfiguration");
+                method.setAccessible(true);
+                method.invoke(upcApiService);
+            })
+                    .hasCauseInstanceOf(ConfigurationException.class)
+                    .hasRootCauseMessage("Configuration issue with 'app.openfoodfacts.base-url': Base URL cannot be null or empty");
+        }
+
+        @Test
+        @DisplayName("Should throw ConfigurationException when staging URL is empty")
+        void should_ThrowConfigurationException_When_StagingUrlIsEmpty() {
+            // Given
+            ReflectionTestUtils.setField(upcApiService, "stagingUrl", "");
+
+            // When & Then
+            assertThatThrownBy(() -> {
+                java.lang.reflect.Method method = UpcApiService.class.getDeclaredMethod("validateConfiguration");
+                method.setAccessible(true);
+                method.invoke(upcApiService);
+            })
+                    .hasCauseInstanceOf(ConfigurationException.class)
+                    .hasRootCauseMessage("Configuration issue with 'app.openfoodfacts.staging-url': Staging URL cannot be null or empty");
+        }
+
+        @Test
+        @DisplayName("Should throw ConfigurationException when user agent is null")
+        void should_ThrowConfigurationException_When_UserAgentIsNull() {
+            // Given
+            ReflectionTestUtils.setField(upcApiService, "userAgent", null);
+
+            // When & Then
+            assertThatThrownBy(() -> {
+                java.lang.reflect.Method method = UpcApiService.class.getDeclaredMethod("validateConfiguration");
+                method.setAccessible(true);
+                method.invoke(upcApiService);
+            })
+                    .hasCauseInstanceOf(ConfigurationException.class)
+                    .hasRootCauseMessage("Configuration issue with 'app.openfoodfacts.user-agent': User agent cannot be null or empty");
+        }
+
+        @Test
+        @DisplayName("Should throw ConfigurationException when timeout is negative")
+        void should_ThrowConfigurationException_When_TimeoutIsNegative() {
+            // Given
+            ReflectionTestUtils.setField(upcApiService, "timeoutMs", -1);
+
+            // When & Then
+            assertThatThrownBy(() -> {
+                java.lang.reflect.Method method = UpcApiService.class.getDeclaredMethod("validateConfiguration");
+                method.setAccessible(true);
+                method.invoke(upcApiService);
+            })
+                    .hasCauseInstanceOf(ConfigurationException.class)
+                    .hasRootCauseMessage("Configuration issue with 'app.openfoodfacts.timeout': Timeout must be positive");
+        }
+
+        @Test
+        @DisplayName("Should throw ConfigurationException when URL format is invalid")
+        void should_ThrowConfigurationException_When_UrlFormatIsInvalid() {
+            // Given
+            ReflectionTestUtils.setField(upcApiService, "baseUrl", "not-a-url");
+
+            // When & Then
+            assertThatThrownBy(() -> {
+                java.lang.reflect.Method method = UpcApiService.class.getDeclaredMethod("validateConfiguration");
+                method.setAccessible(true);
+                method.invoke(upcApiService);
+            })
+                    .hasCauseInstanceOf(ConfigurationException.class)
+                    .hasRootCauseMessage("Configuration issue with 'URL configuration': Invalid URL format");
         }
     }
 
@@ -462,6 +680,52 @@ class UpcApiServiceTest {
 
             // Then
             assertThat(result).isFalse();
+        }
+
+        @Test
+        @DisplayName("Should return false when health check returns null response")
+        void should_ReturnFalse_When_HealthCheckResponseIsNull() {
+            // Given
+            ResponseEntity<String> mockResponse = new ResponseEntity<>(null, HttpStatus.OK);
+            when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
+                    .thenReturn(mockResponse);
+
+            // When
+            boolean result = upcApiService.isServiceAvailable();
+
+            // Then
+            assertThat(result).isTrue(); // 2xx status is still successful even with null body
+        }
+
+        @Test
+        @DisplayName("Should return false for various HTTP error statuses")
+        void should_ReturnFalse_When_HealthCheckReturnsErrorStatuses() {
+            // Test various error statuses
+            HttpStatus[] errorStatuses = {
+                    HttpStatus.BAD_REQUEST,
+                    HttpStatus.UNAUTHORIZED,
+                    HttpStatus.FORBIDDEN,
+                    HttpStatus.NOT_FOUND,
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    HttpStatus.BAD_GATEWAY,
+                    HttpStatus.SERVICE_UNAVAILABLE
+            };
+
+            for (HttpStatus status : errorStatuses) {
+                // Given
+                ResponseEntity<String> mockResponse = new ResponseEntity<>(status);
+                when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
+                        .thenReturn(mockResponse);
+
+                // When
+                boolean result = upcApiService.isServiceAvailable();
+
+                // Then
+                assertThat(result).isFalse();
+
+                // Reset mock for next iteration
+                reset(restTemplate);
+            }
         }
     }
 
@@ -522,7 +786,7 @@ class UpcApiServiceTest {
             // When
             upcApiService.fetchProductData(VALID_UPC);
 
-            // Then - Just verify the call was made, don't check specific header content due to matcher complexity
+            // Then - Just verify the call was made; header content verification is complex
             verify(restTemplate).exchange(
                     anyString(),
                     eq(HttpMethod.GET),
@@ -653,7 +917,7 @@ class UpcApiServiceTest {
 
         @Test
         @DisplayName("Should handle malformed JSON gracefully")
-        void should_HandleMalformedJson_When_ResponseIsInvalidJson() {
+        void should_ThrowUnsupportedFormatException_When_ResponseIsInvalidJson() {
             // Given
             String malformedJson = """
                 {
@@ -671,8 +935,8 @@ class UpcApiServiceTest {
 
             // When & Then
             assertThatThrownBy(() -> upcApiService.fetchProductData(VALID_UPC))
-                    .isInstanceOf(RuntimeException.class)
-                    .hasMessage("Failed to parse Open Food Facts API response");
+                    .isInstanceOf(UnsupportedFormatException.class)
+                    .hasMessageContaining("Invalid JSON format");
         }
 
         @Test
@@ -697,59 +961,7 @@ class UpcApiServiceTest {
             // When
             ProductResponse result = upcApiService.fetchProductData(VALID_UPC);
 
-            // Then - Should default to 0 and create not found response
-            assertThat(result.getName()).isEqualTo("Product not found");
-            assertThat(result.getRequiresApiRetry()).isTrue();
-        }
-    }
-
-    @Nested
-    @DisplayName("Detailed Fetch Error Handling Tests")
-    class DetailedFetchErrorHandlingTests {
-
-        @Test
-        @DisplayName("Should handle detailed fetch empty response body")
-        void should_ThrowRuntimeException_When_DetailedFetchResponseBodyIsEmpty() {
-            // Given
-            ResponseEntity<String> mockResponse = new ResponseEntity<>(null, HttpStatus.OK);
-            when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
-                    .thenReturn(mockResponse);
-
-            // When & Then
-            assertThatThrownBy(() -> upcApiService.fetchDetailedProductData(VALID_UPC))
-                    .isInstanceOf(RuntimeException.class)
-                    .hasMessage("Empty response from Open Food Facts API");
-        }
-
-        @Test
-        @DisplayName("Should handle detailed fetch JSON parsing error")
-        void should_ThrowRuntimeException_When_DetailedFetchJsonParsingFails() {
-            // Given
-            String malformedJson = "{ invalid json }";
-            ResponseEntity<String> mockResponse = new ResponseEntity<>(malformedJson, HttpStatus.OK);
-            when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
-                    .thenReturn(mockResponse);
-
-            // When & Then
-            assertThatThrownBy(() -> upcApiService.fetchDetailedProductData(VALID_UPC))
-                    .isInstanceOf(RuntimeException.class)
-                    .hasMessage("Failed to parse detailed Open Food Facts API response");
-        }
-
-        @Test
-        @DisplayName("Should handle detailed fetch product not found")
-        void should_HandleDetailedFetchProductNotFound_When_InvalidUpcProvided() {
-            // Given
-            ResponseEntity<String> mockResponse = new ResponseEntity<>(notFoundApiResponse, HttpStatus.OK);
-            when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
-                    .thenReturn(mockResponse);
-
-            // When
-            ProductResponse result = upcApiService.fetchDetailedProductData(INVALID_UPC);
-
-            // Then
-            assertThat(result).isNotNull();
-            assertThat(result.getUpc()).isEqualTo(INVALID_UPC);
+            // Then - Should default to 0 and create a not found response
             assertThat(result.getName()).isEqualTo("Product not found");
             assertThat(result.getRequiresApiRetry()).isTrue();
         }
@@ -814,7 +1026,7 @@ class UpcApiServiceTest {
             // Given
             ReflectionTestUtils.setField(upcApiService, "useStaging", true);
             ResponseEntity<String> mockResponse = new ResponseEntity<>(successfulApiResponse, HttpStatus.OK);
-            
+
             ArgumentCaptor<HttpEntity<String>> entityCaptor = ArgumentCaptor.forClass(HttpEntity.class);
             when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), entityCaptor.capture(), eq(String.class)))
                     .thenReturn(mockResponse);
@@ -835,7 +1047,7 @@ class UpcApiServiceTest {
             // Given
             ReflectionTestUtils.setField(upcApiService, "useStaging", false);
             ResponseEntity<String> mockResponse = new ResponseEntity<>(successfulApiResponse, HttpStatus.OK);
-            
+
             ArgumentCaptor<HttpEntity<String>> entityCaptor = ArgumentCaptor.forClass(HttpEntity.class);
             when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), entityCaptor.capture(), eq(String.class)))
                     .thenReturn(mockResponse);
@@ -856,7 +1068,7 @@ class UpcApiServiceTest {
             String customUserAgent = "TestAgent/2.0 (test@domain.com)";
             ReflectionTestUtils.setField(upcApiService, "userAgent", customUserAgent);
             ResponseEntity<String> mockResponse = new ResponseEntity<>(successfulApiResponse, HttpStatus.OK);
-            
+
             ArgumentCaptor<HttpEntity<String>> entityCaptor = ArgumentCaptor.forClass(HttpEntity.class);
             when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), entityCaptor.capture(), eq(String.class)))
                     .thenReturn(mockResponse);
@@ -868,77 +1080,6 @@ class UpcApiServiceTest {
             HttpEntity<String> capturedEntity = entityCaptor.getValue();
             HttpHeaders headers = capturedEntity.getHeaders();
             assertThat(headers.get("User-Agent")).contains(customUserAgent);
-        }
-    }
-
-    @Nested
-    @DisplayName("Service Availability Edge Cases")
-    class ServiceAvailabilityEdgeCases {
-
-        @Test
-        @DisplayName("Should return false when health check returns null response")
-        void should_ReturnFalse_When_HealthCheckResponseIsNull() {
-            // Given
-            ResponseEntity<String> mockResponse = new ResponseEntity<>(null, HttpStatus.OK);
-            when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
-                    .thenReturn(mockResponse);
-
-            // When
-            boolean result = upcApiService.isServiceAvailable();
-
-            // Then
-            assertThat(result).isTrue(); // 2xx status is still successful even with null body
-        }
-
-        @Test
-        @DisplayName("Should return false for various HTTP error statuses")
-        void should_ReturnFalse_When_HealthCheckReturnsErrorStatuses() {
-            // Test various error statuses
-            HttpStatus[] errorStatuses = {
-                HttpStatus.BAD_REQUEST,
-                HttpStatus.UNAUTHORIZED,
-                HttpStatus.FORBIDDEN,
-                HttpStatus.NOT_FOUND,
-                HttpStatus.INTERNAL_SERVER_ERROR,
-                HttpStatus.BAD_GATEWAY,
-                HttpStatus.SERVICE_UNAVAILABLE
-            };
-
-            for (HttpStatus status : errorStatuses) {
-                // Given
-                ResponseEntity<String> mockResponse = new ResponseEntity<>(status);
-                when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
-                        .thenReturn(mockResponse);
-
-                // When
-                boolean result = upcApiService.isServiceAvailable();
-
-                // Then
-                assertThat(result).isFalse();
-                
-                // Reset mock for next iteration
-                reset(restTemplate);
-            }
-        }
-
-        @Test
-        @DisplayName("Should use correct health check endpoint")
-        void should_UseCorrectHealthCheckEndpoint_When_CheckingServiceAvailability() {
-            // Given
-            ResponseEntity<String> mockResponse = new ResponseEntity<>(successfulApiResponse, HttpStatus.OK);
-            when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
-                    .thenReturn(mockResponse);
-
-            // When
-            upcApiService.isServiceAvailable();
-
-            // Then
-            verify(restTemplate).exchange(
-                    contains("737628064502"), // Specific test product UPC
-                    eq(HttpMethod.GET),
-                    any(HttpEntity.class),
-                    eq(String.class)
-            );
         }
     }
 
