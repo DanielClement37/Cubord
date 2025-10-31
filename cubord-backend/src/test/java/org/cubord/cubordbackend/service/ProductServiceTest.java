@@ -22,8 +22,7 @@ import java.time.LocalDateTime;
 import java.util.*;
 
 import static org.assertj.core.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -105,15 +104,15 @@ class ProductServiceTest {
 
     // Helper method to set up authentication behavior
     private void setupValidAuthentication() {
-        when(userService.getCurrentUser(validToken)).thenReturn(testUser);
+        when(userService.getCurrentUser(eq(validToken))).thenReturn(testUser);
     }
 
     private void setupInvalidAuthentication() {
-        when(userService.getCurrentUser(invalidToken)).thenThrow(new NotFoundException("User not found"));
+        when(userService.getCurrentUser(eq(invalidToken))).thenThrow(new NotFoundException("User not found"));
     }
 
     private void setupAdminAuthentication() {
-        when(userService.getCurrentUser(validToken)).thenReturn(adminUser);
+        when(userService.getCurrentUser(eq(validToken))).thenReturn(adminUser);
     }
 
     @Nested
@@ -127,8 +126,8 @@ class ProductServiceTest {
                     .isInstanceOf(ValidationException.class)
                     .hasMessageContaining("token cannot be null");
 
-            verify(userService, never()).getCurrentUser(any());
-            verify(productRepository, never()).save(any());
+            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
+            verify(productRepository, never()).save(any(Product.class));
         }
 
         @Test
@@ -138,8 +137,8 @@ class ProductServiceTest {
                     .isInstanceOf(ValidationException.class)
                     .hasMessageContaining("token cannot be null");
 
-            verify(userService, never()).getCurrentUser(any());
-            verify(productRepository, never()).findById(any());
+            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
+            verify(productRepository, never()).findById(any(UUID.class));
         }
 
         @Test
@@ -149,8 +148,8 @@ class ProductServiceTest {
                     .isInstanceOf(ValidationException.class)
                     .hasMessageContaining("token cannot be null");
 
-            verify(userService, never()).getCurrentUser(any());
-            verify(productRepository, never()).delete(any());
+            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
+            verify(productRepository, never()).delete(any(Product.class));
         }
 
         @Test
@@ -160,8 +159,8 @@ class ProductServiceTest {
                     .isInstanceOf(ValidationException.class)
                     .hasMessageContaining("Product request");
 
-            verify(userService, never()).getCurrentUser(any());
-            verify(productRepository, never()).save(any());
+            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
+            verify(productRepository, never()).save(any(Product.class));
         }
 
         @Test
@@ -173,8 +172,8 @@ class ProductServiceTest {
                     .isInstanceOf(NotFoundException.class)
                     .hasMessage("User not found");
 
-            verify(userService).getCurrentUser(invalidToken);
-            verify(productRepository, never()).save(any());
+            verify(userService).getCurrentUser(eq(invalidToken));
+            verify(productRepository, never()).save(any(Product.class));
         }
     }
 
@@ -187,9 +186,10 @@ class ProductServiceTest {
         void shouldCreateProductManuallyWhenUpcDoesntExist() {
             // Given
             setupValidAuthentication();
-            when(productRepository.findByUpc(testProductRequest.getUpc())).thenReturn(Optional.empty());
+            when(productRepository.findByUpc(eq(testProductRequest.getUpc()))).thenReturn(Optional.empty());
             when(productRepository.save(any(Product.class))).thenReturn(testProduct);
-            when(upcApiService.fetchProductData(anyString())).thenThrow(new RuntimeException("API unavailable"));
+            when(upcApiService.fetchProductData(eq(testProductRequest.getUpc())))
+                    .thenThrow(new RuntimeException("API unavailable"));
 
             // When
             ProductResponse response = productService.createProduct(testProductRequest, validToken);
@@ -197,8 +197,8 @@ class ProductServiceTest {
             // Then
             assertThat(response).isNotNull();
             assertThat(response.getUpc()).isEqualTo(testProductRequest.getUpc());
-            verify(userService).getCurrentUser(validToken);
-            verify(productRepository).findByUpc(testProductRequest.getUpc());
+            verify(userService).getCurrentUser(eq(validToken));
+            verify(productRepository).findByUpc(eq(testProductRequest.getUpc()));
             verify(productRepository).save(any(Product.class));
         }
 
@@ -207,16 +207,16 @@ class ProductServiceTest {
         void shouldThrowConflictExceptionWhenUpcExists() {
             // Given
             setupValidAuthentication();
-            when(productRepository.findByUpc(testProductRequest.getUpc())).thenReturn(Optional.of(testProduct));
+            when(productRepository.findByUpc(eq(testProductRequest.getUpc()))).thenReturn(Optional.of(testProduct));
 
             // When & Then
             assertThatThrownBy(() -> productService.createProduct(testProductRequest, validToken))
                     .isInstanceOf(ConflictException.class)
                     .hasMessageContaining("Product with UPC '" + testProductRequest.getUpc() + "' already exists");
 
-            verify(userService).getCurrentUser(validToken);
-            verify(productRepository).findByUpc(testProductRequest.getUpc());
-            verify(productRepository, never()).save(any());
+            verify(userService).getCurrentUser(eq(validToken));
+            verify(productRepository).findByUpc(eq(testProductRequest.getUpc()));
+            verify(productRepository, never()).save(any(Product.class));
         }
 
         @Test
@@ -224,7 +224,7 @@ class ProductServiceTest {
         void shouldGetProductByIdSuccessfully() {
             // Given
             setupValidAuthentication();
-            when(productRepository.findById(productId)).thenReturn(Optional.of(testProduct));
+            when(productRepository.findById(eq(productId))).thenReturn(Optional.of(testProduct));
 
             // When
             ProductResponse response = productService.getProductById(productId, validToken);
@@ -232,8 +232,8 @@ class ProductServiceTest {
             // Then
             assertThat(response).isNotNull();
             assertThat(response.getId()).isEqualTo(productId);
-            verify(userService).getCurrentUser(validToken);
-            verify(productRepository).findById(productId);
+            verify(userService).getCurrentUser(eq(validToken));
+            verify(productRepository).findById(eq(productId));
         }
 
         @Test
@@ -243,8 +243,8 @@ class ProductServiceTest {
                     .isInstanceOf(ValidationException.class)
                     .hasMessageContaining("Product ID");
 
-            verify(userService, never()).getCurrentUser(any());
-            verify(productRepository, never()).findById(any());
+            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
+            verify(productRepository, never()).findById(any(UUID.class));
         }
 
         @Test
@@ -252,15 +252,15 @@ class ProductServiceTest {
         void shouldThrowNotFoundExceptionWhenProductDoesntExist() {
             // Given
             setupValidAuthentication();
-            when(productRepository.findById(productId)).thenReturn(Optional.empty());
+            when(productRepository.findById(eq(productId))).thenReturn(Optional.empty());
 
             // When & Then
             assertThatThrownBy(() -> productService.getProductById(productId, validToken))
                     .isInstanceOf(NotFoundException.class)
                     .hasMessage("Product not found");
 
-            verify(userService).getCurrentUser(validToken);
-            verify(productRepository).findById(productId);
+            verify(userService).getCurrentUser(eq(validToken));
+            verify(productRepository).findById(eq(productId));
         }
 
         @Test
@@ -269,7 +269,7 @@ class ProductServiceTest {
             // Given
             setupValidAuthentication();
             String upc = "123456789012";
-            when(productRepository.findByUpc(upc)).thenReturn(Optional.of(testProduct));
+            when(productRepository.findByUpc(eq(upc))).thenReturn(Optional.of(testProduct));
 
             // When
             ProductResponse response = productService.getProductByUpc(upc, validToken);
@@ -277,8 +277,8 @@ class ProductServiceTest {
             // Then
             assertThat(response).isNotNull();
             assertThat(response.getUpc()).isEqualTo(upc);
-            verify(userService).getCurrentUser(validToken);
-            verify(productRepository).findByUpc(upc);
+            verify(userService).getCurrentUser(eq(validToken));
+            verify(productRepository).findByUpc(eq(upc));
         }
 
         @Test
@@ -288,8 +288,8 @@ class ProductServiceTest {
                     .isInstanceOf(ValidationException.class)
                     .hasMessageContaining("UPC");
 
-            verify(userService, never()).getCurrentUser(any());
-            verify(productRepository, never()).findByUpc(any());
+            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
+            verify(productRepository, never()).findByUpc(any(String.class));
         }
 
         @Test
@@ -298,15 +298,15 @@ class ProductServiceTest {
             // Given
             setupValidAuthentication();
             String upc = "999999999999";
-            when(productRepository.findByUpc(upc)).thenReturn(Optional.empty());
+            when(productRepository.findByUpc(eq(upc))).thenReturn(Optional.empty());
 
             // When & Then
             assertThatThrownBy(() -> productService.getProductByUpc(upc, validToken))
                     .isInstanceOf(NotFoundException.class)
                     .hasMessage("Product not found");
 
-            verify(userService).getCurrentUser(validToken);
-            verify(productRepository).findByUpc(upc);
+            verify(userService).getCurrentUser(eq(validToken));
+            verify(productRepository).findByUpc(eq(upc));
         }
 
         @Test
@@ -314,7 +314,7 @@ class ProductServiceTest {
         void shouldUpdateProductSuccessfully() {
             // Given
             setupAdminAuthentication();
-            when(productRepository.findById(productId)).thenReturn(Optional.of(testProduct));
+            when(productRepository.findById(eq(productId))).thenReturn(Optional.of(testProduct));
             when(productRepository.save(any(Product.class))).thenReturn(testProduct);
 
             // When
@@ -322,8 +322,8 @@ class ProductServiceTest {
 
             // Then
             assertThat(response).isNotNull();
-            verify(userService).getCurrentUser(validToken);
-            verify(productRepository).findById(productId);
+            verify(userService).getCurrentUser(eq(validToken));
+            verify(productRepository).findById(eq(productId));
             verify(productRepository).save(any(Product.class));
         }
 
@@ -334,8 +334,8 @@ class ProductServiceTest {
                     .isInstanceOf(ValidationException.class)
                     .hasMessageContaining("Update request");
 
-            verify(userService, never()).getCurrentUser(any());
-            verify(productRepository, never()).save(any());
+            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
+            verify(productRepository, never()).save(any(Product.class));
         }
 
         @Test
@@ -343,16 +343,16 @@ class ProductServiceTest {
         void shouldThrowNotFoundExceptionWhenProductNotFoundForUpdate() {
             // Given
             setupAdminAuthentication();
-            when(productRepository.findById(productId)).thenReturn(Optional.empty());
+            when(productRepository.findById(eq(productId))).thenReturn(Optional.empty());
 
             // When & Then
             assertThatThrownBy(() -> productService.updateProduct(productId, testProductUpdateRequest, validToken))
                     .isInstanceOf(NotFoundException.class)
                     .hasMessage("Product not found");
 
-            verify(userService).getCurrentUser(validToken);
-            verify(productRepository).findById(productId);
-            verify(productRepository, never()).save(any());
+            verify(userService).getCurrentUser(eq(validToken));
+            verify(productRepository).findById(eq(productId));
+            verify(productRepository, never()).save(any(Product.class));
         }
 
         @Test
@@ -360,15 +360,15 @@ class ProductServiceTest {
         void shouldDeleteProductSuccessfully() {
             // Given
             setupAdminAuthentication();
-            when(productRepository.findById(productId)).thenReturn(Optional.of(testProduct));
+            when(productRepository.findById(eq(productId))).thenReturn(Optional.of(testProduct));
 
             // When
             productService.deleteProduct(productId, validToken);
 
             // Then
-            verify(userService).getCurrentUser(validToken);
-            verify(productRepository).findById(productId);
-            verify(productRepository).delete(testProduct);
+            verify(userService).getCurrentUser(eq(validToken));
+            verify(productRepository).findById(eq(productId));
+            verify(productRepository).delete(eq(testProduct));
         }
 
         @Test
@@ -376,16 +376,16 @@ class ProductServiceTest {
         void shouldThrowNotFoundExceptionWhenProductNotFoundForDeletion() {
             // Given
             setupAdminAuthentication();
-            when(productRepository.findById(productId)).thenReturn(Optional.empty());
+            when(productRepository.findById(eq(productId))).thenReturn(Optional.empty());
 
             // When & Then
             assertThatThrownBy(() -> productService.deleteProduct(productId, validToken))
                     .isInstanceOf(NotFoundException.class)
                     .hasMessage("Product not found");
 
-            verify(userService).getCurrentUser(validToken);
-            verify(productRepository).findById(productId);
-            verify(productRepository, never()).delete(any());
+            verify(userService).getCurrentUser(eq(validToken));
+            verify(productRepository).findById(eq(productId));
+            verify(productRepository, never()).delete(any(Product.class));
         }
 
         @Test
@@ -393,8 +393,9 @@ class ProductServiceTest {
         void shouldThrowDataIntegrityExceptionWhenSaveOperationFails() {
             // Given
             setupValidAuthentication();
-            when(productRepository.findByUpc(testProductRequest.getUpc())).thenReturn(Optional.empty());
-            when(upcApiService.fetchProductData(anyString())).thenThrow(new RuntimeException("API unavailable"));
+            when(productRepository.findByUpc(eq(testProductRequest.getUpc()))).thenReturn(Optional.empty());
+            when(upcApiService.fetchProductData(eq(testProductRequest.getUpc())))
+                    .thenThrow(new RuntimeException("API unavailable"));
             when(productRepository.save(any(Product.class)))
                     .thenThrow(new RuntimeException("Database constraint violation"));
 
@@ -403,7 +404,7 @@ class ProductServiceTest {
                     .isInstanceOf(DataIntegrityException.class)
                     .hasMessageContaining("Failed to save product");
 
-            verify(userService).getCurrentUser(validToken);
+            verify(userService).getCurrentUser(eq(validToken));
             verify(productRepository).save(any(Product.class));
         }
     }
@@ -418,16 +419,17 @@ class ProductServiceTest {
             // Given
             setupValidAuthentication();
             String searchTerm = "test";
-            when(productRepository.findByNameContainingIgnoreCase(searchTerm)).thenReturn(List.of(testProduct));
+            when(productRepository.findByNameContainingIgnoreCase(eq(searchTerm)))
+                    .thenReturn(List.of(testProduct));
 
             // When
             List<ProductResponse> responses = productService.searchProductsByName(searchTerm, validToken);
 
             // Then
             assertThat(responses).hasSize(1);
-            assertThat(responses.get(0).getName()).isEqualTo(testProduct.getName());
-            verify(userService).getCurrentUser(validToken);
-            verify(productRepository).findByNameContainingIgnoreCase(searchTerm);
+            assertThat(responses.getFirst().getName()).isEqualTo(testProduct.getName());
+            verify(userService).getCurrentUser(eq(validToken));
+            verify(productRepository).findByNameContainingIgnoreCase(eq(searchTerm));
         }
 
         @Test
@@ -437,8 +439,8 @@ class ProductServiceTest {
                     .isInstanceOf(ValidationException.class)
                     .hasMessageContaining("Search term");
 
-            verify(userService, never()).getCurrentUser(any());
-            verify(productRepository, never()).findByNameContainingIgnoreCase(any());
+            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
+            verify(productRepository, never()).findByNameContainingIgnoreCase(any(String.class));
         }
 
         @Test
@@ -448,8 +450,8 @@ class ProductServiceTest {
                     .isInstanceOf(ValidationException.class)
                     .hasMessageContaining("Search term");
 
-            verify(userService, never()).getCurrentUser(any());
-            verify(productRepository, never()).findByNameContainingIgnoreCase(any());
+            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
+            verify(productRepository, never()).findByNameContainingIgnoreCase(any(String.class));
         }
 
         @Test
@@ -458,16 +460,16 @@ class ProductServiceTest {
             // Given
             setupValidAuthentication();
             String category = "Test Category";
-            when(productRepository.findByCategory(category)).thenReturn(List.of(testProduct));
+            when(productRepository.findByCategory(eq(category))).thenReturn(List.of(testProduct));
 
             // When
             List<ProductResponse> responses = productService.getProductsByCategory(category, validToken);
 
             // Then
             assertThat(responses).hasSize(1);
-            assertThat(responses.get(0).getCategory()).isEqualTo(category);
-            verify(userService).getCurrentUser(validToken);
-            verify(productRepository).findByCategory(category);
+            assertThat(responses.getFirst().getCategory()).isEqualTo(category);
+            verify(userService).getCurrentUser(eq(validToken));
+            verify(productRepository).findByCategory(eq(category));
         }
 
         @Test
@@ -477,8 +479,8 @@ class ProductServiceTest {
                     .isInstanceOf(ValidationException.class)
                     .hasMessageContaining("Category");
 
-            verify(userService, never()).getCurrentUser(any());
-            verify(productRepository, never()).findByCategory(any());
+            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
+            verify(productRepository, never()).findByCategory(any(String.class));
         }
 
         @Test
@@ -487,16 +489,16 @@ class ProductServiceTest {
             // Given
             setupValidAuthentication();
             String brand = "Test Brand";
-            when(productRepository.findByBrand(brand)).thenReturn(List.of(testProduct));
+            when(productRepository.findByBrand(eq(brand))).thenReturn(List.of(testProduct));
 
             // When
             List<ProductResponse> responses = productService.getProductsByBrand(brand, validToken);
 
             // Then
             assertThat(responses).hasSize(1);
-            assertThat(responses.get(0).getBrand()).isEqualTo(brand);
-            verify(userService).getCurrentUser(validToken);
-            verify(productRepository).findByBrand(brand);
+            assertThat(responses.getFirst().getBrand()).isEqualTo(brand);
+            verify(userService).getCurrentUser(eq(validToken));
+            verify(productRepository).findByBrand(eq(brand));
         }
 
         @Test
@@ -506,8 +508,8 @@ class ProductServiceTest {
                     .isInstanceOf(ValidationException.class)
                     .hasMessageContaining("Brand");
 
-            verify(userService, never()).getCurrentUser(any());
-            verify(productRepository, never()).findByBrand(any());
+            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
+            verify(productRepository, never()).findByBrand(any(String.class));
         }
 
         @Test
@@ -517,16 +519,16 @@ class ProductServiceTest {
             setupValidAuthentication();
             Pageable pageable = PageRequest.of(0, 10);
             Page<Product> productPage = new PageImpl<>(List.of(testProduct));
-            when(productRepository.findAll(pageable)).thenReturn(productPage);
+            when(productRepository.findAll(eq(pageable))).thenReturn(productPage);
 
             // When
             Page<ProductResponse> responses = productService.getAllProducts(pageable, validToken);
 
             // Then
             assertThat(responses.getContent()).hasSize(1);
-            assertThat(responses.getContent().get(0).getId()).isEqualTo(productId);
-            verify(userService).getCurrentUser(validToken);
-            verify(productRepository).findAll(pageable);
+            assertThat(responses.getContent().getFirst().getId()).isEqualTo(productId);
+            verify(userService).getCurrentUser(eq(validToken));
+            verify(productRepository).findAll(eq(pageable));
         }
 
         @Test
@@ -536,7 +538,7 @@ class ProductServiceTest {
                     .isInstanceOf(ValidationException.class)
                     .hasMessageContaining("Pageable");
 
-            verify(userService, never()).getCurrentUser(any());
+            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
             verify(productRepository, never()).findAll(any(Pageable.class));
         }
     }
@@ -551,7 +553,7 @@ class ProductServiceTest {
             // Given
             setupAdminAuthentication();
             Map<String, Object> patchData = Map.of("name", "Patched Product");
-            when(productRepository.findById(productId)).thenReturn(Optional.of(testProduct));
+            when(productRepository.findById(eq(productId))).thenReturn(Optional.of(testProduct));
             when(productRepository.save(any(Product.class))).thenReturn(testProduct);
 
             // When
@@ -559,8 +561,8 @@ class ProductServiceTest {
 
             // Then
             assertThat(response).isNotNull();
-            verify(userService).getCurrentUser(validToken);
-            verify(productRepository).findById(productId);
+            verify(userService).getCurrentUser(eq(validToken));
+            verify(productRepository).findById(eq(productId));
             verify(productRepository).save(any(Product.class));
         }
 
@@ -571,8 +573,8 @@ class ProductServiceTest {
                     .isInstanceOf(ValidationException.class)
                     .hasMessageContaining("Patch data");
 
-            verify(userService, never()).getCurrentUser(any());
-            verify(productRepository, never()).save(any());
+            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
+            verify(productRepository, never()).save(any(Product.class));
         }
 
         @Test
@@ -584,8 +586,8 @@ class ProductServiceTest {
                     .isInstanceOf(ValidationException.class)
                     .hasMessageContaining("Patch data cannot be empty");
 
-            verify(userService, never()).getCurrentUser(any());
-            verify(productRepository, never()).save(any());
+            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
+            verify(productRepository, never()).save(any(Product.class));
         }
 
         @Test
@@ -594,16 +596,16 @@ class ProductServiceTest {
             // Given
             setupAdminAuthentication();
             Map<String, Object> patchData = Map.of("name", "Patched Product");
-            when(productRepository.findById(productId)).thenReturn(Optional.empty());
+            when(productRepository.findById(eq(productId))).thenReturn(Optional.empty());
 
             // When & Then
             assertThatThrownBy(() -> productService.patchProduct(productId, patchData, validToken))
                     .isInstanceOf(NotFoundException.class)
                     .hasMessage("Product not found");
 
-            verify(userService).getCurrentUser(validToken);
-            verify(productRepository).findById(productId);
-            verify(productRepository, never()).save(any());
+            verify(userService).getCurrentUser(eq(validToken));
+            verify(productRepository).findById(eq(productId));
+            verify(productRepository, never()).save(any(Product.class));
         }
     }
 
@@ -616,16 +618,17 @@ class ProductServiceTest {
         void shouldAllowRegularUserToCreateProduct() {
             // Given
             setupValidAuthentication();
-            when(productRepository.findByUpc(testProductRequest.getUpc())).thenReturn(Optional.empty());
+            when(productRepository.findByUpc(eq(testProductRequest.getUpc()))).thenReturn(Optional.empty());
             when(productRepository.save(any(Product.class))).thenReturn(testProduct);
-            when(upcApiService.fetchProductData(anyString())).thenThrow(new RuntimeException("API unavailable"));
+            when(upcApiService.fetchProductData(eq(testProductRequest.getUpc())))
+                    .thenThrow(new RuntimeException("API unavailable"));
 
             // When
             ProductResponse response = productService.createProduct(testProductRequest, validToken);
 
             // Then
             assertThat(response).isNotNull();
-            verify(userService).getCurrentUser(validToken);
+            verify(userService).getCurrentUser(eq(validToken));
             verify(productRepository).save(any(Product.class));
         }
 
@@ -634,16 +637,17 @@ class ProductServiceTest {
         void shouldAllowAdminToCreateProduct() {
             // Given
             setupAdminAuthentication();
-            when(productRepository.findByUpc(testProductRequest.getUpc())).thenReturn(Optional.empty());
+            when(productRepository.findByUpc(eq(testProductRequest.getUpc()))).thenReturn(Optional.empty());
             when(productRepository.save(any(Product.class))).thenReturn(testProduct);
-            when(upcApiService.fetchProductData(anyString())).thenThrow(new RuntimeException("API unavailable"));
+            when(upcApiService.fetchProductData(eq(testProductRequest.getUpc())))
+                    .thenThrow(new RuntimeException("API unavailable"));
 
             // When
             ProductResponse response = productService.createProduct(testProductRequest, validToken);
 
             // Then
             assertThat(response).isNotNull();
-            verify(userService).getCurrentUser(validToken);
+            verify(userService).getCurrentUser(eq(validToken));
             verify(productRepository).save(any(Product.class));
         }
 
@@ -652,7 +656,7 @@ class ProductServiceTest {
         void shouldAllowAdminToUpdateProduct() {
             // Given
             setupAdminAuthentication();
-            when(productRepository.findById(productId)).thenReturn(Optional.of(testProduct));
+            when(productRepository.findById(eq(productId))).thenReturn(Optional.of(testProduct));
             when(productRepository.save(any(Product.class))).thenReturn(testProduct);
 
             // When
@@ -660,7 +664,7 @@ class ProductServiceTest {
 
             // Then
             assertThat(response).isNotNull();
-            verify(userService).getCurrentUser(validToken);
+            verify(userService).getCurrentUser(eq(validToken));
             verify(productRepository).save(any(Product.class));
         }
 
@@ -675,9 +679,9 @@ class ProductServiceTest {
                     .isInstanceOf(InsufficientPermissionException.class)
                     .hasMessageContaining("Only administrators can update products");
 
-            verify(userService).getCurrentUser(validToken);
-            verify(productRepository, never()).findById(any());
-            verify(productRepository, never()).save(any());
+            verify(userService).getCurrentUser(eq(validToken));
+            verify(productRepository, never()).findById(any(UUID.class));
+            verify(productRepository, never()).save(any(Product.class));
         }
 
         @Test
@@ -685,14 +689,14 @@ class ProductServiceTest {
         void shouldAllowAdminToDeleteProduct() {
             // Given
             setupAdminAuthentication();
-            when(productRepository.findById(productId)).thenReturn(Optional.of(testProduct));
+            when(productRepository.findById(eq(productId))).thenReturn(Optional.of(testProduct));
 
             // When
             productService.deleteProduct(productId, validToken);
 
             // Then
-            verify(userService).getCurrentUser(validToken);
-            verify(productRepository).delete(testProduct);
+            verify(userService).getCurrentUser(eq(validToken));
+            verify(productRepository).delete(eq(testProduct));
         }
 
         @Test
@@ -706,9 +710,9 @@ class ProductServiceTest {
                     .isInstanceOf(InsufficientPermissionException.class)
                     .hasMessageContaining("Only administrators can delete products");
 
-            verify(userService).getCurrentUser(validToken);
-            verify(productRepository, never()).findById(any());
-            verify(productRepository, never()).delete(any());
+            verify(userService).getCurrentUser(eq(validToken));
+            verify(productRepository, never()).findById(any(UUID.class));
+            verify(productRepository, never()).delete(any(Product.class));
         }
 
         @Test
@@ -717,7 +721,7 @@ class ProductServiceTest {
             // Given
             setupAdminAuthentication();
             Map<String, Object> patchData = Map.of("name", "Patched Product");
-            when(productRepository.findById(productId)).thenReturn(Optional.of(testProduct));
+            when(productRepository.findById(eq(productId))).thenReturn(Optional.of(testProduct));
             when(productRepository.save(any(Product.class))).thenReturn(testProduct);
 
             // When
@@ -725,7 +729,7 @@ class ProductServiceTest {
 
             // Then
             assertThat(response).isNotNull();
-            verify(userService).getCurrentUser(validToken);
+            verify(userService).getCurrentUser(eq(validToken));
             verify(productRepository).save(any(Product.class));
         }
 
@@ -741,9 +745,9 @@ class ProductServiceTest {
                     .isInstanceOf(InsufficientPermissionException.class)
                     .hasMessageContaining("Only administrators can update products");
 
-            verify(userService).getCurrentUser(validToken);
-            verify(productRepository, never()).findById(any());
-            verify(productRepository, never()).save(any());
+            verify(userService).getCurrentUser(eq(validToken));
+            verify(productRepository, never()).findById(any(UUID.class));
+            verify(productRepository, never()).save(any(Product.class));
         }
 
         @Test
@@ -751,15 +755,15 @@ class ProductServiceTest {
         void shouldAllowRegularUserToReadProduct() {
             // Given
             setupValidAuthentication();
-            when(productRepository.findById(productId)).thenReturn(Optional.of(testProduct));
+            when(productRepository.findById(eq(productId))).thenReturn(Optional.of(testProduct));
 
             // When
             ProductResponse response = productService.getProductById(productId, validToken);
 
             // Then
             assertThat(response).isNotNull();
-            verify(userService).getCurrentUser(validToken);
-            verify(productRepository).findById(productId);
+            verify(userService).getCurrentUser(eq(validToken));
+            verify(productRepository).findById(eq(productId));
         }
     }
 }
