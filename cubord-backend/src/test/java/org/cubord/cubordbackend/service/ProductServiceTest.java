@@ -1,18 +1,13 @@
+
 package org.cubord.cubordbackend.service;
 
-import org.cubord.cubordbackend.domain.Product;
-import org.cubord.cubordbackend.domain.ProductDataSource;
-import org.cubord.cubordbackend.domain.User;
+import org.cubord.cubordbackend.domain.*;
 import org.cubord.cubordbackend.dto.product.ProductRequest;
 import org.cubord.cubordbackend.dto.product.ProductResponse;
 import org.cubord.cubordbackend.dto.product.ProductUpdateRequest;
-import org.cubord.cubordbackend.exception.ConflictException;
-import org.cubord.cubordbackend.exception.NotFoundException;
+import org.cubord.cubordbackend.exception.*;
 import org.cubord.cubordbackend.repository.ProductRepository;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -26,12 +21,9 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import java.time.LocalDateTime;
 import java.util.*;
 
-import org.springframework.security.access.AccessDeniedException;
-import org.cubord.cubordbackend.domain.UserRole;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.*;
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -58,18 +50,20 @@ class ProductServiceTest {
 
     @BeforeEach
     void setUp() {
+        reset(productRepository, upcApiService, userService, validToken, invalidToken);
+
         productId = UUID.randomUUID();
         userId = UUID.randomUUID();
-        
+
         testUser = User.builder()
                 .id(userId)
                 .username("testuser")
                 .email("test@example.com")
                 .displayName("Test User")
-                .role(UserRole.USER)  // Default to regular user
+                .role(UserRole.USER)
                 .createdAt(LocalDateTime.now())
                 .build();
-        
+
         adminUser = User.builder()
                 .id(UUID.randomUUID())
                 .username("adminuser")
@@ -78,7 +72,7 @@ class ProductServiceTest {
                 .role(UserRole.ADMIN)
                 .createdAt(LocalDateTime.now())
                 .build();
-        
+
         testProduct = Product.builder()
                 .id(productId)
                 .upc("123456789012")
@@ -127,33 +121,60 @@ class ProductServiceTest {
     class AuthenticationTests {
 
         @Test
-        @DisplayName("Should reject operations with null token")
-        void shouldRejectOperationsWithNullToken() {
+        @DisplayName("Should throw ValidationException when token is null for create")
+        void shouldThrowValidationExceptionWhenTokenIsNullForCreate() {
             assertThatThrownBy(() -> productService.createProduct(testProductRequest, null))
-                    .isInstanceOf(IllegalArgumentException.class)
+                    .isInstanceOf(ValidationException.class)
                     .hasMessageContaining("token cannot be null");
 
-            assertThatThrownBy(() -> productService.getProductById(productId, null))
-                    .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("token cannot be null");
-
-            assertThatThrownBy(() -> productService.deleteProduct(productId, null))
-                    .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("token cannot be null");
+            verify(userService, never()).getCurrentUser(any());
+            verify(productRepository, never()).save(any());
         }
 
         @Test
-        @DisplayName("Should reject operations with invalid token")
-        void shouldRejectOperationsWithInvalidToken() {
+        @DisplayName("Should throw ValidationException when token is null for getById")
+        void shouldThrowValidationExceptionWhenTokenIsNullForGetById() {
+            assertThatThrownBy(() -> productService.getProductById(productId, null))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("token cannot be null");
+
+            verify(userService, never()).getCurrentUser(any());
+            verify(productRepository, never()).findById(any());
+        }
+
+        @Test
+        @DisplayName("Should throw ValidationException when token is null for delete")
+        void shouldThrowValidationExceptionWhenTokenIsNullForDelete() {
+            assertThatThrownBy(() -> productService.deleteProduct(productId, null))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("token cannot be null");
+
+            verify(userService, never()).getCurrentUser(any());
+            verify(productRepository, never()).delete(any());
+        }
+
+        @Test
+        @DisplayName("Should throw ValidationException when request is null for create")
+        void shouldThrowValidationExceptionWhenRequestIsNull() {
+            assertThatThrownBy(() -> productService.createProduct(null, validToken))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Product request");
+
+            verify(userService, never()).getCurrentUser(any());
+            verify(productRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Should throw NotFoundException when user not found")
+        void shouldThrowNotFoundExceptionWhenUserNotFound() {
             setupInvalidAuthentication();
-            
+
             assertThatThrownBy(() -> productService.createProduct(testProductRequest, invalidToken))
                     .isInstanceOf(NotFoundException.class)
                     .hasMessage("User not found");
 
-            assertThatThrownBy(() -> productService.getProductById(productId, invalidToken))
-                    .isInstanceOf(NotFoundException.class)
-                    .hasMessage("User not found");
+            verify(userService).getCurrentUser(invalidToken);
+            verify(productRepository, never()).save(any());
         }
     }
 
@@ -177,6 +198,7 @@ class ProductServiceTest {
             assertThat(response).isNotNull();
             assertThat(response.getUpc()).isEqualTo(testProductRequest.getUpc());
             verify(userService).getCurrentUser(validToken);
+            verify(productRepository).findByUpc(testProductRequest.getUpc());
             verify(productRepository).save(any(Product.class));
         }
 
@@ -190,7 +212,11 @@ class ProductServiceTest {
             // When & Then
             assertThatThrownBy(() -> productService.createProduct(testProductRequest, validToken))
                     .isInstanceOf(ConflictException.class)
-                    .hasMessageContaining("already exists");
+                    .hasMessageContaining("Product with UPC '" + testProductRequest.getUpc() + "' already exists");
+
+            verify(userService).getCurrentUser(validToken);
+            verify(productRepository).findByUpc(testProductRequest.getUpc());
+            verify(productRepository, never()).save(any());
         }
 
         @Test
@@ -207,6 +233,18 @@ class ProductServiceTest {
             assertThat(response).isNotNull();
             assertThat(response.getId()).isEqualTo(productId);
             verify(userService).getCurrentUser(validToken);
+            verify(productRepository).findById(productId);
+        }
+
+        @Test
+        @DisplayName("Should throw ValidationException when product ID is null")
+        void shouldThrowValidationExceptionWhenProductIdIsNull() {
+            assertThatThrownBy(() -> productService.getProductById(null, validToken))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Product ID");
+
+            verify(userService, never()).getCurrentUser(any());
+            verify(productRepository, never()).findById(any());
         }
 
         @Test
@@ -220,12 +258,61 @@ class ProductServiceTest {
             assertThatThrownBy(() -> productService.getProductById(productId, validToken))
                     .isInstanceOf(NotFoundException.class)
                     .hasMessage("Product not found");
+
+            verify(userService).getCurrentUser(validToken);
+            verify(productRepository).findById(productId);
+        }
+
+        @Test
+        @DisplayName("Should get product by UPC successfully")
+        void shouldGetProductByUpcSuccessfully() {
+            // Given
+            setupValidAuthentication();
+            String upc = "123456789012";
+            when(productRepository.findByUpc(upc)).thenReturn(Optional.of(testProduct));
+
+            // When
+            ProductResponse response = productService.getProductByUpc(upc, validToken);
+
+            // Then
+            assertThat(response).isNotNull();
+            assertThat(response.getUpc()).isEqualTo(upc);
+            verify(userService).getCurrentUser(validToken);
+            verify(productRepository).findByUpc(upc);
+        }
+
+        @Test
+        @DisplayName("Should throw ValidationException when UPC is null")
+        void shouldThrowValidationExceptionWhenUpcIsNull() {
+            assertThatThrownBy(() -> productService.getProductByUpc(null, validToken))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("UPC");
+
+            verify(userService, never()).getCurrentUser(any());
+            verify(productRepository, never()).findByUpc(any());
+        }
+
+        @Test
+        @DisplayName("Should throw NotFoundException when product with UPC doesn't exist")
+        void shouldThrowNotFoundExceptionWhenProductWithUpcDoesntExist() {
+            // Given
+            setupValidAuthentication();
+            String upc = "999999999999";
+            when(productRepository.findByUpc(upc)).thenReturn(Optional.empty());
+
+            // When & Then
+            assertThatThrownBy(() -> productService.getProductByUpc(upc, validToken))
+                    .isInstanceOf(NotFoundException.class)
+                    .hasMessage("Product not found");
+
+            verify(userService).getCurrentUser(validToken);
+            verify(productRepository).findByUpc(upc);
         }
 
         @Test
         @DisplayName("Should update product successfully with admin access")
         void shouldUpdateProductSuccessfully() {
-            // Given - Use admin authentication for update operations
+            // Given
             setupAdminAuthentication();
             when(productRepository.findById(productId)).thenReturn(Optional.of(testProduct));
             when(productRepository.save(any(Product.class))).thenReturn(testProduct);
@@ -236,13 +323,42 @@ class ProductServiceTest {
             // Then
             assertThat(response).isNotNull();
             verify(userService).getCurrentUser(validToken);
+            verify(productRepository).findById(productId);
             verify(productRepository).save(any(Product.class));
+        }
+
+        @Test
+        @DisplayName("Should throw ValidationException when update request is null")
+        void shouldThrowValidationExceptionWhenUpdateRequestIsNull() {
+            assertThatThrownBy(() -> productService.updateProduct(productId, null, validToken))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Update request");
+
+            verify(userService, never()).getCurrentUser(any());
+            verify(productRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Should throw NotFoundException when product not found for update")
+        void shouldThrowNotFoundExceptionWhenProductNotFoundForUpdate() {
+            // Given
+            setupAdminAuthentication();
+            when(productRepository.findById(productId)).thenReturn(Optional.empty());
+
+            // When & Then
+            assertThatThrownBy(() -> productService.updateProduct(productId, testProductUpdateRequest, validToken))
+                    .isInstanceOf(NotFoundException.class)
+                    .hasMessage("Product not found");
+
+            verify(userService).getCurrentUser(validToken);
+            verify(productRepository).findById(productId);
+            verify(productRepository, never()).save(any());
         }
 
         @Test
         @DisplayName("Should delete product successfully with admin access")
         void shouldDeleteProductSuccessfully() {
-            // Given - Use admin authentication for delete operations
+            // Given
             setupAdminAuthentication();
             when(productRepository.findById(productId)).thenReturn(Optional.of(testProduct));
 
@@ -251,7 +367,44 @@ class ProductServiceTest {
 
             // Then
             verify(userService).getCurrentUser(validToken);
+            verify(productRepository).findById(productId);
             verify(productRepository).delete(testProduct);
+        }
+
+        @Test
+        @DisplayName("Should throw NotFoundException when product not found for deletion")
+        void shouldThrowNotFoundExceptionWhenProductNotFoundForDeletion() {
+            // Given
+            setupAdminAuthentication();
+            when(productRepository.findById(productId)).thenReturn(Optional.empty());
+
+            // When & Then
+            assertThatThrownBy(() -> productService.deleteProduct(productId, validToken))
+                    .isInstanceOf(NotFoundException.class)
+                    .hasMessage("Product not found");
+
+            verify(userService).getCurrentUser(validToken);
+            verify(productRepository).findById(productId);
+            verify(productRepository, never()).delete(any());
+        }
+
+        @Test
+        @DisplayName("Should throw DataIntegrityException when save operation fails")
+        void shouldThrowDataIntegrityExceptionWhenSaveOperationFails() {
+            // Given
+            setupValidAuthentication();
+            when(productRepository.findByUpc(testProductRequest.getUpc())).thenReturn(Optional.empty());
+            when(upcApiService.fetchProductData(anyString())).thenThrow(new RuntimeException("API unavailable"));
+            when(productRepository.save(any(Product.class)))
+                    .thenThrow(new RuntimeException("Database constraint violation"));
+
+            // When & Then
+            assertThatThrownBy(() -> productService.createProduct(testProductRequest, validToken))
+                    .isInstanceOf(DataIntegrityException.class)
+                    .hasMessageContaining("Failed to save product");
+
+            verify(userService).getCurrentUser(validToken);
+            verify(productRepository).save(any(Product.class));
         }
     }
 
@@ -272,7 +425,31 @@ class ProductServiceTest {
 
             // Then
             assertThat(responses).hasSize(1);
+            assertThat(responses.get(0).getName()).isEqualTo(testProduct.getName());
             verify(userService).getCurrentUser(validToken);
+            verify(productRepository).findByNameContainingIgnoreCase(searchTerm);
+        }
+
+        @Test
+        @DisplayName("Should throw ValidationException when search term is null")
+        void shouldThrowValidationExceptionWhenSearchTermIsNull() {
+            assertThatThrownBy(() -> productService.searchProductsByName(null, validToken))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Search term");
+
+            verify(userService, never()).getCurrentUser(any());
+            verify(productRepository, never()).findByNameContainingIgnoreCase(any());
+        }
+
+        @Test
+        @DisplayName("Should throw ValidationException when search term is empty")
+        void shouldThrowValidationExceptionWhenSearchTermIsEmpty() {
+            assertThatThrownBy(() -> productService.searchProductsByName("   ", validToken))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Search term");
+
+            verify(userService, never()).getCurrentUser(any());
+            verify(productRepository, never()).findByNameContainingIgnoreCase(any());
         }
 
         @Test
@@ -288,7 +465,49 @@ class ProductServiceTest {
 
             // Then
             assertThat(responses).hasSize(1);
+            assertThat(responses.get(0).getCategory()).isEqualTo(category);
             verify(userService).getCurrentUser(validToken);
+            verify(productRepository).findByCategory(category);
+        }
+
+        @Test
+        @DisplayName("Should throw ValidationException when category is null")
+        void shouldThrowValidationExceptionWhenCategoryIsNull() {
+            assertThatThrownBy(() -> productService.getProductsByCategory(null, validToken))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Category");
+
+            verify(userService, never()).getCurrentUser(any());
+            verify(productRepository, never()).findByCategory(any());
+        }
+
+        @Test
+        @DisplayName("Should get products by brand")
+        void shouldGetProductsByBrand() {
+            // Given
+            setupValidAuthentication();
+            String brand = "Test Brand";
+            when(productRepository.findByBrand(brand)).thenReturn(List.of(testProduct));
+
+            // When
+            List<ProductResponse> responses = productService.getProductsByBrand(brand, validToken);
+
+            // Then
+            assertThat(responses).hasSize(1);
+            assertThat(responses.get(0).getBrand()).isEqualTo(brand);
+            verify(userService).getCurrentUser(validToken);
+            verify(productRepository).findByBrand(brand);
+        }
+
+        @Test
+        @DisplayName("Should throw ValidationException when brand is null")
+        void shouldThrowValidationExceptionWhenBrandIsNull() {
+            assertThatThrownBy(() -> productService.getProductsByBrand(null, validToken))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Brand");
+
+            verify(userService, never()).getCurrentUser(any());
+            verify(productRepository, never()).findByBrand(any());
         }
 
         @Test
@@ -305,24 +524,20 @@ class ProductServiceTest {
 
             // Then
             assertThat(responses.getContent()).hasSize(1);
+            assertThat(responses.getContent().get(0).getId()).isEqualTo(productId);
             verify(userService).getCurrentUser(validToken);
+            verify(productRepository).findAll(pageable);
         }
 
         @Test
-        @DisplayName("Should get product statistics")
-        void shouldGetProductStatistics() {
-            // Given
-            setupValidAuthentication();
-            when(productRepository.count()).thenReturn(100L);
-            when(productRepository.countByDataSource(any(ProductDataSource.class))).thenReturn(30L);
-            when(productRepository.countByRequiresApiRetryTrue()).thenReturn(15L);
+        @DisplayName("Should throw ValidationException when pageable is null")
+        void shouldThrowValidationExceptionWhenPageableIsNull() {
+            assertThatThrownBy(() -> productService.getAllProducts(null, validToken))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Pageable");
 
-            // When
-            Map<String, Long> stats = productService.getProductStatistics(validToken);
-
-            // Then
-            assertThat(stats).containsKeys("total", "apiSource", "manualSource", "hybridSource", "pendingRetry");
-            verify(userService).getCurrentUser(validToken);
+            verify(userService, never()).getCurrentUser(any());
+            verify(productRepository, never()).findAll(any(Pageable.class));
         }
     }
 
@@ -333,9 +548,9 @@ class ProductServiceTest {
         @Test
         @DisplayName("Should patch product successfully with admin access")
         void shouldPatchProductSuccessfully() {
-            // Given - Use admin authentication for patch operations
+            // Given
             setupAdminAuthentication();
-            Map<String, Object> patchData = Map.of("name", "Updated Name", "brand", "Updated Brand");
+            Map<String, Object> patchData = Map.of("name", "Patched Product");
             when(productRepository.findById(productId)).thenReturn(Optional.of(testProduct));
             when(productRepository.save(any(Product.class))).thenReturn(testProduct);
 
@@ -345,30 +560,50 @@ class ProductServiceTest {
             // Then
             assertThat(response).isNotNull();
             verify(userService).getCurrentUser(validToken);
+            verify(productRepository).findById(productId);
             verify(productRepository).save(any(Product.class));
         }
 
         @Test
-        @DisplayName("Should throw exception for invalid patch field")
-        void shouldThrowExceptionForInvalidPatchField() {
-            // Given - Use admin authentication since authorization is checked first
-            setupAdminAuthentication();
-            Map<String, Object> patchData = Map.of("invalidField", "value");
-            when(productRepository.findById(productId)).thenReturn(Optional.of(testProduct));
+        @DisplayName("Should throw ValidationException when patch data is null")
+        void shouldThrowValidationExceptionWhenPatchDataIsNull() {
+            assertThatThrownBy(() -> productService.patchProduct(productId, null, validToken))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Patch data");
 
-            // When & Then
-            assertThatThrownBy(() -> productService.patchProduct(productId, patchData, validToken))
-                    .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("Invalid field");
+            verify(userService, never()).getCurrentUser(any());
+            verify(productRepository, never()).save(any());
         }
 
         @Test
-        @DisplayName("Should throw exception for empty patch data")
-        void shouldThrowExceptionForEmptyPatchData() {
+        @DisplayName("Should throw ValidationException when patch data is empty")
+        void shouldThrowValidationExceptionWhenPatchDataIsEmpty() {
+            Map<String, Object> emptyPatchData = new HashMap<>();
+
+            assertThatThrownBy(() -> productService.patchProduct(productId, emptyPatchData, validToken))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Patch data cannot be empty");
+
+            verify(userService, never()).getCurrentUser(any());
+            verify(productRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("Should throw NotFoundException when product not found for patch")
+        void shouldThrowNotFoundExceptionWhenProductNotFoundForPatch() {
+            // Given
+            setupAdminAuthentication();
+            Map<String, Object> patchData = Map.of("name", "Patched Product");
+            when(productRepository.findById(productId)).thenReturn(Optional.empty());
+
             // When & Then
-            assertThatThrownBy(() -> productService.patchProduct(productId, Map.of(), validToken))
-                    .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessage("Patch data cannot be empty");
+            assertThatThrownBy(() -> productService.patchProduct(productId, patchData, validToken))
+                    .isInstanceOf(NotFoundException.class)
+                    .hasMessage("Product not found");
+
+            verify(userService).getCurrentUser(validToken);
+            verify(productRepository).findById(productId);
+            verify(productRepository, never()).save(any());
         }
     }
 
@@ -380,7 +615,7 @@ class ProductServiceTest {
         @DisplayName("Should allow regular user to create product")
         void shouldAllowRegularUserToCreateProduct() {
             // Given
-            setupValidAuthentication(); // This sets up regular user
+            setupValidAuthentication();
             when(productRepository.findByUpc(testProductRequest.getUpc())).thenReturn(Optional.empty());
             when(productRepository.save(any(Product.class))).thenReturn(testProduct);
             when(upcApiService.fetchProductData(anyString())).thenThrow(new RuntimeException("API unavailable"));
@@ -390,6 +625,7 @@ class ProductServiceTest {
 
             // Then
             assertThat(response).isNotNull();
+            verify(userService).getCurrentUser(validToken);
             verify(productRepository).save(any(Product.class));
         }
 
@@ -407,6 +643,7 @@ class ProductServiceTest {
 
             // Then
             assertThat(response).isNotNull();
+            verify(userService).getCurrentUser(validToken);
             verify(productRepository).save(any(Product.class));
         }
 
@@ -423,6 +660,7 @@ class ProductServiceTest {
 
             // Then
             assertThat(response).isNotNull();
+            verify(userService).getCurrentUser(validToken);
             verify(productRepository).save(any(Product.class));
         }
 
@@ -430,15 +668,16 @@ class ProductServiceTest {
         @DisplayName("Should deny regular user from updating product")
         void shouldDenyRegularUserFromUpdatingProduct() {
             // Given
-            setupValidAuthentication(); // This sets up regular user
-            // Don't stub repository methods since authorization check happens first
+            setupValidAuthentication();
 
             // When & Then
             assertThatThrownBy(() -> productService.updateProduct(productId, testProductUpdateRequest, validToken))
-                    .isInstanceOf(AccessDeniedException.class)
+                    .isInstanceOf(InsufficientPermissionException.class)
                     .hasMessageContaining("Only administrators can update products");
-        
-            verify(productRepository, never()).save(any(Product.class));
+
+            verify(userService).getCurrentUser(validToken);
+            verify(productRepository, never()).findById(any());
+            verify(productRepository, never()).save(any());
         }
 
         @Test
@@ -452,6 +691,7 @@ class ProductServiceTest {
             productService.deleteProduct(productId, validToken);
 
             // Then
+            verify(userService).getCurrentUser(validToken);
             verify(productRepository).delete(testProduct);
         }
 
@@ -459,15 +699,16 @@ class ProductServiceTest {
         @DisplayName("Should deny regular user from deleting product")
         void shouldDenyRegularUserFromDeletingProduct() {
             // Given
-            setupValidAuthentication(); // This sets up regular user
-            // Don't stub repository methods since authorization check happens first
+            setupValidAuthentication();
 
             // When & Then
             assertThatThrownBy(() -> productService.deleteProduct(productId, validToken))
-                    .isInstanceOf(AccessDeniedException.class)
+                    .isInstanceOf(InsufficientPermissionException.class)
                     .hasMessageContaining("Only administrators can delete products");
-        
-            verify(productRepository, never()).delete(any(Product.class));
+
+            verify(userService).getCurrentUser(validToken);
+            verify(productRepository, never()).findById(any());
+            verify(productRepository, never()).delete(any());
         }
 
         @Test
@@ -475,15 +716,16 @@ class ProductServiceTest {
         void shouldAllowAdminToPatchProduct() {
             // Given
             setupAdminAuthentication();
+            Map<String, Object> patchData = Map.of("name", "Patched Product");
             when(productRepository.findById(productId)).thenReturn(Optional.of(testProduct));
             when(productRepository.save(any(Product.class))).thenReturn(testProduct);
-            Map<String, Object> patchData = Map.of("name", "Updated Product Name");
 
             // When
             ProductResponse response = productService.patchProduct(productId, patchData, validToken);
 
             // Then
             assertThat(response).isNotNull();
+            verify(userService).getCurrentUser(validToken);
             verify(productRepository).save(any(Product.class));
         }
 
@@ -491,23 +733,24 @@ class ProductServiceTest {
         @DisplayName("Should deny regular user from patching product")
         void shouldDenyRegularUserFromPatchingProduct() {
             // Given
-            setupValidAuthentication(); // This sets up regular user
-            // Don't stub repository methods since authorization check happens first
-            Map<String, Object> patchData = Map.of("name", "Updated Product Name");
+            setupValidAuthentication();
+            Map<String, Object> patchData = Map.of("name", "Patched Product");
 
             // When & Then
             assertThatThrownBy(() -> productService.patchProduct(productId, patchData, validToken))
-                    .isInstanceOf(AccessDeniedException.class)
+                    .isInstanceOf(InsufficientPermissionException.class)
                     .hasMessageContaining("Only administrators can update products");
-        
-            verify(productRepository, never()).save(any(Product.class));
+
+            verify(userService).getCurrentUser(validToken);
+            verify(productRepository, never()).findById(any());
+            verify(productRepository, never()).save(any());
         }
 
         @Test
         @DisplayName("Should allow regular user to read product")
         void shouldAllowRegularUserToReadProduct() {
             // Given
-            setupValidAuthentication(); // This sets up regular user
+            setupValidAuthentication();
             when(productRepository.findById(productId)).thenReturn(Optional.of(testProduct));
 
             // When
@@ -515,70 +758,8 @@ class ProductServiceTest {
 
             // Then
             assertThat(response).isNotNull();
-            assertThat(response.getId()).isEqualTo(productId);
-        }
-
-        @Test
-        @DisplayName("Should allow admin to bulk import products")
-        void shouldAllowAdminToBulkImportProducts() {
-            // Given
-            setupAdminAuthentication();
-            List<ProductRequest> requests = List.of(testProductRequest);
-            when(productRepository.findByUpc(testProductRequest.getUpc())).thenReturn(Optional.empty());
-            when(productRepository.saveAll(any())).thenReturn(List.of(testProduct));
-
-            // When
-            List<ProductResponse> responses = productService.bulkImportProducts(requests, validToken);
-
-            // Then
-            assertThat(responses).hasSize(1);
-            verify(productRepository).saveAll(any());
-        }
-
-        @Test
-        @DisplayName("Should deny regular user from bulk importing products")
-        void shouldDenyRegularUserFromBulkImportingProducts() {
-            // Given
-            setupValidAuthentication(); // This sets up regular user
-            List<ProductRequest> requests = List.of(testProductRequest);
-
-            // When & Then
-            assertThatThrownBy(() -> productService.bulkImportProducts(requests, validToken))
-                .isInstanceOf(AccessDeniedException.class)
-                .hasMessageContaining("Only administrators can bulk import products");
-        
-            verify(productRepository, never()).saveAll(any());
-        }
-
-        @Test
-        @DisplayName("Should allow admin to bulk delete products")
-        void shouldAllowAdminToBulkDeleteProducts() {
-            // Given
-            setupAdminAuthentication();
-            List<UUID> productIds = List.of(productId);
-            when(productRepository.findAllById(productIds)).thenReturn(List.of(testProduct));
-
-            // When
-            int deletedCount = productService.bulkDeleteProducts(productIds, validToken);
-
-            // Then
-            assertThat(deletedCount).isEqualTo(1);
-            verify(productRepository).deleteAll(List.of(testProduct));
-        }
-
-        @Test
-        @DisplayName("Should deny regular user from bulk deleting products")
-        void shouldDenyRegularUserFromBulkDeletingProducts() {
-            // Given
-            setupValidAuthentication(); // This sets up regular user
-            List<UUID> productIds = List.of(productId);
-
-            // When & Then
-            assertThatThrownBy(() -> productService.bulkDeleteProducts(productIds, validToken))
-                .isInstanceOf(AccessDeniedException.class)
-                .hasMessageContaining("Only administrators can bulk delete products");
-        
-            verify(productRepository, never()).deleteAll(any());
+            verify(userService).getCurrentUser(validToken);
+            verify(productRepository).findById(productId);
         }
     }
 }

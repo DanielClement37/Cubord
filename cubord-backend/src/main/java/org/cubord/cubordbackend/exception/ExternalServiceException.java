@@ -9,6 +9,10 @@ public class ExternalServiceException extends CubordException {
                 HttpStatus.SERVICE_UNAVAILABLE, cause);
     }
 
+    public ExternalServiceException(String message, Throwable cause) {
+        super("EXTERNAL_SERVICE_ERROR", message, HttpStatus.BAD_GATEWAY, cause);
+    }
+
     public ExternalServiceException(String service, String message) {
         super("EXTERNAL_SERVICE_ERROR",
                 String.format("External service %s error: %s", service, message),
