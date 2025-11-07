@@ -16,7 +16,6 @@ import org.cubord.cubordbackend.repository.PantryItemRepository;
 import org.cubord.cubordbackend.repository.ProductRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -665,12 +664,12 @@ public class PantryItemService {
                     break;
 
                 case "expirationDate":
-                    if (value == null) {
-                        pantryItem.setExpirationDate(null);
-                    } else if (value instanceof String) {
-                        pantryItem.setExpirationDate(LocalDate.parse((String) value));
-                    } else if (value instanceof LocalDate) {
-                        pantryItem.setExpirationDate((LocalDate) value);
+                    switch (value) {
+                        case null -> pantryItem.setExpirationDate(null);
+                        case String s -> pantryItem.setExpirationDate(LocalDate.parse(s));
+                        case LocalDate localDate -> pantryItem.setExpirationDate(localDate);
+                        default -> {
+                        }
                     }
                     break;
 

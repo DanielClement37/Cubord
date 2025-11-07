@@ -1,3 +1,4 @@
+
 package org.cubord.cubordbackend.service;
 
 import lombok.RequiredArgsConstructor;
@@ -7,12 +8,14 @@ import org.cubord.cubordbackend.dto.location.LocationRequest;
 import org.cubord.cubordbackend.dto.location.LocationResponse;
 import org.cubord.cubordbackend.dto.location.LocationUpdateRequest;
 import org.cubord.cubordbackend.exception.ConflictException;
+import org.cubord.cubordbackend.exception.DataIntegrityException;
+import org.cubord.cubordbackend.exception.InsufficientPermissionException;
 import org.cubord.cubordbackend.exception.NotFoundException;
+import org.cubord.cubordbackend.exception.ValidationException;
 import org.cubord.cubordbackend.repository.HouseholdMemberRepository;
 import org.cubord.cubordbackend.repository.HouseholdRepository;
 import org.cubord.cubordbackend.repository.LocationRepository;
 import org.springframework.data.domain.Sort;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,8 +40,11 @@ public class LocationService {
      */
     @Transactional
     public LocationResponse createLocation(LocationRequest request, JwtAuthenticationToken token) {
-        if (request == null || token == null) {
-            throw new IllegalArgumentException("Request and token cannot be null");
+        if (request == null) {
+            throw new ValidationException("Location request cannot be null");
+        }
+        if (token == null) {
+            throw new ValidationException("Authentication token cannot be null");
         }
 
         log.debug("Creating location: {} in household: {}", request.getName(), request.getHouseholdId());
@@ -49,7 +55,7 @@ public class LocationService {
         }
 
         Household household = householdRepository.findById(request.getHouseholdId())
-                .orElseThrow(() -> new NotFoundException("Household not found"));
+                .orElseThrow(() -> new NotFoundException("Household", request.getHouseholdId()));
 
         Location location = Location.builder()
                 .id(UUID.randomUUID())
@@ -58,10 +64,14 @@ public class LocationService {
                 .household(household)
                 .build();
 
-        Location savedLocation = locationRepository.save(location);
-        log.debug("Successfully created location with ID: {}", savedLocation.getId());
-
-        return mapToResponse(savedLocation);
+        try {
+            Location savedLocation = locationRepository.save(location);
+            log.debug("Successfully created location with ID: {}", savedLocation.getId());
+            return mapToResponse(savedLocation);
+        } catch (Exception e) {
+            log.error("Failed to save location with name: {}", request.getName(), e);
+            throw new DataIntegrityException("Failed to save location: " + e.getMessage(), e);
+        }
     }
 
     /**
@@ -69,15 +79,18 @@ public class LocationService {
      */
     @Transactional(readOnly = true)
     public LocationResponse getLocationById(UUID locationId, JwtAuthenticationToken token) {
-        if (locationId == null || token == null) {
-            throw new IllegalArgumentException("Location ID and token cannot be null");
+        if (locationId == null) {
+            throw new ValidationException("Location ID cannot be null");
+        }
+        if (token == null) {
+            throw new ValidationException("Authentication token cannot be null");
         }
 
         log.debug("Getting location by ID: {}", locationId);
 
         User currentUser = userService.getCurrentUser(token);
         Location location = locationRepository.findById(locationId)
-                .orElseThrow(() -> new NotFoundException("Location not found"));
+                .orElseThrow(() -> new NotFoundException("Location", locationId));
 
         validateHouseholdAccess(location.getHousehold().getId(), currentUser);
 
@@ -89,8 +102,11 @@ public class LocationService {
      */
     @Transactional(readOnly = true)
     public List<LocationResponse> getLocationsByHousehold(UUID householdId, JwtAuthenticationToken token) {
-        if (householdId == null || token == null) {
-            throw new IllegalArgumentException("Household ID and token cannot be null");
+        if (householdId == null) {
+            throw new ValidationException("Household ID cannot be null");
+        }
+        if (token == null) {
+            throw new ValidationException("Authentication token cannot be null");
         }
 
         log.debug("Getting locations for household: {}", householdId);
@@ -110,28 +126,38 @@ public class LocationService {
      */
     @Transactional
     public LocationResponse updateLocation(UUID locationId, LocationUpdateRequest request, JwtAuthenticationToken token) {
-        if (locationId == null || request == null || token == null) {
-            throw new IllegalArgumentException("Location ID, request, and token cannot be null");
+        if (locationId == null) {
+            throw new ValidationException("Location ID cannot be null");
+        }
+        if (request == null) {
+            throw new ValidationException("Update request cannot be null");
+        }
+        if (token == null) {
+            throw new ValidationException("Authentication token cannot be null");
         }
 
         log.debug("Updating location: {}", locationId);
 
         Location location = locationRepository.findById(locationId)
-                .orElseThrow(() -> new NotFoundException("Location not found"));
+                .orElseThrow(() -> new NotFoundException("Location", locationId));
 
         // Check for name conflicts if name is being changed
         if (!location.getName().equals(request.getName()) &&
-            locationRepository.existsByHouseholdIdAndName(location.getHousehold().getId(), request.getName())) {
+                locationRepository.existsByHouseholdIdAndName(location.getHousehold().getId(), request.getName())) {
             throw new ConflictException("Location with name '" + request.getName() + "' already exists in this household");
         }
 
         location.setName(request.getName());
         location.setDescription(request.getDescription());
 
-        Location savedLocation = locationRepository.save(location);
-        log.debug("Successfully updated location: {}", locationId);
-
-        return mapToResponse(savedLocation);
+        try {
+            Location savedLocation = locationRepository.save(location);
+            log.debug("Successfully updated location: {}", locationId);
+            return mapToResponse(savedLocation);
+        } catch (Exception e) {
+            log.error("Failed to update location: {}", locationId, e);
+            throw new DataIntegrityException("Failed to update location: " + e.getMessage(), e);
+        }
     }
 
     /**
@@ -139,18 +165,23 @@ public class LocationService {
      */
     @Transactional
     public LocationResponse patchLocation(UUID locationId, Map<String, Object> patchData, JwtAuthenticationToken token) {
-        if (locationId == null || patchData == null || token == null) {
-            throw new IllegalArgumentException("Location ID, patch data, and token cannot be null");
+        if (locationId == null) {
+            throw new ValidationException("Location ID cannot be null");
         }
-
+        if (patchData == null) {
+            throw new ValidationException("Patch data cannot be null");
+        }
         if (patchData.isEmpty()) {
-            throw new IllegalArgumentException("Patch data cannot be empty");
+            throw new ValidationException("Patch data cannot be empty");
+        }
+        if (token == null) {
+            throw new ValidationException("Authentication token cannot be null");
         }
 
         log.debug("Patching location: {} with data: {}", locationId, patchData);
 
         Location location = locationRepository.findById(locationId)
-                .orElseThrow(() -> new NotFoundException("Location not found"));
+                .orElseThrow(() -> new NotFoundException("Location", locationId));
 
         // Apply patches
         for (Map.Entry<String, Object> entry : patchData.entrySet()) {
@@ -159,25 +190,36 @@ public class LocationService {
 
             switch (field) {
                 case "name":
+                    if (!(value instanceof String)) {
+                        throw new ValidationException("Name must be a string");
+                    }
                     String newName = (String) value;
                     if (!location.getName().equals(newName) &&
-                        locationRepository.existsByHouseholdIdAndName(location.getHousehold().getId(), newName)) {
+                            locationRepository.existsByHouseholdIdAndName(location.getHousehold().getId(), newName)) {
                         throw new ConflictException("Location with name '" + newName + "' already exists in this household");
                     }
                     location.setName(newName);
                     break;
                 case "description":
+                    if (value != null && !(value instanceof String)) {
+                        throw new ValidationException("Description must be a string");
+                    }
                     location.setDescription((String) value);
                     break;
                 default:
-                    throw new IllegalArgumentException("Invalid field: " + field);
+                    log.debug("Ignoring unknown field: {}", field);
+                    // Ignore unknown fields instead of throwing exception
             }
         }
 
-        Location savedLocation = locationRepository.save(location);
-        log.debug("Successfully patched location: {}", locationId);
-
-        return mapToResponse(savedLocation);
+        try {
+            Location savedLocation = locationRepository.save(location);
+            log.debug("Successfully patched location: {}", locationId);
+            return mapToResponse(savedLocation);
+        } catch (Exception e) {
+            log.error("Failed to patch location: {}", locationId, e);
+            throw new DataIntegrityException("Failed to update location: " + e.getMessage(), e);
+        }
     }
 
     /**
@@ -185,17 +227,25 @@ public class LocationService {
      */
     @Transactional
     public void deleteLocation(UUID locationId, JwtAuthenticationToken token) {
-        if (locationId == null || token == null) {
-            throw new IllegalArgumentException("Location ID and token cannot be null");
+        if (locationId == null) {
+            throw new ValidationException("Location ID cannot be null");
+        }
+        if (token == null) {
+            throw new ValidationException("Authentication token cannot be null");
         }
 
         log.debug("Deleting location: {}", locationId);
 
         Location location = locationRepository.findById(locationId)
-                .orElseThrow(() -> new NotFoundException("Location not found"));
+                .orElseThrow(() -> new NotFoundException("Location", locationId));
 
-        locationRepository.delete(location);
-        log.debug("Successfully deleted location: {}", locationId);
+        try {
+            locationRepository.delete(location);
+            log.debug("Successfully deleted location: {}", locationId);
+        } catch (Exception e) {
+            log.error("Failed to delete location: {}", locationId, e);
+            throw new DataIntegrityException("Failed to delete location: " + e.getMessage(), e);
+        }
     }
 
     /**
@@ -203,8 +253,14 @@ public class LocationService {
      */
     @Transactional(readOnly = true)
     public List<LocationResponse> searchLocations(UUID householdId, String searchTerm, JwtAuthenticationToken token) {
-        if (householdId == null || searchTerm == null || token == null) {
-            throw new IllegalArgumentException("Household ID, search term, and token cannot be null");
+        if (householdId == null) {
+            throw new ValidationException("Household ID cannot be null");
+        }
+        if (searchTerm == null || searchTerm.trim().isEmpty()) {
+            throw new ValidationException("Search term cannot be null or empty");
+        }
+        if (token == null) {
+            throw new ValidationException("Authentication token cannot be null");
         }
 
         log.debug("Searching locations in household: {} with term: {}", householdId, searchTerm);
@@ -224,8 +280,14 @@ public class LocationService {
      */
     @Transactional(readOnly = true)
     public boolean isLocationNameAvailable(UUID householdId, String name, JwtAuthenticationToken token) {
-        if (householdId == null || name == null || token == null) {
-            throw new IllegalArgumentException("Household ID, name, and token cannot be null");
+        if (householdId == null) {
+            throw new ValidationException("Household ID cannot be null");
+        }
+        if (name == null || name.trim().isEmpty()) {
+            throw new ValidationException("Location name cannot be null or empty");
+        }
+        if (token == null) {
+            throw new ValidationException("Authentication token cannot be null");
         }
 
         User currentUser = userService.getCurrentUser(token);
@@ -239,12 +301,13 @@ public class LocationService {
      */
     private void validateHouseholdAccess(UUID householdId, User user) {
         if (!householdRepository.existsById(householdId)) {
-            throw new NotFoundException("Household not found");
+            throw new NotFoundException("Household", householdId);
         }
 
         householdMemberRepository.findByHouseholdIdAndUserId(householdId, user.getId())
-                .orElseThrow(() -> new AccessDeniedException("You do not have access to this household"));
+                .orElseThrow(() -> new InsufficientPermissionException("access", "household"));
     }
+
     /**
      * Maps a Location entity to a LocationResponse DTO.
      */
