@@ -1,18 +1,15 @@
+
 package org.cubord.cubordbackend.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.cubord.cubordbackend.domain.Location;
-import org.cubord.cubordbackend.domain.PantryItem;
-import org.cubord.cubordbackend.domain.Product;
-import org.cubord.cubordbackend.domain.User;
+import org.cubord.cubordbackend.domain.*;
 import org.cubord.cubordbackend.dto.location.LocationResponse;
 import org.cubord.cubordbackend.dto.pantryItem.CreatePantryItemRequest;
 import org.cubord.cubordbackend.dto.pantryItem.PantryItemResponse;
 import org.cubord.cubordbackend.dto.pantryItem.UpdatePantryItemRequest;
 import org.cubord.cubordbackend.dto.product.ProductResponse;
-import org.cubord.cubordbackend.exception.NotFoundException;
-import org.cubord.cubordbackend.exception.ValidationException;
+import org.cubord.cubordbackend.exception.*;
 import org.cubord.cubordbackend.repository.HouseholdMemberRepository;
 import org.cubord.cubordbackend.repository.LocationRepository;
 import org.cubord.cubordbackend.repository.PantryItemRepository;
@@ -20,7 +17,6 @@ import org.cubord.cubordbackend.repository.ProductRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,7 +29,7 @@ import java.util.stream.Collectors;
 /**
  * Service class for managing pantry items.
  * Provides operations for creating, retrieving, updating, and deleting pantry items,
- * with proper authorization checks to ensure users can only access their household data.
+ * with proper authorization checks and exception handling to ensure users can only access their household data.
  */
 @Service
 @RequiredArgsConstructor
@@ -47,97 +43,187 @@ public class PantryItemService {
     private final UserService userService;
 
     /**
-/**
- * Creates a new pantry item or consolidates with existing item if duplicate found.
- * Only consolidates items with matching expiration dates (including null matches).
- * Items with different expiration dates are kept separate.
- *
- * @param request DTO containing pantry item information
- * @param token   JWT authentication token of the current user
- * @return PantryItemResponse containing the created or updated pantry item's details
- * @throws IllegalArgumentException if request or token is null
- * @throws NotFoundException        if location or product not found
- * @throws AccessDeniedException    if user is not a member of the household
- * @throws ValidationException      if request data is invalid
- */
-@Transactional
-public PantryItemResponse createPantryItem(CreatePantryItemRequest request, JwtAuthenticationToken token) {
-    // Validation
-    if (request == null) {
-        throw new IllegalArgumentException("Create request cannot be null");
-    }
-    if (token == null) {
-        throw new IllegalArgumentException("Authentication token cannot be null");
-    }
-
-    validateCreateRequest(request);
-
-    User currentUser = userService.getCurrentUser(token);
-    log.debug("User {} creating pantry item for product {} in location {} with expiration date {}",
-            currentUser.getId(), request.getProductId(), request.getLocationId(), request.getExpirationDate());
-
-    // Fetch and validate location
-    Location location = locationRepository.findById(request.getLocationId())
-            .orElseThrow(() -> new NotFoundException("Location not found"));
-
-    // Fetch and validate product
-    Product product = productRepository.findById(request.getProductId())
-            .orElseThrow(() -> new NotFoundException("Product not found"));
-
-    // Check if user is member of household
-    if (!householdMemberRepository.existsByHouseholdIdAndUserId(location.getHousehold().getId(), currentUser.getId())) {
-        throw new AccessDeniedException("You are not a member of this household");
-    }
-
-    // Check for existing item with matching expiration date (expiration-date-aware duplicate detection)
-    Optional<PantryItem> existingItem;
-    if (request.getExpirationDate() != null) {
-        existingItem = pantryItemRepository.findByLocationIdAndProductIdAndExpirationDate(
-                request.getLocationId(), request.getProductId(), request.getExpirationDate());
-    } else {
-        existingItem = pantryItemRepository.findByLocationIdAndProductIdAndExpirationDateIsNull(
-                request.getLocationId(), request.getProductId());
-    }
-
-    if (existingItem.isPresent()) {
-        // Consolidate quantities for items with matching expiration dates
-        PantryItem item = existingItem.get();
-        int currentQuantity = item.getQuantity() != null ? item.getQuantity() : 0;
-        int newQuantity = request.getQuantity() != null ? request.getQuantity() : 0;
-        item.setQuantity(currentQuantity + newQuantity);
-
-        // Update other fields if provided
-        if (request.getUnitOfMeasure() != null) {
-            item.setUnitOfMeasure(request.getUnitOfMeasure());
+     * Validates that the user is a member of the specified household.
+     *
+     * @param householdId UUID of the household to validate
+     * @param currentUser User to validate
+     * @throws InsufficientPermissionException if user is not a member of the household
+     */
+    private void validateHouseholdAccess(UUID householdId, User currentUser) {
+        if (!householdMemberRepository.existsByHouseholdIdAndUserId(householdId, currentUser.getId())) {
+            log.warn("User {} attempted to access household {} without membership",
+                    currentUser.getId(), householdId);
+            throw new InsufficientPermissionException("You are not a member of this household");
         }
-        if (request.getNotes() != null) {
-            item.setNotes(request.getNotes());
+        log.debug("User {} authorized for household {} access", currentUser.getId(), householdId);
+    }
+
+    /**
+     * Validates a create pantry item request.
+     *
+     * @param request Request to validate
+     * @throws ValidationException if request data is invalid
+     */
+    private void validateCreateRequest(CreatePantryItemRequest request) {
+        if (request.getProductId() == null) {
+            throw new ValidationException("Product ID cannot be null");
+        }
+        if (request.getLocationId() == null) {
+            throw new ValidationException("Location ID cannot be null");
+        }
+        if (request.getQuantity() != null && request.getQuantity() < 0) {
+            throw new ValidationException("Quantity cannot be negative");
+        }
+        log.debug("Create request validation passed for product {} in location {}",
+                request.getProductId(), request.getLocationId());
+    }
+
+    /**
+     * Validates an update pantry item request.
+     *
+     * @param request Request to validate
+     * @throws ValidationException if request data is invalid
+     */
+    private void validateUpdateRequest(UpdatePantryItemRequest request) {
+        if (request.getQuantity() != null && request.getQuantity() < 0) {
+            throw new ValidationException("Quantity cannot be negative");
+        }
+        log.debug("Update request validation passed");
+    }
+
+    /**
+     * Validates a search term.
+     *
+     * @param searchTerm Search term to validate
+     * @throws ValidationException if search term is invalid
+     */
+    private void validateSearchTerm(String searchTerm) {
+        if (searchTerm == null) {
+            throw new ValidationException("Search term cannot be null");
+        }
+        if (searchTerm.trim().isEmpty()) {
+            throw new ValidationException("Search term cannot be empty");
+        }
+        log.debug("Search term validation passed: {}", searchTerm);
+    }
+
+    /**
+     * Validates a threshold value.
+     *
+     * @param threshold Threshold to validate
+     * @throws ValidationException if threshold is invalid
+     */
+    private void validateThreshold(Integer threshold) {
+        if (threshold == null) {
+            throw new ValidationException("Threshold cannot be null");
+        }
+        if (threshold < 0) {
+            throw new ValidationException("Threshold must be non-negative");
+        }
+        log.debug("Threshold validation passed: {}", threshold);
+    }
+
+    /**
+     * Creates a new pantry item or consolidates with existing item if duplicate found.
+     * Only consolidates items with matching expiration dates (including null matches).
+     * Items with different expiration dates are kept separate.
+     *
+     * @param request DTO containing pantry item information
+     * @param token   JWT authentication token of the current user
+     * @return PantryItemResponse containing the created or updated pantry item's details
+     * @throws ValidationException              if request or token is null, or request data is invalid
+     * @throws NotFoundException                if location or product not found
+     * @throws InsufficientPermissionException  if user is not a member of the household
+     * @throws DataIntegrityException           if save operation fails
+     */
+    @Transactional
+    public PantryItemResponse createPantryItem(CreatePantryItemRequest request, JwtAuthenticationToken token) {
+        // Validate inputs
+        if (request == null) {
+            throw new ValidationException("Create request cannot be null");
+        }
+        if (token == null) {
+            throw new ValidationException("Authentication token cannot be null");
         }
 
-        item.setUpdatedAt(LocalDateTime.now());
+        validateCreateRequest(request);
 
-        PantryItem savedItem = pantryItemRepository.save(item);
-        log.debug("Consolidated pantry item {} with matching expiration date, new quantity {}", 
-                savedItem.getId(), savedItem.getQuantity());
-        return mapToResponse(savedItem);
-    } else {
-        // Create new item (no existing item with matching expiration date)
-        PantryItem newItem = new PantryItem();
-        newItem.setId(UUID.randomUUID());
-        newItem.setProduct(product);
-        newItem.setLocation(location);
-        newItem.setQuantity(request.getQuantity());
-        newItem.setUnitOfMeasure(request.getUnitOfMeasure());
-        newItem.setExpirationDate(request.getExpirationDate());
-        newItem.setNotes(request.getNotes());
-        newItem.setCreatedAt(LocalDateTime.now());
-        newItem.setUpdatedAt(LocalDateTime.now());
+        User currentUser = userService.getCurrentUser(token);
+        log.debug("User {} creating pantry item for product {} in location {} with expiration date {}",
+                currentUser.getId(), request.getProductId(), request.getLocationId(), request.getExpirationDate());
 
-        PantryItem savedItem = pantryItemRepository.save(newItem);
-        log.debug("Created new pantry item {} with expiration date {}", savedItem.getId(), savedItem.getExpirationDate());
-        return mapToResponse(savedItem);
+        // Fetch and validate location
+        Location location = locationRepository.findById(request.getLocationId())
+                .orElseThrow(() -> new NotFoundException("Location not found"));
+
+        // Fetch and validate product
+        Product product = productRepository.findById(request.getProductId())
+                .orElseThrow(() -> new NotFoundException("Product not found"));
+
+        // Check if user is member of household
+        validateHouseholdAccess(location.getHousehold().getId(), currentUser);
+
+        // Check for existing item with matching expiration date (expiration-date-aware duplicate detection)
+        Optional<PantryItem> existingItem;
+        if (request.getExpirationDate() != null) {
+            existingItem = pantryItemRepository.findByLocationIdAndProductIdAndExpirationDate(
+                    request.getLocationId(), request.getProductId(), request.getExpirationDate());
+        } else {
+            existingItem = pantryItemRepository.findByLocationIdAndProductIdAndExpirationDateIsNull(
+                    request.getLocationId(), request.getProductId());
+        }
+
+        if (existingItem.isPresent()) {
+            // Consolidate quantities for items with matching expiration dates
+            PantryItem item = existingItem.get();
+            int currentQuantity = item.getQuantity() != null ? item.getQuantity() : 0;
+            int newQuantity = request.getQuantity() != null ? request.getQuantity() : 0;
+            item.setQuantity(currentQuantity + newQuantity);
+
+            // Update other fields if provided
+            if (request.getUnitOfMeasure() != null) {
+                item.setUnitOfMeasure(request.getUnitOfMeasure());
+            }
+            if (request.getNotes() != null) {
+                item.setNotes(request.getNotes());
+            }
+
+            item.setUpdatedAt(LocalDateTime.now());
+
+            try {
+                PantryItem savedItem = pantryItemRepository.save(item);
+                log.info("User {} consolidated pantry item {} with matching expiration date, new quantity {}",
+                        currentUser.getId(), savedItem.getId(), savedItem.getQuantity());
+                return mapToResponse(savedItem);
+            } catch (Exception e) {
+                log.error("Failed to save consolidated pantry item", e);
+                throw new DataIntegrityException("Failed to save pantry item: " + e.getMessage(), e);
+            }
+        } else {
+            // Create new item (no existing item with matching expiration date)
+            PantryItem newItem = PantryItem.builder()
+                    .id(UUID.randomUUID())
+                    .product(product)
+                    .location(location)
+                    .quantity(request.getQuantity())
+                    .unitOfMeasure(request.getUnitOfMeasure())
+                    .expirationDate(request.getExpirationDate())
+                    .notes(request.getNotes())
+                    .createdAt(LocalDateTime.now())
+                    .updatedAt(LocalDateTime.now())
+                    .build();
+
+            try {
+                PantryItem savedItem = pantryItemRepository.save(newItem);
+                log.info("User {} created new pantry item {} with expiration date {}",
+                        currentUser.getId(), savedItem.getId(), savedItem.getExpirationDate());
+                return mapToResponse(savedItem);
+            } catch (Exception e) {
+                log.error("Failed to save new pantry item", e);
+                throw new DataIntegrityException("Failed to save pantry item: " + e.getMessage(), e);
+            }
+        }
     }
-}
 
     /**
      * Retrieves a pantry item by its ID if the user has access to it.
@@ -145,13 +231,18 @@ public PantryItemResponse createPantryItem(CreatePantryItemRequest request, JwtA
      * @param pantryItemId UUID of the pantry item to retrieve
      * @param token        JWT authentication token of the current user
      * @return PantryItemResponse containing the pantry item's details
-     * @throws NotFoundException     if pantry item not found
-     * @throws AccessDeniedException if user is not a member of the household
+     * @throws ValidationException              if pantryItemId or token is null
+     * @throws NotFoundException                if pantry item not found
+     * @throws InsufficientPermissionException  if user is not a member of the household
      */
     @Transactional(readOnly = true)
     public PantryItemResponse getPantryItemById(UUID pantryItemId, JwtAuthenticationToken token) {
-        if (pantryItemId == null || token == null) {
-            throw new IllegalArgumentException("Pantry item ID and token cannot be null");
+        // Validate inputs
+        if (pantryItemId == null) {
+            throw new ValidationException("Pantry item ID cannot be null");
+        }
+        if (token == null) {
+            throw new ValidationException("Authentication token cannot be null");
         }
 
         User currentUser = userService.getCurrentUser(token);
@@ -161,10 +252,7 @@ public PantryItemResponse createPantryItem(CreatePantryItemRequest request, JwtA
                 .orElseThrow(() -> new NotFoundException("Pantry item not found"));
 
         // Check if user is member of household
-        UUID householdId = pantryItem.getLocation().getHousehold().getId();
-        if (!householdMemberRepository.existsByHouseholdIdAndUserId(householdId, currentUser.getId())) {
-            throw new AccessDeniedException("You are not a member of this household");
-        }
+        validateHouseholdAccess(pantryItem.getLocation().getHousehold().getId(), currentUser);
 
         return mapToResponse(pantryItem);
     }
@@ -176,14 +264,22 @@ public PantryItemResponse createPantryItem(CreatePantryItemRequest request, JwtA
      * @param request      DTO containing updated pantry item information
      * @param token        JWT authentication token of the current user
      * @return PantryItemResponse containing the updated pantry item's details
-     * @throws NotFoundException     if pantry item or location not found
-     * @throws AccessDeniedException if user is not a member of the household
-     * @throws ValidationException   if request data is invalid
+     * @throws ValidationException              if inputs are null or request data is invalid
+     * @throws NotFoundException                if pantry item or location not found
+     * @throws InsufficientPermissionException  if user is not a member of the household
+     * @throws DataIntegrityException           if save operation fails
      */
     @Transactional
     public PantryItemResponse updatePantryItem(UUID pantryItemId, UpdatePantryItemRequest request, JwtAuthenticationToken token) {
-        if (pantryItemId == null || request == null || token == null) {
-            throw new IllegalArgumentException("Pantry item ID, request, and token cannot be null");
+        // Validate inputs
+        if (pantryItemId == null) {
+            throw new ValidationException("Pantry item ID cannot be null");
+        }
+        if (request == null) {
+            throw new ValidationException("Update request cannot be null");
+        }
+        if (token == null) {
+            throw new ValidationException("Authentication token cannot be null");
         }
 
         validateUpdateRequest(request);
@@ -195,25 +291,9 @@ public PantryItemResponse createPantryItem(CreatePantryItemRequest request, JwtA
                 .orElseThrow(() -> new NotFoundException("Pantry item not found"));
 
         // Check if user is member of household
-        UUID householdId = pantryItem.getLocation().getHousehold().getId();
-        if (!householdMemberRepository.existsByHouseholdIdAndUserId(householdId, currentUser.getId())) {
-            throw new AccessDeniedException("You are not a member of this household");
-        }
+        validateHouseholdAccess(pantryItem.getLocation().getHousehold().getId(), currentUser);
 
-        // Update location if provided
-        if (request.getLocationId() != null) {
-            Location newLocation = locationRepository.findById(request.getLocationId())
-                    .orElseThrow(() -> new NotFoundException("Location not found"));
-
-            // Check if new location belongs to same household
-            if (!newLocation.getHousehold().getId().equals(householdId)) {
-                throw new AccessDeniedException("Cannot move item to location in different household");
-            }
-
-            pantryItem.setLocation(newLocation);
-        }
-
-        // Update other fields if provided
+        // Update fields
         if (request.getQuantity() != null) {
             pantryItem.setQuantity(request.getQuantity());
         }
@@ -227,10 +307,27 @@ public PantryItemResponse createPantryItem(CreatePantryItemRequest request, JwtA
             pantryItem.setNotes(request.getNotes());
         }
 
+        // Update location if provided
+        if (request.getLocationId() != null) {
+            Location newLocation = locationRepository.findById(request.getLocationId())
+                    .orElseThrow(() -> new NotFoundException("Location not found"));
+
+            // Verify user has access to new location's household
+            validateHouseholdAccess(newLocation.getHousehold().getId(), currentUser);
+
+            pantryItem.setLocation(newLocation);
+        }
+
         pantryItem.setUpdatedAt(LocalDateTime.now());
 
-        PantryItem savedItem = pantryItemRepository.save(pantryItem);
-        return mapToResponse(savedItem);
+        try {
+            PantryItem savedItem = pantryItemRepository.save(pantryItem);
+            log.info("User {} successfully updated pantry item {}", currentUser.getId(), pantryItemId);
+            return mapToResponse(savedItem);
+        } catch (Exception e) {
+            log.error("Failed to update pantry item {}", pantryItemId, e);
+            throw new DataIntegrityException("Failed to update pantry item: " + e.getMessage(), e);
+        }
     }
 
     /**
@@ -238,13 +335,18 @@ public PantryItemResponse createPantryItem(CreatePantryItemRequest request, JwtA
      *
      * @param pantryItemId UUID of the pantry item to delete
      * @param token        JWT authentication token of the current user
-     * @throws NotFoundException     if pantry item not found
-     * @throws AccessDeniedException if user is not a member of the household
+     * @throws ValidationException              if pantryItemId or token is null
+     * @throws NotFoundException                if pantry item not found
+     * @throws InsufficientPermissionException  if user is not a member of the household
      */
     @Transactional
     public void deletePantryItem(UUID pantryItemId, JwtAuthenticationToken token) {
-        if (pantryItemId == null || token == null) {
-            throw new IllegalArgumentException("Pantry item ID and token cannot be null");
+        // Validate inputs
+        if (pantryItemId == null) {
+            throw new ValidationException("Pantry item ID cannot be null");
+        }
+        if (token == null) {
+            throw new ValidationException("Authentication token cannot be null");
         }
 
         User currentUser = userService.getCurrentUser(token);
@@ -254,12 +356,10 @@ public PantryItemResponse createPantryItem(CreatePantryItemRequest request, JwtA
                 .orElseThrow(() -> new NotFoundException("Pantry item not found"));
 
         // Check if user is member of household
-        UUID householdId = pantryItem.getLocation().getHousehold().getId();
-        if (!householdMemberRepository.existsByHouseholdIdAndUserId(householdId, currentUser.getId())) {
-            throw new AccessDeniedException("You are not a member of this household");
-        }
+        validateHouseholdAccess(pantryItem.getLocation().getHousehold().getId(), currentUser);
 
         pantryItemRepository.delete(pantryItem);
+        log.info("User {} successfully deleted pantry item {}", currentUser.getId(), pantryItemId);
     }
 
     /**
@@ -268,25 +368,28 @@ public PantryItemResponse createPantryItem(CreatePantryItemRequest request, JwtA
      * @param locationId UUID of the location
      * @param token      JWT authentication token of the current user
      * @return List of PantryItemResponse objects
-     * @throws NotFoundException     if location not found
-     * @throws AccessDeniedException if user is not a member of the household
+     * @throws ValidationException              if locationId or token is null
+     * @throws NotFoundException                if location not found
+     * @throws InsufficientPermissionException  if user is not a member of the household
      */
     @Transactional(readOnly = true)
     public List<PantryItemResponse> getPantryItemsByLocation(UUID locationId, JwtAuthenticationToken token) {
-        if (locationId == null || token == null) {
-            throw new IllegalArgumentException("Location ID and token cannot be null");
+        // Validate inputs
+        if (locationId == null) {
+            throw new ValidationException("Location ID cannot be null");
+        }
+        if (token == null) {
+            throw new ValidationException("Authentication token cannot be null");
         }
 
         User currentUser = userService.getCurrentUser(token);
-        log.debug("User {} retrieving pantry items by location {}", currentUser.getId(), locationId);
+        log.debug("User {} retrieving pantry items for location {}", currentUser.getId(), locationId);
 
         Location location = locationRepository.findById(locationId)
                 .orElseThrow(() -> new NotFoundException("Location not found"));
 
         // Check if user is member of household
-        if (!householdMemberRepository.existsByHouseholdIdAndUserId(location.getHousehold().getId(), currentUser.getId())) {
-            throw new AccessDeniedException("You are not a member of this household");
-        }
+        validateHouseholdAccess(location.getHousehold().getId(), currentUser);
 
         List<PantryItem> items = pantryItemRepository.findByLocationId(locationId);
         return items.stream()
@@ -301,21 +404,24 @@ public PantryItemResponse createPantryItem(CreatePantryItemRequest request, JwtA
      * @param pageable    Pagination information
      * @param token       JWT authentication token of the current user
      * @return Page of PantryItemResponse objects
-     * @throws AccessDeniedException if user is not a member of the household
+     * @throws ValidationException              if householdId or token is null
+     * @throws InsufficientPermissionException  if user is not a member of the household
      */
     @Transactional(readOnly = true)
     public Page<PantryItemResponse> getPantryItemsByHousehold(UUID householdId, Pageable pageable, JwtAuthenticationToken token) {
-        if (householdId == null || pageable == null || token == null) {
-            throw new IllegalArgumentException("Household ID, pageable, and token cannot be null");
+        // Validate inputs
+        if (householdId == null) {
+            throw new ValidationException("Household ID cannot be null");
+        }
+        if (token == null) {
+            throw new ValidationException("Authentication token cannot be null");
         }
 
         User currentUser = userService.getCurrentUser(token);
-        log.debug("User {} retrieving pantry items by household {} with pagination", currentUser.getId(), householdId);
+        log.debug("User {} retrieving pantry items for household {}", currentUser.getId(), householdId);
 
         // Check if user is member of household
-        if (!householdMemberRepository.existsByHouseholdIdAndUserId(householdId, currentUser.getId())) {
-            throw new AccessDeniedException("You are not a member of this household");
-        }
+        validateHouseholdAccess(householdId, currentUser);
 
         Page<PantryItem> items = pantryItemRepository.findByLocation_HouseholdId(householdId, pageable);
         return items.map(this::mapToResponse);
@@ -328,13 +434,17 @@ public PantryItemResponse createPantryItem(CreatePantryItemRequest request, JwtA
      * @param threshold   Maximum quantity to consider as low stock
      * @param token       JWT authentication token of the current user
      * @return List of PantryItemResponse objects with low stock
-     * @throws AccessDeniedException if user is not a member of the household
-     * @throws ValidationException   if threshold is invalid
+     * @throws ValidationException              if inputs are null or threshold is invalid
+     * @throws InsufficientPermissionException  if user is not a member of the household
      */
     @Transactional(readOnly = true)
     public List<PantryItemResponse> getLowStockItems(UUID householdId, Integer threshold, JwtAuthenticationToken token) {
-        if (householdId == null || threshold == null || token == null) {
-            throw new IllegalArgumentException("Household ID, threshold, and token cannot be null");
+        // Validate inputs
+        if (householdId == null) {
+            throw new ValidationException("Household ID cannot be null");
+        }
+        if (token == null) {
+            throw new ValidationException("Authentication token cannot be null");
         }
 
         validateThreshold(threshold);
@@ -344,9 +454,7 @@ public PantryItemResponse createPantryItem(CreatePantryItemRequest request, JwtA
                 currentUser.getId(), householdId, threshold);
 
         // Check if user is member of household
-        if (!householdMemberRepository.existsByHouseholdIdAndUserId(householdId, currentUser.getId())) {
-            throw new AccessDeniedException("You are not a member of this household");
-        }
+        validateHouseholdAccess(householdId, currentUser);
 
         List<PantryItem> items = pantryItemRepository.findLowStockItemsInHousehold(householdId, threshold);
         return items.stream()
@@ -362,12 +470,20 @@ public PantryItemResponse createPantryItem(CreatePantryItemRequest request, JwtA
      * @param endDate     End date for expiration range
      * @param token       JWT authentication token of the current user
      * @return List of PantryItemResponse objects expiring in the range
-     * @throws AccessDeniedException if user is not a member of the household
+     * @throws ValidationException              if dates are invalid (start after end)
+     * @throws InsufficientPermissionException  if user is not a member of the household
      */
     @Transactional(readOnly = true)
     public List<PantryItemResponse> getExpiringItems(UUID householdId, LocalDate startDate, LocalDate endDate, JwtAuthenticationToken token) {
-        if (householdId == null || startDate == null || endDate == null || token == null) {
-            throw new IllegalArgumentException("Household ID, dates, and token cannot be null");
+        // Validate inputs
+        if (householdId == null) {
+            throw new ValidationException("Household ID cannot be null");
+        }
+        if (token == null) {
+            throw new ValidationException("Authentication token cannot be null");
+        }
+        if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
+            throw new ValidationException("Start date must be before or equal to end date");
         }
 
         User currentUser = userService.getCurrentUser(token);
@@ -375,11 +491,10 @@ public PantryItemResponse createPantryItem(CreatePantryItemRequest request, JwtA
                 currentUser.getId(), householdId, startDate, endDate);
 
         // Check if user is member of household
-        if (!householdMemberRepository.existsByHouseholdIdAndUserId(householdId, currentUser.getId())) {
-            throw new AccessDeniedException("You are not a member of this household");
-        }
+        validateHouseholdAccess(householdId, currentUser);
 
-        List<PantryItem> items = pantryItemRepository.findExpiringItemsInHouseholdBetweenDates(householdId, startDate, endDate);
+        List<PantryItem> items = pantryItemRepository.findExpiringItemsInHouseholdBetweenDates(
+                householdId, startDate, endDate);
         return items.stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
@@ -392,28 +507,29 @@ public PantryItemResponse createPantryItem(CreatePantryItemRequest request, JwtA
      * @param searchTerm  Term to search for in product names, brands, and notes
      * @param token       JWT authentication token of the current user
      * @return List of PantryItemResponse objects matching the search
-     * @throws IllegalArgumentException if search term is empty
-     * @throws AccessDeniedException    if user is not a member of the household
+     * @throws ValidationException              if search term is null or empty
+     * @throws InsufficientPermissionException  if user is not a member of the household
      */
     @Transactional(readOnly = true)
     public List<PantryItemResponse> searchPantryItems(UUID householdId, String searchTerm, JwtAuthenticationToken token) {
-        if (householdId == null || token == null) {
-            throw new IllegalArgumentException("Household ID and token cannot be null");
+        // Validate inputs
+        if (householdId == null) {
+            throw new ValidationException("Household ID cannot be null");
         }
-        if (searchTerm == null || searchTerm.trim().isEmpty()) {
-            throw new IllegalArgumentException("Search term cannot be empty");
+        if (token == null) {
+            throw new ValidationException("Authentication token cannot be null");
         }
 
+        validateSearchTerm(searchTerm);
+
         User currentUser = userService.getCurrentUser(token);
-        log.debug("User {} searching pantry items in household {} for term '{}'",
+        log.debug("User {} searching pantry items in household {} with term: {}",
                 currentUser.getId(), householdId, searchTerm);
 
         // Check if user is member of household
-        if (!householdMemberRepository.existsByHouseholdIdAndUserId(householdId, currentUser.getId())) {
-            throw new AccessDeniedException("You are not a member of this household");
-        }
+        validateHouseholdAccess(householdId, currentUser);
 
-        List<PantryItem> items = pantryItemRepository.searchItemsInHousehold(householdId, searchTerm.trim());
+        List<PantryItem> items = pantryItemRepository.searchItemsInHousehold(householdId, searchTerm);
         return items.stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
@@ -425,12 +541,19 @@ public PantryItemResponse createPantryItem(CreatePantryItemRequest request, JwtA
      * @param requests List of CreatePantryItemRequest objects
      * @param token    JWT authentication token of the current user
      * @return List of PantryItemResponse objects for created items
-     * @throws IllegalArgumentException if requests list is null or empty
+     * @throws ValidationException if requests list is null or empty
      */
     @Transactional
     public List<PantryItemResponse> createMultiplePantryItems(List<CreatePantryItemRequest> requests, JwtAuthenticationToken token) {
-        if (requests == null || requests.isEmpty() || token == null) {
-            throw new IllegalArgumentException("Requests list and token cannot be null or empty");
+        // Validate inputs
+        if (requests == null) {
+            throw new ValidationException("Requests list cannot be null");
+        }
+        if (requests.isEmpty()) {
+            throw new ValidationException("Requests list cannot be empty");
+        }
+        if (token == null) {
+            throw new ValidationException("Authentication token cannot be null");
         }
 
         User currentUser = userService.getCurrentUser(token);
@@ -438,16 +561,10 @@ public PantryItemResponse createPantryItem(CreatePantryItemRequest request, JwtA
 
         List<PantryItemResponse> responses = new ArrayList<>();
         for (CreatePantryItemRequest request : requests) {
-            try {
-                PantryItemResponse response = createPantryItem(request, token);
-                responses.add(response);
-            } catch (Exception e) {
-                log.warn("Failed to create pantry item in batch for product {} in location {}: {}",
-                        request.getProductId(), request.getLocationId(), e.getMessage());
-                // Continue with other items in the batch
-            }
+            responses.add(createPantryItem(request, token));
         }
 
+        log.info("User {} successfully created {} pantry items in batch", currentUser.getId(), responses.size());
         return responses;
     }
 
@@ -457,12 +574,19 @@ public PantryItemResponse createPantryItem(CreatePantryItemRequest request, JwtA
      * @param itemIds List of pantry item IDs to delete
      * @param token   JWT authentication token of the current user
      * @return Number of successfully deleted items
-     * @throws IllegalArgumentException if item IDs list is null or empty
+     * @throws ValidationException if item IDs list is null or empty
      */
     @Transactional
     public int deleteMultiplePantryItems(List<UUID> itemIds, JwtAuthenticationToken token) {
-        if (itemIds == null || itemIds.isEmpty() || token == null) {
-            throw new IllegalArgumentException("Item IDs list and token cannot be null or empty");
+        // Validate inputs
+        if (itemIds == null) {
+            throw new ValidationException("Item IDs list cannot be null");
+        }
+        if (itemIds.isEmpty()) {
+            throw new ValidationException("Item IDs list cannot be empty");
+        }
+        if (token == null) {
+            throw new ValidationException("Authentication token cannot be null");
         }
 
         User currentUser = userService.getCurrentUser(token);
@@ -473,238 +597,160 @@ public PantryItemResponse createPantryItem(CreatePantryItemRequest request, JwtA
             try {
                 deletePantryItem(itemId, token);
                 deletedCount++;
-            } catch (Exception e) {
-                log.warn("Failed to delete pantry item {} in batch: {}", itemId, e.getMessage());
-                // Continue with other items in the batch
+            } catch (NotFoundException e) {
+                log.warn("Pantry item {} not found during batch delete, skipping", itemId);
             }
         }
 
+        log.info("User {} successfully deleted {} out of {} pantry items in batch",
+                currentUser.getId(), deletedCount, itemIds.size());
         return deletedCount;
     }
 
-    // Additional convenience methods for compatibility with existing repository methods
-
-    @Transactional(readOnly = true)
-    public List<PantryItemResponse> getItemsByLocation(UUID locationId, JwtAuthenticationToken token) {
-        return getPantryItemsByLocation(locationId, token);
-    }
-
-    @Transactional(readOnly = true)
-    public List<PantryItemResponse> getItemsByLocation(UUID locationId, Sort sort, JwtAuthenticationToken token) {
-        if (locationId == null || sort == null || token == null) {
-            throw new IllegalArgumentException("Location ID, sort, and token cannot be null");
-        }
-
-        User currentUser = userService.getCurrentUser(token);
-        Location location = locationRepository.findById(locationId)
-                .orElseThrow(() -> new NotFoundException("Location not found"));
-
-        if (!householdMemberRepository.existsByHouseholdIdAndUserId(location.getHousehold().getId(), currentUser.getId())) {
-            throw new AccessDeniedException("You are not a member of this household");
-        }
-
-        List<PantryItem> items = pantryItemRepository.findByLocationId(locationId, sort);
-        return items.stream()
-                .map(this::mapToResponse)
-                .collect(Collectors.toList());
-    }
-
-    @Transactional(readOnly = true)
-    public Page<PantryItemResponse> getItemsByHousehold(UUID householdId, Pageable pageable, JwtAuthenticationToken token) {
-        return getPantryItemsByHousehold(householdId, pageable, token);
-    }
-
-    @Transactional(readOnly = true)
-    public List<PantryItemResponse> getExpiringItems(LocalDate beforeDate, JwtAuthenticationToken token) {
-        if (beforeDate == null || token == null) {
-            throw new IllegalArgumentException("Before date and token cannot be null");
-        }
-
-        User currentUser = userService.getCurrentUser(token);
-        log.debug("User {} retrieving expiring items before {}", currentUser.getId(), beforeDate);
-
-        List<PantryItem> items = pantryItemRepository.findByExpirationDateBefore(beforeDate);
-
-        // Filter items to only include those from households where user is a member
-        return items.stream()
-                .filter(item -> householdMemberRepository.existsByHouseholdIdAndUserId(
-                        item.getLocation().getHousehold().getId(), currentUser.getId()))
-                .map(this::mapToResponse)
-                .collect(Collectors.toList());
-    }
-
-    @Transactional(readOnly = true)
-    public List<PantryItemResponse> getExpiringItemsInHousehold(UUID householdId, LocalDate beforeDate, JwtAuthenticationToken token) {
-        if (householdId == null || beforeDate == null || token == null) {
-            throw new IllegalArgumentException("Household ID, before date, and token cannot be null");
-        }
-
-        User currentUser = userService.getCurrentUser(token);
-
-        if (!householdMemberRepository.existsByHouseholdIdAndUserId(householdId, currentUser.getId())) {
-            throw new AccessDeniedException("You are not a member of this household");
-        }
-
-        List<PantryItem> items = pantryItemRepository.findByExpirationDateBeforeAndLocation_HouseholdId(beforeDate, householdId);
-        return items.stream()
-                .map(this::mapToResponse)
-                .collect(Collectors.toList());
-    }
-
-    @Transactional(readOnly = true)
-    public List<PantryItemResponse> getItemsExpiringBetween(LocalDate startDate, LocalDate endDate, JwtAuthenticationToken token) {
-        if (startDate == null || endDate == null || token == null) {
-            throw new IllegalArgumentException("Start date, end date, and token cannot be null");
-        }
-
-        User currentUser = userService.getCurrentUser(token);
-        log.debug("User {} retrieving items expiring between {} and {}", currentUser.getId(), startDate, endDate);
-
-        List<PantryItem> items = pantryItemRepository.findByExpirationDateBetween(startDate, endDate);
-
-        // Filter items to only include those from households where user is a member
-        return items.stream()
-                .filter(item -> householdMemberRepository.existsByHouseholdIdAndUserId(
-                        item.getLocation().getHousehold().getId(), currentUser.getId()))
-                .map(this::mapToResponse)
-                .collect(Collectors.toList());
-    }
-
-    @Transactional(readOnly = true)
-    public List<PantryItemResponse> getLowStockItems(Integer threshold, JwtAuthenticationToken token) {
-        if (threshold == null || token == null) {
-            throw new IllegalArgumentException("Threshold and token cannot be null");
-        }
-
-        validateThreshold(threshold);
-
-        User currentUser = userService.getCurrentUser(token);
-        log.debug("User {} retrieving low stock items with threshold {}", currentUser.getId(), threshold);
-
-        List<PantryItem> items = pantryItemRepository.findByQuantityLessThanEqual(threshold);
-
-        // Filter items to only include those from households where user is a member
-        return items.stream()
-                .filter(item -> householdMemberRepository.existsByHouseholdIdAndUserId(
-                        item.getLocation().getHousehold().getId(), currentUser.getId()))
-                .map(this::mapToResponse)
-                .collect(Collectors.toList());
-    }
-
-    @Transactional(readOnly = true)
-    public List<PantryItemResponse> getLowStockItemsInHousehold(UUID householdId, Integer threshold, JwtAuthenticationToken token) {
-        return getLowStockItems(householdId, threshold, token);
-    }
-
-    @Transactional(readOnly = true)
-    public List<PantryItemResponse> searchItemsByProductName(String searchTerm, JwtAuthenticationToken token) {
-        if (searchTerm == null || searchTerm.trim().isEmpty() || token == null) {
-            throw new IllegalArgumentException("Search term and token cannot be empty");
-        }
-
-        User currentUser = userService.getCurrentUser(token);
-        log.debug("User {} searching items by product name '{}'", currentUser.getId(), searchTerm);
-
-        List<PantryItem> items = pantryItemRepository.findByProduct_NameContainingIgnoreCase(searchTerm.trim());
-
-        // Filter items to only include those from households where user is a member
-        return items.stream()
-                .filter(item -> householdMemberRepository.existsByHouseholdIdAndUserId(
-                        item.getLocation().getHousehold().getId(), currentUser.getId()))
-                .map(this::mapToResponse)
-                .collect(Collectors.toList());
-    }
-
-    @Transactional(readOnly = true)
-    public List<PantryItemResponse> searchItemsInLocation(UUID locationId, String searchTerm, JwtAuthenticationToken token) {
-        if (locationId == null || searchTerm == null || searchTerm.trim().isEmpty() || token == null) {
-            throw new IllegalArgumentException("Location ID, search term, and token cannot be null or empty");
-        }
-
-        User currentUser = userService.getCurrentUser(token);
-        Location location = locationRepository.findById(locationId)
-                .orElseThrow(() -> new NotFoundException("Location not found"));
-
-        if (!householdMemberRepository.existsByHouseholdIdAndUserId(location.getHousehold().getId(), currentUser.getId())) {
-            throw new AccessDeniedException("You are not a member of this household");
-        }
-
-        List<PantryItem> items = pantryItemRepository.searchItemsInLocation(locationId, searchTerm.trim());
-        return items.stream()
-                .map(this::mapToResponse)
-                .collect(Collectors.toList());
-    }
-
-    @Transactional(readOnly = true)
-    public List<PantryItemResponse> searchItemsInHousehold(UUID householdId, String searchTerm, JwtAuthenticationToken token) {
-        return searchPantryItems(householdId, searchTerm, token);
-    }
-
+    /**
+     * Partially updates a pantry item's information using PATCH semantics.
+     * Only the fields provided in the patch map will be updated.
+     *
+     * @param pantryItemId UUID of the pantry item to patch
+     * @param patchFields  Map containing field names and values to update
+     * @param token        JWT authentication token of the current user
+     * @return PantryItemResponse containing the updated pantry item's details
+     * @throws ValidationException              if inputs are null, empty, or contain invalid data
+     * @throws NotFoundException                if pantry item or location not found
+     * @throws InsufficientPermissionException  if user is not a member of the household
+     * @throws DataIntegrityException           if save operation fails
+     */
     @Transactional
-    public List<PantryItemResponse> updateQuantities(Map<UUID, Integer> quantityUpdates, JwtAuthenticationToken token) {
-        if (quantityUpdates == null || quantityUpdates.isEmpty() || token == null) {
-            throw new IllegalArgumentException("Quantity updates map and token cannot be null or empty");
+    public PantryItemResponse patchPantryItem(UUID pantryItemId, Map<String, Object> patchFields, JwtAuthenticationToken token) {
+        // Validate inputs
+        if (pantryItemId == null) {
+            throw new ValidationException("Pantry item ID cannot be null");
+        }
+        if (patchFields == null) {
+            throw new ValidationException("Patch fields cannot be null");
+        }
+        if (patchFields.isEmpty()) {
+            throw new ValidationException("Patch fields cannot be empty");
+        }
+        if (token == null) {
+            throw new ValidationException("Authentication token cannot be null");
         }
 
         User currentUser = userService.getCurrentUser(token);
-        log.debug("User {} updating quantities for {} items", currentUser.getId(), quantityUpdates.size());
+        log.debug("User {} patching pantry item {} with {} fields",
+                currentUser.getId(), pantryItemId, patchFields.size());
 
-        List<PantryItemResponse> updatedItems = new ArrayList<>();
+        PantryItem pantryItem = pantryItemRepository.findById(pantryItemId)
+                .orElseThrow(() -> new NotFoundException("Pantry item not found"));
 
-        for (Map.Entry<UUID, Integer> entry : quantityUpdates.entrySet()) {
-            UUID itemId = entry.getKey();
-            Integer newQuantity = entry.getValue();
+        // Check if user is member of household
+        validateHouseholdAccess(pantryItem.getLocation().getHousehold().getId(), currentUser);
 
-            if (newQuantity == null || newQuantity < 0) {
-                log.warn("Invalid quantity {} for item {}, skipping", newQuantity, itemId);
-                continue;
-            }
+        // Apply patches
+        for (Map.Entry<String, Object> entry : patchFields.entrySet()) {
+            String field = entry.getKey();
+            Object value = entry.getValue();
 
-            try {
-                UpdatePantryItemRequest request = UpdatePantryItemRequest.builder()
-                        .quantity(newQuantity)
-                        .build();
+            switch (field) {
+                case "quantity":
+                    Integer quantity = value != null ? ((Number) value).intValue() : null;
+                    if (quantity != null && quantity < 0) {
+                        throw new ValidationException("Quantity cannot be negative");
+                    }
+                    pantryItem.setQuantity(quantity);
+                    break;
 
-                PantryItemResponse updated = updatePantryItem(itemId, request, token);
-                updatedItems.add(updated);
-            } catch (Exception e) {
-                log.warn("Failed to update quantity for item {}: {}", itemId, e.getMessage());
-                // Continue with other items
+                case "unitOfMeasure":
+                    pantryItem.setUnitOfMeasure((String) value);
+                    break;
+
+                case "expirationDate":
+                    if (value == null) {
+                        pantryItem.setExpirationDate(null);
+                    } else if (value instanceof String) {
+                        pantryItem.setExpirationDate(LocalDate.parse((String) value));
+                    } else if (value instanceof LocalDate) {
+                        pantryItem.setExpirationDate((LocalDate) value);
+                    }
+                    break;
+
+                case "notes":
+                    pantryItem.setNotes((String) value);
+                    break;
+
+                case "locationId":
+                    if (value != null) {
+                        UUID locationId = UUID.fromString(value.toString());
+                        Location newLocation = locationRepository.findById(locationId)
+                                .orElseThrow(() -> new NotFoundException("Location not found"));
+
+                        // Verify user has access to new location's household
+                        validateHouseholdAccess(newLocation.getHousehold().getId(), currentUser);
+
+                        pantryItem.setLocation(newLocation);
+                    }
+                    break;
+
+                default:
+                    log.debug("Ignoring unknown field in patch: {}", field);
+                    break;
             }
         }
 
-        return updatedItems;
+        pantryItem.setUpdatedAt(LocalDateTime.now());
+
+        try {
+            PantryItem savedItem = pantryItemRepository.save(pantryItem);
+            log.info("User {} successfully patched pantry item {}", currentUser.getId(), pantryItemId);
+            return mapToResponse(savedItem);
+        } catch (Exception e) {
+            log.error("Failed to patch pantry item {}", pantryItemId, e);
+            throw new DataIntegrityException("Failed to patch pantry item: " + e.getMessage(), e);
+        }
     }
 
+    /**
+     * Gets pantry statistics for a household including item count, low stock count, and expiring items count.
+     *
+     * @param householdId UUID of the household
+     * @param token       JWT authentication token of the current user
+     * @return Map containing various pantry statistics
+     * @throws ValidationException              if householdId or token is null
+     * @throws InsufficientPermissionException  if user is not a member of the household
+     */
     @Transactional(readOnly = true)
     public Map<String, Object> getPantryStatistics(UUID householdId, JwtAuthenticationToken token) {
-        if (householdId == null || token == null) {
-            throw new IllegalArgumentException("Household ID and token cannot be null");
+        // Validate inputs
+        if (householdId == null) {
+            throw new ValidationException("Household ID cannot be null");
+        }
+        if (token == null) {
+            throw new ValidationException("Authentication token cannot be null");
         }
 
         User currentUser = userService.getCurrentUser(token);
+        log.debug("User {} retrieving pantry statistics for household {}", currentUser.getId(), householdId);
 
-        if (!householdMemberRepository.existsByHouseholdIdAndUserId(householdId, currentUser.getId())) {
-            throw new AccessDeniedException("You are not a member of this household");
-        }
+        // Check if user is member of household
+        validateHouseholdAccess(householdId, currentUser);
 
+        // Calculate statistics
         long totalItems = pantryItemRepository.countByLocation_HouseholdId(householdId);
-        List<PantryItem> allItems = pantryItemRepository.findByLocation_HouseholdId(householdId);
+        long uniqueProducts = pantryItemRepository.countDistinctProductsByHouseholdId(householdId);
+        long expiringInWeek = pantryItemRepository.countExpiringItemsByHouseholdIdAndDate(
+                householdId, LocalDate.now().plusDays(7));
 
-        long expiringItems = allItems.stream()
-                .filter(item -> item.getExpirationDate() != null &&
-                        item.getExpirationDate().isBefore(LocalDate.now().plusDays(7)))
-                .count();
-
-        long lowStockItems = allItems.stream()
-                .filter(item -> item.getQuantity() != null && item.getQuantity() <= 5)
-                .count();
+        List<PantryItem> lowStockItems = pantryItemRepository.findLowStockItemsInHousehold(householdId, 5);
+        long lowStockCount = lowStockItems.size();
 
         Map<String, Object> statistics = new HashMap<>();
         statistics.put("totalItems", totalItems);
-        statistics.put("expiringItems", expiringItems);
-        statistics.put("lowStockItems", lowStockItems);
-        statistics.put("generatedAt", LocalDateTime.now());
+        statistics.put("uniqueProducts", uniqueProducts);
+        statistics.put("expiringInWeek", expiringInWeek);
+        statistics.put("lowStockCount", lowStockCount);
+
+        log.debug("Pantry statistics for household {}: {} items, {} unique products, {} expiring, {} low stock",
+                householdId, totalItems, uniqueProducts, expiringInWeek, lowStockCount);
 
         return statistics;
     }
@@ -716,13 +762,21 @@ public PantryItemResponse createPantryItem(CreatePantryItemRequest request, JwtA
      * @param productId  UUID of the product
      * @param token      JWT authentication token of the current user
      * @return List of PantryItemResponse objects for all variants of the product
-     * @throws NotFoundException     if location or product not found
-     * @throws AccessDeniedException if user is not a member of the household
+     * @throws ValidationException              if locationId, productId, or token is null
+     * @throws NotFoundException                if location or product not found
+     * @throws InsufficientPermissionException  if user is not a member of the household
      */
     @Transactional(readOnly = true)
     public List<PantryItemResponse> getProductVariantsByLocation(UUID locationId, UUID productId, JwtAuthenticationToken token) {
-        if (locationId == null || productId == null || token == null) {
-            throw new IllegalArgumentException("Location ID, product ID, and token cannot be null");
+        // Validate inputs
+        if (locationId == null) {
+            throw new ValidationException("Location ID cannot be null");
+        }
+        if (productId == null) {
+            throw new ValidationException("Product ID cannot be null");
+        }
+        if (token == null) {
+            throw new ValidationException("Authentication token cannot be null");
         }
 
         User currentUser = userService.getCurrentUser(token);
@@ -733,15 +787,16 @@ public PantryItemResponse createPantryItem(CreatePantryItemRequest request, JwtA
                 .orElseThrow(() -> new NotFoundException("Location not found"));
 
         // Check if user is member of household
-        if (!householdMemberRepository.existsByHouseholdIdAndUserId(location.getHousehold().getId(), currentUser.getId())) {
-            throw new AccessDeniedException("You are not a member of this household");
-        }
+        validateHouseholdAccess(location.getHousehold().getId(), currentUser);
 
         // Verify product exists
-        productRepository.findById(productId)
-                .orElseThrow(() -> new NotFoundException("Product not found"));
+        if (!productRepository.existsById(productId)) {
+            throw new NotFoundException("Product not found");
+        }
 
-        List<PantryItem> variants = pantryItemRepository.findByLocationIdAndProductIdOrderByExpirationDateNullsLast(locationId, productId);
+        List<PantryItem> variants = pantryItemRepository
+                .findByLocationIdAndProductIdOrderByExpirationDateNullsLast(locationId, productId);
+        
         return variants.stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
@@ -755,28 +810,39 @@ public PantryItemResponse createPantryItem(CreatePantryItemRequest request, JwtA
      * @param expirationDate Expiration date to check (null for items without expiration)
      * @param token          JWT authentication token of the current user
      * @return true if the variant exists, false otherwise
-     * @throws NotFoundException     if location not found
-     * @throws AccessDeniedException if user is not a member of the household
+     * @throws ValidationException              if locationId, productId, or token is null
+     * @throws NotFoundException                if location not found
+     * @throws InsufficientPermissionException  if user is not a member of the household
      */
     @Transactional(readOnly = true)
     public boolean productVariantExists(UUID locationId, UUID productId, LocalDate expirationDate, JwtAuthenticationToken token) {
-        if (locationId == null || productId == null || token == null) {
-            throw new IllegalArgumentException("Location ID, product ID, and token cannot be null");
+        // Validate inputs
+        if (locationId == null) {
+            throw new ValidationException("Location ID cannot be null");
+        }
+        if (productId == null) {
+            throw new ValidationException("Product ID cannot be null");
+        }
+        if (token == null) {
+            throw new ValidationException("Authentication token cannot be null");
         }
 
         User currentUser = userService.getCurrentUser(token);
+        log.debug("User {} checking if product variant exists: product {} in location {} with expiration {}",
+                currentUser.getId(), productId, locationId, expirationDate);
+
         Location location = locationRepository.findById(locationId)
                 .orElseThrow(() -> new NotFoundException("Location not found"));
 
         // Check if user is member of household
-        if (!householdMemberRepository.existsByHouseholdIdAndUserId(location.getHousehold().getId(), currentUser.getId())) {
-            throw new AccessDeniedException("You are not a member of this household");
-        }
+        validateHouseholdAccess(location.getHousehold().getId(), currentUser);
 
         if (expirationDate != null) {
-            return pantryItemRepository.existsByLocationIdAndProductIdAndExpirationDate(locationId, productId, expirationDate);
+            return pantryItemRepository.existsByLocationIdAndProductIdAndExpirationDate(
+                    locationId, productId, expirationDate);
         } else {
-            return pantryItemRepository.existsByLocationIdAndProductIdAndExpirationDateIsNull(locationId, productId);
+            return pantryItemRepository.existsByLocationIdAndProductIdAndExpirationDateIsNull(
+                    locationId, productId);
         }
     }
 
@@ -788,162 +854,111 @@ public PantryItemResponse createPantryItem(CreatePantryItemRequest request, JwtA
      * @param expirationDate Expiration date of the variant to delete (null for items without expiration)
      * @param token          JWT authentication token of the current user
      * @return number of items deleted
-     * @throws NotFoundException     if location not found
-     * @throws AccessDeniedException if user is not a member of the household
+     * @throws ValidationException              if locationId, productId, or token is null
+     * @throws NotFoundException                if location not found
+     * @throws InsufficientPermissionException  if user is not a member of the household
      */
     @Transactional
     public int deleteProductVariant(UUID locationId, UUID productId, LocalDate expirationDate, JwtAuthenticationToken token) {
-        if (locationId == null || productId == null || token == null) {
-            throw new IllegalArgumentException("Location ID, product ID, and token cannot be null");
+        // Validate inputs
+        if (locationId == null) {
+            throw new ValidationException("Location ID cannot be null");
+        }
+        if (productId == null) {
+            throw new ValidationException("Product ID cannot be null");
+        }
+        if (token == null) {
+            throw new ValidationException("Authentication token cannot be null");
         }
 
         User currentUser = userService.getCurrentUser(token);
-        log.debug("User {} deleting product variant for product {} in location {} with expiration date {}",
+        log.debug("User {} deleting product variant: product {} in location {} with expiration {}",
                 currentUser.getId(), productId, locationId, expirationDate);
 
         Location location = locationRepository.findById(locationId)
                 .orElseThrow(() -> new NotFoundException("Location not found"));
 
         // Check if user is member of household
-        if (!householdMemberRepository.existsByHouseholdIdAndUserId(location.getHousehold().getId(), currentUser.getId())) {
-            throw new AccessDeniedException("You are not a member of this household");
-        }
+        validateHouseholdAccess(location.getHousehold().getId(), currentUser);
 
         int deletedCount;
         if (expirationDate != null) {
-            deletedCount = pantryItemRepository.deleteByLocationIdAndProductIdAndExpirationDate(locationId, productId, expirationDate);
+            deletedCount = pantryItemRepository.deleteByLocationIdAndProductIdAndExpirationDate(
+                    locationId, productId, expirationDate);
         } else {
-            deletedCount = pantryItemRepository.deleteByLocationIdAndProductIdAndExpirationDateIsNull(locationId, productId);
+            deletedCount = pantryItemRepository.deleteByLocationIdAndProductIdAndExpirationDateIsNull(
+                    locationId, productId);
         }
 
-        log.debug("Deleted {} product variants", deletedCount);
+        log.info("User {} deleted {} product variant(s)", currentUser.getId(), deletedCount);
         return deletedCount;
     }
 
     /**
-     * Partially updates a pantry item's information using PATCH semantics.
-     * Only the fields provided in the patch map will be updated.
+     * Updates quantities for multiple pantry items in a batch operation.
      *
-     * @param pantryItemId UUID of the pantry item to patch
-     * @param patchFields  Map containing field names and values to update
-     * @param token        JWT authentication token of the current user
-     * @return PantryItemResponse containing the updated pantry item's details
-     * @throws IllegalArgumentException if pantry item ID, patch fields, or token is null
-     * @throws NotFoundException        if pantry item or location not found
-     * @throws AccessDeniedException    if user is not a member of the household
-     * @throws ValidationException      if patch data is invalid
+     * @param quantityUpdates Map of pantry item IDs to new quantities
+     * @param token           JWT authentication token of the current user
+     * @return List of updated PantryItemResponse objects
+     * @throws ValidationException if quantityUpdates or token is null or empty
      */
     @Transactional
-    public PantryItemResponse patchPantryItem(UUID pantryItemId, Map<String, Object> patchFields, JwtAuthenticationToken token) {
-        if (pantryItemId == null || patchFields == null || token == null) {
-            throw new IllegalArgumentException("Pantry item ID, patch fields, and token cannot be null");
+    public List<PantryItemResponse> updateQuantities(Map<UUID, Integer> quantityUpdates, JwtAuthenticationToken token) {
+        // Validate inputs
+        if (quantityUpdates == null) {
+            throw new ValidationException("Quantity updates map cannot be null");
         }
-
-        if (patchFields.isEmpty()) {
-            throw new IllegalArgumentException("Patch fields cannot be empty");
+        if (quantityUpdates.isEmpty()) {
+            throw new ValidationException("Quantity updates map cannot be empty");
+        }
+        if (token == null) {
+            throw new ValidationException("Authentication token cannot be null");
         }
 
         User currentUser = userService.getCurrentUser(token);
-        log.debug("User {} patching pantry item {} with fields: {}",
-                currentUser.getId(), pantryItemId, patchFields.keySet());
+        log.debug("User {} updating quantities for {} pantry items", currentUser.getId(), quantityUpdates.size());
 
-        PantryItem pantryItem = pantryItemRepository.findById(pantryItemId)
-                .orElseThrow(() -> new NotFoundException("Pantry item not found"));
+        List<PantryItemResponse> updatedItems = new ArrayList<>();
 
-        // Check if user is member of household
-        UUID householdId = pantryItem.getLocation().getHousehold().getId();
-        if (!householdMemberRepository.existsByHouseholdIdAndUserId(householdId, currentUser.getId())) {
-            throw new AccessDeniedException("You are not a member of this household");
-        }
+        for (Map.Entry<UUID, Integer> entry : quantityUpdates.entrySet()) {
+            UUID itemId = entry.getKey();
+            Integer newQuantity = entry.getValue();
 
-        // Apply patches
-        for (Map.Entry<String, Object> entry : patchFields.entrySet()) {
-            String field = entry.getKey();
-            Object value = entry.getValue();
+            if (newQuantity != null && newQuantity < 0) {
+                throw new ValidationException("Quantity cannot be negative for item " + itemId);
+            }
 
-            switch (field) {
-                case "locationId":
-                    if (value != null) {
-                        UUID locationId;
-                        try {
-                            locationId = UUID.fromString(value.toString());
-                        } catch (IllegalArgumentException e) {
-                            throw new ValidationException("Invalid location ID format");
-                        }
+            try {
+                PantryItem item = pantryItemRepository.findById(itemId)
+                        .orElseThrow(() -> new NotFoundException("Pantry item not found"));
 
-                        Location newLocation = locationRepository.findById(locationId)
-                                .orElseThrow(() -> new NotFoundException("Location not found"));
+                // Check if user is member of household
+                validateHouseholdAccess(item.getLocation().getHousehold().getId(), currentUser);
 
-                        // Check if new location belongs to same household
-                        if (!newLocation.getHousehold().getId().equals(householdId)) {
-                            throw new AccessDeniedException("Cannot move item to location in different household");
-                        }
+                item.setQuantity(newQuantity);
+                item.setUpdatedAt(LocalDateTime.now());
 
-                        pantryItem.setLocation(newLocation);
-                    }
-                    break;
-
-                case "quantity":
-                    if (value != null) {
-                        int quantity;
-                        try {
-                            quantity = Integer.parseInt(value.toString());
-                        } catch (NumberFormatException e) {
-                            throw new ValidationException("Invalid quantity format");
-                        }
-                        if (quantity <= 0) {
-                            throw new ValidationException("Quantity must be greater than 0");
-                        }
-                        pantryItem.setQuantity(quantity);
-                    }
-                    break;
-
-                case "unitOfMeasure":
-                    pantryItem.setUnitOfMeasure(value != null ? value.toString() : null);
-                    break;
-
-                case "expirationDate":
-                    if (value != null) {
-                        LocalDate expirationDate;
-                        try {
-                            expirationDate = LocalDate.parse(value.toString());
-                        } catch (Exception e) {
-                            throw new ValidationException("Invalid expiration date format. Expected YYYY-MM-DD");
-                        }
-                        pantryItem.setExpirationDate(expirationDate);
-                    } else {
-                        pantryItem.setExpirationDate(null);
-                    }
-                    break;
-
-                case "notes":
-                    pantryItem.setNotes(value != null ? value.toString() : null);
-                    break;
-
-                default:
-                    log.warn("Unknown field '{}' in patch request, ignoring", field);
-                    break;
+                PantryItem savedItem = pantryItemRepository.save(item);
+                updatedItems.add(mapToResponse(savedItem));
+            } catch (NotFoundException | InsufficientPermissionException e) {
+                log.warn("Failed to update quantity for item {}: {}", itemId, e.getMessage());
+                // Continue with other items
             }
         }
 
-        pantryItem.setUpdatedAt(LocalDateTime.now());
+        log.info("User {} successfully updated quantities for {} out of {} pantry items",
+                currentUser.getId(), updatedItems.size(), quantityUpdates.size());
 
-        PantryItem savedItem = pantryItemRepository.save(pantryItem);
-        log.debug("Successfully patched pantry item {}", pantryItemId);
-
-        return mapToResponse(savedItem);
+        return updatedItems;
     }
-
-    // Private helper methods
 
     /**
      * Maps a PantryItem entity to a PantryItemResponse DTO.
+     *
+     * @param pantryItem PantryItem entity to map
+     * @return PantryItemResponse DTO
      */
     private PantryItemResponse mapToResponse(PantryItem pantryItem) {
-        if (pantryItem == null) {
-            return null;
-        }
-
         return PantryItemResponse.builder()
                 .id(pantryItem.getId())
                 .product(mapProductToResponse(pantryItem.getProduct()))
@@ -959,12 +974,11 @@ public PantryItemResponse createPantryItem(CreatePantryItemRequest request, JwtA
 
     /**
      * Maps a Product entity to a ProductResponse DTO.
+     *
+     * @param product Product entity to map
+     * @return ProductResponse DTO
      */
     private ProductResponse mapProductToResponse(Product product) {
-        if (product == null) {
-            return null;
-        }
-
         return ProductResponse.builder()
                 .id(product.getId())
                 .upc(product.getUpc())
@@ -975,7 +989,6 @@ public PantryItemResponse createPantryItem(CreatePantryItemRequest request, JwtA
                 .dataSource(product.getDataSource())
                 .requiresApiRetry(product.getRequiresApiRetry())
                 .retryAttempts(product.getRetryAttempts())
-                .lastRetryAttempt(product.getLastRetryAttempt())
                 .createdAt(product.getCreatedAt())
                 .updatedAt(product.getUpdatedAt())
                 .build();
@@ -983,70 +996,18 @@ public PantryItemResponse createPantryItem(CreatePantryItemRequest request, JwtA
 
     /**
      * Maps a Location entity to a LocationResponse DTO.
+     *
+     * @param location Location entity to map
+     * @return LocationResponse DTO
      */
     private LocationResponse mapLocationToResponse(Location location) {
-        if (location == null) {
-            return null;
-        }
-
         return LocationResponse.builder()
                 .id(location.getId())
                 .name(location.getName())
                 .description(location.getDescription())
                 .householdId(location.getHousehold().getId())
-                .householdName(location.getHousehold().getName())
                 .createdAt(location.getCreatedAt())
                 .updatedAt(location.getUpdatedAt())
                 .build();
     }
-
-    /**
-     * Validates a create pantry item request.
-     */
-    private void validateCreateRequest(CreatePantryItemRequest request) {
-        if (request == null) {
-            throw new IllegalArgumentException("Create request cannot be null");
-        }
-        if (request.getProductId() == null) {
-            throw new ValidationException("Product ID is required");
-        }
-        if (request.getLocationId() == null) {
-            throw new ValidationException("Location ID is required");
-        }
-        if (request.getQuantity() != null && request.getQuantity() <= 0) {
-            throw new ValidationException("Quantity must be greater than 0");
-        }
-    }
-
-    /**
-     * Validates an update pantry item request.
-     */
-    private void validateUpdateRequest(UpdatePantryItemRequest request) {
-        if (request == null) {
-            throw new IllegalArgumentException("Update request cannot be null");
-        }
-        if (request.getQuantity() != null && request.getQuantity() <= 0) {
-            throw new ValidationException("Quantity must be greater than 0");
-        }
-    }
-
-    /**
-     * Validates a search term.
-     */
-    private void validateSearchTerm(String searchTerm) {
-        if (searchTerm == null || searchTerm.trim().isEmpty()) {
-            throw new ValidationException("Search term cannot be empty");
-        }
-    }
-
-    /**
-     * Validates a threshold value.
-     */
-    private void validateThreshold(Integer threshold) {
-        if (threshold == null || threshold <= 0) {
-            throw new ValidationException("Threshold must be greater than 0");
-        }
-    }
-
-
 }

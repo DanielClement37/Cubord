@@ -13,7 +13,6 @@ import org.cubord.cubordbackend.exception.*;
 import org.cubord.cubordbackend.repository.ProductRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,7 +36,6 @@ public class ProductService {
     private final UserService userService;
 
     private static final int MAX_RETRY_ATTEMPTS = 5;
-    private static final int DEFAULT_LOW_STOCK_THRESHOLD = 5;
 
     /**
      * Validates that the current user has admin privileges.
