@@ -529,23 +529,20 @@ public class HouseholdService {
         for (Map.Entry<String, Object> entry : fields.entrySet()) {
             String key = entry.getKey();
             Object value = entry.getValue();
-            
-            switch (key) {
-                case "name":
-                    String newName = (String) value;
-                    validateHouseholdName(newName);
 
-                    // Check if name is already used by a different household
-                    Optional<Household> existingHousehold = householdRepository.findByName(newName);
-                    if (existingHousehold.isPresent() && !existingHousehold.get().getId().equals(householdId)) {
-                        throw new ConflictException("Household with name '" + newName + "' already exists");
-                    }
+            if (key.equals("name")) {
+                String newName = (String) value;
+                validateHouseholdName(newName);
 
-                    household.setName(newName);
-                    break;
-                default:
-                    log.debug("Ignoring unknown field: {}", key);
-                    break;
+                // Check if name is already used by a different household
+                Optional<Household> existingHousehold = householdRepository.findByName(newName);
+                if (existingHousehold.isPresent() && !existingHousehold.get().getId().equals(householdId)) {
+                    throw new ConflictException("Household with name '" + newName + "' already exists");
+                }
+
+                household.setName(newName);
+            } else {
+                log.debug("Ignoring unknown field: {}", key);
             }
         }
 

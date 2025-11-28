@@ -635,7 +635,7 @@ class HouseholdServiceTest {
         @DisplayName("Should search households by name")
         void shouldSearchHouseholdsByName() {
             setupValidAuthentication();
-            List<Household> searchResults = Arrays.asList(testHousehold);
+            List<Household> searchResults = Collections.singletonList(testHousehold);
             when(householdRepository.findByNameContainingIgnoreCase(eq("Test")))
                     .thenReturn(searchResults);
             when(householdMemberRepository.findByHouseholdIdAndUserId(eq(householdId), eq(userId)))
@@ -645,7 +645,7 @@ class HouseholdServiceTest {
 
             assertThat(responses).isNotNull();
             assertThat(responses).hasSize(1);
-            assertThat(responses.get(0).getName()).contains("Test");
+            assertThat(responses.getFirst().getName()).contains("Test");
             verify(householdRepository).findByNameContainingIgnoreCase(eq("Test"));
         }
 
@@ -679,7 +679,7 @@ class HouseholdServiceTest {
 
             assertThat(responses).isNotNull();
             assertThat(responses).hasSize(1);
-            assertThat(responses.get(0).getId()).isEqualTo(householdId);
+            assertThat(responses.getFirst().getId()).isEqualTo(householdId);
         }
 
         @Test
