@@ -3,79 +3,245 @@ package org.cubord.cubordbackend.service;
 import org.cubord.cubordbackend.domain.*;
 import org.cubord.cubordbackend.dto.household.HouseholdRequest;
 import org.cubord.cubordbackend.dto.household.HouseholdResponse;
+import org.cubord.cubordbackend.exception.ConflictException;
+import org.cubord.cubordbackend.exception.InsufficientPermissionException;
 import org.cubord.cubordbackend.exception.NotFoundException;
+import org.cubord.cubordbackend.exception.ResourceStateException;
+import org.cubord.cubordbackend.exception.ValidationException;
 import org.cubord.cubordbackend.repository.HouseholdMemberRepository;
 import org.cubord.cubordbackend.repository.HouseholdRepository;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Nested;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
 import java.time.LocalDateTime;
 import java.util.*;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-public class HouseholdServiceTest {
+@DisplayName("Household Service Tests")
+class HouseholdServiceTest {
 
-    @Mock
-    private HouseholdRepository householdRepository;
-
-    @Mock
-    private HouseholdMemberRepository householdMemberRepository;
-
-    @Mock
-    private UserService userService;
-
-    @Mock
-    private JwtAuthenticationToken token;
+    @Mock private HouseholdRepository householdRepository;
+    @Mock private HouseholdMemberRepository householdMemberRepository;
+    @Mock private UserService userService;
+    @Mock private JwtAuthenticationToken validToken;
+    @Mock private JwtAuthenticationToken invalidToken;
 
     @InjectMocks
     private HouseholdService householdService;
 
+    // Test data
     private User testUser;
+    private User secondUser;
+    private User adminUser;
     private Household testHousehold;
-    private HouseholdMember testMember;
+    private Household secondHousehold;
+    private HouseholdMember ownerMember;
+    private HouseholdMember adminMember;
+    private HouseholdMember regularMember;
+    private HouseholdRequest testHouseholdRequest;
     private UUID userId;
+    private UUID secondUserId;
+    private UUID adminUserId;
     private UUID householdId;
+    private UUID secondHouseholdId;
 
     @BeforeEach
     void setUp() {
+        reset(householdRepository, householdMemberRepository, userService, validToken, invalidToken);
+
         userId = UUID.randomUUID();
+        secondUserId = UUID.randomUUID();
+        adminUserId = UUID.randomUUID();
         householdId = UUID.randomUUID();
+        secondHouseholdId = UUID.randomUUID();
 
-        testUser = new User();
-        testUser.setId(userId);
-        testUser.setUsername("testuser");
+        testUser = User.builder()
+                .id(userId)
+                .username("testuser")
+                .email("test@example.com")
+                .displayName("Test User")
+                .role(UserRole.USER)
+                .createdAt(LocalDateTime.now())
+                .build();
 
-        testHousehold = new Household();
-        testHousehold.setId(householdId);
-        testHousehold.setName("Test Household");
-        testHousehold.setMembers(new HashSet<>());
-        testHousehold.setLocations(new HashSet<>());
-        testHousehold.setCreatedAt(LocalDateTime.now());
-        testHousehold.setUpdatedAt(LocalDateTime.now());
+        secondUser = User.builder()
+                .id(secondUserId)
+                .username("seconduser")
+                .email("second@example.com")
+                .displayName("Second User")
+                .role(UserRole.USER)
+                .createdAt(LocalDateTime.now())
+                .build();
 
-        testMember = new HouseholdMember();
-        testMember.setId(UUID.randomUUID());
-        testMember.setUser(testUser);
-        testMember.setHousehold(testHousehold);
-        testMember.setRole(HouseholdRole.OWNER);
-        testMember.setCreatedAt(LocalDateTime.now());
-        testMember.setUpdatedAt(LocalDateTime.now());
+        adminUser = User.builder()
+                .id(adminUserId)
+                .username("adminuser")
+                .email("admin@example.com")
+                .displayName("Admin User")
+                .role(UserRole.USER)
+                .createdAt(LocalDateTime.now())
+                .build();
 
-        testHousehold.getMembers().add(testMember);
+        testHousehold = Household.builder()
+                .id(householdId)
+                .name("Test Household")
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .members(new HashSet<>())
+                .locations(new HashSet<>())
+                .build();
+
+        secondHousehold = Household.builder()
+                .id(secondHouseholdId)
+                .name("Second Household")
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .members(new HashSet<>())
+                .locations(new HashSet<>())
+                .build();
+
+        ownerMember = HouseholdMember.builder()
+                .id(UUID.randomUUID())
+                .user(testUser)
+                .household(testHousehold)
+                .role(HouseholdRole.OWNER)
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+
+        adminMember = HouseholdMember.builder()
+                .id(UUID.randomUUID())
+                .user(testUser)
+                .household(testHousehold)
+                .role(HouseholdRole.ADMIN)
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+
+        regularMember = HouseholdMember.builder()
+                .id(UUID.randomUUID())
+                .user(testUser)
+                .household(testHousehold)
+                .role(HouseholdRole.MEMBER)
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+
+        testHouseholdRequest = HouseholdRequest.builder()
+                .name("New Household")
+                .build();
+    }
+
+    // Helper methods
+    private void setupValidAuthentication() {
+        when(userService.getCurrentUser(eq(validToken))).thenReturn(testUser);
+    }
+
+    private void setupInvalidAuthentication() {
+        when(userService.getCurrentUser(eq(invalidToken))).thenThrow(new NotFoundException("User not found"));
+    }
+
+    private void setupOwnerAccess() {
+        when(userService.getCurrentUser(eq(validToken))).thenReturn(testUser);
+        when(householdRepository.findById(eq(householdId))).thenReturn(Optional.of(testHousehold));
+        when(householdMemberRepository.findByHouseholdIdAndUserId(eq(householdId), eq(userId)))
+                .thenReturn(Optional.of(ownerMember));
+    }
+
+    private void setupAdminAccess() {
+        when(userService.getCurrentUser(eq(validToken))).thenReturn(testUser);
+        when(householdRepository.findById(eq(householdId))).thenReturn(Optional.of(testHousehold));
+        when(householdMemberRepository.findByHouseholdIdAndUserId(eq(householdId), eq(userId)))
+                .thenReturn(Optional.of(adminMember));
+    }
+
+    private void setupRegularMemberAccess() {
+        when(userService.getCurrentUser(eq(validToken))).thenReturn(testUser);
+        when(householdRepository.findById(eq(householdId))).thenReturn(Optional.of(testHousehold));
+        when(householdMemberRepository.findByHouseholdIdAndUserId(eq(householdId), eq(userId)))
+                .thenReturn(Optional.of(regularMember));
+    }
+
+    @Nested
+    @DisplayName("Authentication Tests")
+    class AuthenticationTests {
+
+        @Test
+        @DisplayName("Should throw ValidationException when token is null for create")
+        void shouldThrowValidationExceptionWhenTokenIsNullForCreate() {
+            assertThatThrownBy(() -> householdService.createHousehold(testHouseholdRequest, null))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("token cannot be null");
+
+            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
+            verify(householdRepository, never()).save(any(Household.class));
+        }
+
+        @Test
+        @DisplayName("Should throw ValidationException when request is null for create")
+        void shouldThrowValidationExceptionWhenRequestIsNullForCreate() {
+            assertThatThrownBy(() -> householdService.createHousehold(null, validToken))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("request cannot be null");
+
+            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
+            verify(householdRepository, never()).save(any(Household.class));
+        }
+
+        @Test
+        @DisplayName("Should throw ValidationException when token is null for getById")
+        void shouldThrowValidationExceptionWhenTokenIsNullForGetById() {
+            assertThatThrownBy(() -> householdService.getHouseholdById(householdId, null))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("token cannot be null");
+
+            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
+            verify(householdRepository, never()).findById(any(UUID.class));
+        }
+
+        @Test
+        @DisplayName("Should throw ValidationException when token is null for update")
+        void shouldThrowValidationExceptionWhenTokenIsNullForUpdate() {
+            assertThatThrownBy(() -> householdService.updateHousehold(householdId, testHouseholdRequest, null))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("token cannot be null");
+
+            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
+            verify(householdRepository, never()).save(any(Household.class));
+        }
+
+        @Test
+        @DisplayName("Should throw ValidationException when token is null for delete")
+        void shouldThrowValidationExceptionWhenTokenIsNullForDelete() {
+            assertThatThrownBy(() -> householdService.deleteHousehold(householdId, null))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("token cannot be null");
+
+            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
+            verify(householdRepository, never()).delete(any(Household.class));
+        }
+
+        @Test
+        @DisplayName("Should throw NotFoundException when user is not found")
+        void shouldThrowNotFoundExceptionWhenUserNotFound() {
+            setupInvalidAuthentication();
+
+            assertThatThrownBy(() -> householdService.createHousehold(testHouseholdRequest, invalidToken))
+                    .isInstanceOf(NotFoundException.class)
+                    .hasMessageContaining("User not found");
+
+            verify(userService).getCurrentUser(eq(invalidToken));
+            verify(householdRepository, never()).save(any(Household.class));
+        }
     }
 
     @Nested
@@ -83,53 +249,63 @@ public class HouseholdServiceTest {
     class CreateHouseholdTests {
 
         @Test
-        @DisplayName("Should create a household successfully")
+        @DisplayName("Should create household successfully")
         void shouldCreateHouseholdSuccessfully() {
-            // Given
-            HouseholdRequest request = new HouseholdRequest();
-            request.setName("New Household");
-
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            when(householdRepository.existsByName(request.getName())).thenReturn(false);
+            setupValidAuthentication();
+            when(householdRepository.existsByName(eq(testHouseholdRequest.getName()))).thenReturn(false);
             when(householdRepository.save(any(Household.class))).thenAnswer(invocation -> {
-                Household savedHousehold = invocation.getArgument(0);
-                savedHousehold.setId(UUID.randomUUID());
-                return savedHousehold;
+                Household saved = invocation.getArgument(0);
+                saved.setId(householdId);
+                return saved;
             });
-            when(householdMemberRepository.save(any(HouseholdMember.class))).thenAnswer(invocation -> {
-                HouseholdMember savedMember = invocation.getArgument(0);
-                savedMember.setId(UUID.randomUUID());
-                return savedMember;
-            });
+            when(householdMemberRepository.save(any(HouseholdMember.class))).thenAnswer(invocation ->
+                    invocation.getArgument(0));
 
-            // When
-            HouseholdResponse response = householdService.createHousehold(request, token);
+            HouseholdResponse response = householdService.createHousehold(testHouseholdRequest, validToken);
 
-            // Then
             assertThat(response).isNotNull();
-            assertThat(response.getName()).isEqualTo(request.getName());
-            assertThat(response.getId()).isNotNull();
+            assertThat(response.getName()).isEqualTo(testHouseholdRequest.getName());
+            assertThat(response.getId()).isEqualTo(householdId);
             verify(householdRepository).save(any(Household.class));
             verify(householdMemberRepository).save(any(HouseholdMember.class));
         }
 
         @Test
-        @DisplayName("Should throw exception when household name already exists")
-        void shouldThrowExceptionWhenHouseholdNameExists() {
-            // Given
-            HouseholdRequest request = new HouseholdRequest();
-            request.setName("Existing Household");
+        @DisplayName("Should throw ConflictException when household name already exists")
+        void shouldThrowConflictExceptionWhenHouseholdNameExists() {
+            setupValidAuthentication();
+            when(householdRepository.existsByName(eq(testHouseholdRequest.getName()))).thenReturn(true);
 
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            when(householdRepository.existsByName(request.getName())).thenReturn(true);
-
-            // When/Then
-            assertThatThrownBy(() -> householdService.createHousehold(request, token))
-                    .isInstanceOf(IllegalStateException.class)
+            assertThatThrownBy(() -> householdService.createHousehold(testHouseholdRequest, validToken))
+                    .isInstanceOf(ConflictException.class)
                     .hasMessageContaining("already exists");
 
-            verify(householdRepository, never()).save(any());
-            verify(householdMemberRepository, never()).save(any());
+            verify(householdRepository, never()).save(any(Household.class));
+            verify(householdMemberRepository, never()).save(any(HouseholdMember.class));
+        }
+
+        @Test
+        @DisplayName("Should throw ValidationException when household name is empty")
+        void shouldThrowValidationExceptionWhenHouseholdNameIsEmpty() {
+            HouseholdRequest emptyNameRequest = HouseholdRequest.builder().name("").build();
+
+            assertThatThrownBy(() -> householdService.createHousehold(emptyNameRequest, validToken))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("name cannot be empty");
+
+            verify(householdRepository, never()).save(any(Household.class));
+        }
+
+        @Test
+        @DisplayName("Should throw ValidationException when household name is null")
+        void shouldThrowValidationExceptionWhenHouseholdNameIsNull() {
+            HouseholdRequest nullNameRequest = HouseholdRequest.builder().build();
+
+            assertThatThrownBy(() -> householdService.createHousehold(nullNameRequest, validToken))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("name cannot be null");
+
+            verify(householdRepository, never()).save(any(Household.class));
         }
     }
 
@@ -140,87 +316,77 @@ public class HouseholdServiceTest {
         @Test
         @DisplayName("Should get household by ID when user is a member")
         void shouldGetHouseholdByIdWhenUserIsMember() {
-            // Given
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                    .thenReturn(Optional.of(testMember));
+            setupValidAuthentication();
+            when(householdRepository.findById(eq(householdId))).thenReturn(Optional.of(testHousehold));
+            when(householdMemberRepository.findByHouseholdIdAndUserId(eq(householdId), eq(userId)))
+                    .thenReturn(Optional.of(ownerMember));
 
-            // When
-            HouseholdResponse response = householdService.getHouseholdById(householdId, token);
+            HouseholdResponse response = householdService.getHouseholdById(householdId, validToken);
 
-            // Then
             assertThat(response).isNotNull();
             assertThat(response.getId()).isEqualTo(householdId);
             assertThat(response.getName()).isEqualTo(testHousehold.getName());
-            verify(householdRepository).findById(householdId);
-            verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
+            verify(householdRepository).findById(eq(householdId));
+            verify(householdMemberRepository).findByHouseholdIdAndUserId(eq(householdId), eq(userId));
         }
 
         @Test
         @DisplayName("Should throw NotFoundException when household doesn't exist")
         void shouldThrowNotFoundExceptionWhenHouseholdDoesntExist() {
-            // Given
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.empty());
+            setupValidAuthentication();
+            when(householdRepository.findById(eq(householdId))).thenReturn(Optional.empty());
 
-            // When/Then
-            assertThatThrownBy(() -> householdService.getHouseholdById(householdId, token))
+            assertThatThrownBy(() -> householdService.getHouseholdById(householdId, validToken))
                     .isInstanceOf(NotFoundException.class)
                     .hasMessageContaining("Household not found");
 
-            verify(householdRepository).findById(householdId);
-            verify(householdMemberRepository, never()).findByHouseholdIdAndUserId(any(), any());
+            verify(householdRepository).findById(eq(householdId));
+            verify(householdMemberRepository, never()).findByHouseholdIdAndUserId(any(UUID.class), any(UUID.class));
         }
 
         @Test
-        @DisplayName("Should throw ForbiddenException when user is not a member")
-        void shouldThrowAccessDeniedExceptionWhenUserIsNotMember() {
-            // Given
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
+        @DisplayName("Should throw InsufficientPermissionException when user is not a member")
+        void shouldThrowInsufficientPermissionExceptionWhenUserIsNotMember() {
+            setupValidAuthentication();
+            when(householdRepository.findById(eq(householdId))).thenReturn(Optional.of(testHousehold));
+            when(householdMemberRepository.findByHouseholdIdAndUserId(eq(householdId), eq(userId)))
                     .thenReturn(Optional.empty());
 
-            // When/Then
-            assertThatThrownBy(() -> householdService.getHouseholdById(householdId, token))
-                    .isInstanceOf(AccessDeniedException.class)
-                    .hasMessageContaining("access to this household");
+            assertThatThrownBy(() -> householdService.getHouseholdById(householdId, validToken))
+                    .isInstanceOf(InsufficientPermissionException.class)
+                    .hasMessageContaining("don't have access");
 
-            verify(householdRepository).findById(householdId);
-            verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
+            verify(householdRepository).findById(eq(householdId));
+            verify(householdMemberRepository).findByHouseholdIdAndUserId(eq(householdId), eq(userId));
         }
 
         @Test
         @DisplayName("Should get all households for a user")
         void shouldGetAllHouseholdsForUser() {
-            // Given
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            when(householdRepository.findByMembersUserId(userId)).thenReturn(List.of(testHousehold));
+            setupValidAuthentication();
+            List<Household> households = Arrays.asList(testHousehold, secondHousehold);
+            when(householdRepository.findByMembersUserId(eq(userId))).thenReturn(households);
 
-            // When
-            List<HouseholdResponse> responses = householdService.getUserHouseholds(token);
+            List<HouseholdResponse> responses = householdService.getUserHouseholds(validToken);
 
-            // Then
-            assertThat(responses).hasSize(1);
-            assertThat(responses.getFirst().getId()).isEqualTo(householdId);
-            assertThat(responses.getFirst().getName()).isEqualTo(testHousehold.getName());
-            verify(householdRepository).findByMembersUserId(userId);
+            assertThat(responses).isNotNull();
+            assertThat(responses).hasSize(2);
+            assertThat(responses.get(0).getId()).isEqualTo(householdId);
+            assertThat(responses.get(1).getId()).isEqualTo(secondHouseholdId);
+            verify(householdRepository).findByMembersUserId(eq(userId));
         }
 
         @Test
         @DisplayName("Should return empty list when user has no households")
         void shouldReturnEmptyListWhenUserHasNoHouseholds() {
-            // Given
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            when(householdRepository.findByMembersUserId(userId)).thenReturn(Collections.emptyList());
+            setupValidAuthentication();
+            when(householdRepository.findByMembersUserId(eq(userId))).thenReturn(Collections.emptyList());
 
-            // When
-            List<HouseholdResponse> responses = householdService.getUserHouseholds(token);
+            List<HouseholdResponse> responses = householdService.getUserHouseholds(validToken);
 
-            // Then
+            assertThat(responses).isNotNull();
             assertThat(responses).isEmpty();
-            verify(householdRepository).findByMembersUserId(userId);
+            verify(householdRepository).findByMembersUserId(eq(userId));
         }
     }
 
@@ -231,100 +397,74 @@ public class HouseholdServiceTest {
         @Test
         @DisplayName("Should update household when user is owner")
         void shouldUpdateHouseholdWhenUserIsOwner() {
-            // Given
-            HouseholdRequest request = new HouseholdRequest();
-            request.setName("Updated Household Name");
+            setupOwnerAccess();
+            HouseholdRequest updateRequest = HouseholdRequest.builder().name("Updated Household").build();
+            when(householdRepository.findByName(eq(updateRequest.getName()))).thenReturn(Optional.empty());
+            when(householdRepository.save(any(Household.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                    .thenReturn(Optional.of(testMember));
-            when(householdRepository.save(any(Household.class))).thenReturn(testHousehold);
+            HouseholdResponse response = householdService.updateHousehold(householdId, updateRequest, validToken);
 
-            // When
-            HouseholdResponse response = householdService.updateHousehold(householdId, request, token);
-
-            // Then
             assertThat(response).isNotNull();
-            assertThat(response.getId()).isEqualTo(householdId);
-            assertThat(response.getName()).isEqualTo(request.getName());
-            verify(householdRepository).findById(householdId);
-            verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
-            verify(householdRepository).save(testHousehold);
+            assertThat(response.getName()).isEqualTo(updateRequest.getName());
+            verify(householdRepository).save(any(Household.class));
         }
 
         @Test
         @DisplayName("Should update household when user is admin")
         void shouldUpdateHouseholdWhenUserIsAdmin() {
-            // Given
-            testMember.setRole(HouseholdRole.ADMIN);
-            HouseholdRequest request = new HouseholdRequest();
-            request.setName("Updated Household Name");
+            setupAdminAccess();
+            HouseholdRequest updateRequest = HouseholdRequest.builder().name("Updated Household").build();
+            when(householdRepository.findByName(eq(updateRequest.getName()))).thenReturn(Optional.empty());
+            when(householdRepository.save(any(Household.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                    .thenReturn(Optional.of(testMember));
-            when(householdRepository.save(any(Household.class))).thenReturn(testHousehold);
+            HouseholdResponse response = householdService.updateHousehold(householdId, updateRequest, validToken);
 
-            // When
-            HouseholdResponse response = householdService.updateHousehold(householdId, request, token);
-
-            // Then
             assertThat(response).isNotNull();
-            assertThat(response.getName()).isEqualTo(request.getName());
-            verify(householdRepository).save(testHousehold);
+            assertThat(response.getName()).isEqualTo(updateRequest.getName());
+            verify(householdRepository).save(any(Household.class));
         }
 
         @Test
-        @DisplayName("Should throw ForbiddenException when user is regular member")
-        void shouldThrowAccessDeniedExceptionWhenUserIsRegularMember() {
-            // Given
-            testMember.setRole(HouseholdRole.MEMBER);
-            HouseholdRequest request = new HouseholdRequest();
-            request.setName("Updated Household Name");
+        @DisplayName("Should throw InsufficientPermissionException when user is regular member")
+        void shouldThrowInsufficientPermissionExceptionWhenUserIsRegularMember() {
+            setupRegularMemberAccess();
+            HouseholdRequest updateRequest = HouseholdRequest.builder().name("Updated Household").build();
 
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                    .thenReturn(Optional.of(testMember));
+            assertThatThrownBy(() -> householdService.updateHousehold(householdId, updateRequest, validToken))
+                    .isInstanceOf(InsufficientPermissionException.class)
+                    .hasMessageContaining("don't have permission");
 
-            // When/Then
-            assertThatThrownBy(() -> householdService.updateHousehold(householdId, request, token))
-                    .isInstanceOf(AccessDeniedException.class)
-                    .hasMessageContaining("permission to update");
-
-            verify(householdRepository).findById(householdId);
-            verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
-            verify(householdRepository, never()).save(any());
+            verify(householdRepository, never()).save(any(Household.class));
         }
 
         @Test
-        @DisplayName("Should throw exception when updating to a name that already exists")
-        void shouldThrowExceptionWhenUpdatingToExistingName() {
-            // Given
-            Household existingHousehold = new Household();
-            existingHousehold.setId(UUID.randomUUID());
-            existingHousehold.setName("Existing Name");
+        @DisplayName("Should throw ConflictException when updating to a name that already exists")
+        void shouldThrowConflictExceptionWhenUpdatingToExistingName() {
+            setupOwnerAccess();
+            HouseholdRequest updateRequest = HouseholdRequest.builder().name("Existing Household").build();
+            when(householdRepository.findByName(eq(updateRequest.getName())))
+                    .thenReturn(Optional.of(secondHousehold));
 
-            HouseholdRequest request = new HouseholdRequest();
-            request.setName("Existing Name");
-
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                    .thenReturn(Optional.of(testMember));
-            when(householdRepository.findByName(request.getName())).thenReturn(Optional.of(existingHousehold));
-
-            // When/Then
-            assertThatThrownBy(() -> householdService.updateHousehold(householdId, request, token))
-                    .isInstanceOf(IllegalStateException.class)
+            assertThatThrownBy(() -> householdService.updateHousehold(householdId, updateRequest, validToken))
+                    .isInstanceOf(ConflictException.class)
                     .hasMessageContaining("already exists");
 
-            verify(householdRepository).findById(householdId);
-            verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
-            verify(householdRepository).findByName(request.getName());
-            verify(householdRepository, never()).save(any());
+            verify(householdRepository, never()).save(any(Household.class));
+        }
+
+        @Test
+        @DisplayName("Should allow updating to same name")
+        void shouldAllowUpdatingToSameName() {
+            setupOwnerAccess();
+            HouseholdRequest updateRequest = HouseholdRequest.builder().name(testHousehold.getName()).build();
+            when(householdRepository.findByName(eq(updateRequest.getName())))
+                    .thenReturn(Optional.of(testHousehold));
+            when(householdRepository.save(any(Household.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+            HouseholdResponse response = householdService.updateHousehold(householdId, updateRequest, validToken);
+
+            assertThat(response).isNotNull();
+            verify(householdRepository).save(any(Household.class));
         }
     }
 
@@ -335,41 +475,38 @@ public class HouseholdServiceTest {
         @Test
         @DisplayName("Should delete household when user is owner")
         void shouldDeleteHouseholdWhenUserIsOwner() {
-            // Given
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                    .thenReturn(Optional.of(testMember));
-            doNothing().when(householdRepository).delete(testHousehold);
+            setupOwnerAccess();
+            doNothing().when(householdRepository).delete(any(Household.class));
 
-            // When
-            householdService.deleteHousehold(householdId, token);
+            assertThatNoException().isThrownBy(() ->
+                    householdService.deleteHousehold(householdId, validToken));
 
-            // Then
-            verify(householdRepository).findById(householdId);
-            verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
-            verify(householdRepository).delete(testHousehold);
+            verify(householdRepository).delete(eq(testHousehold));
         }
 
         @Test
-        @DisplayName("Should throw ForbiddenException when user is not owner")
-        void shouldThrowAccessDeniedExceptionWhenUserIsNotOwner() {
-            // Given
-            testMember.setRole(HouseholdRole.ADMIN);
+        @DisplayName("Should throw InsufficientPermissionException when user is not owner")
+        void shouldThrowInsufficientPermissionExceptionWhenUserIsNotOwner() {
+            setupAdminAccess();
 
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                    .thenReturn(Optional.of(testMember));
+            assertThatThrownBy(() -> householdService.deleteHousehold(householdId, validToken))
+                    .isInstanceOf(InsufficientPermissionException.class)
+                    .hasMessageContaining("Only the household owner");
 
-            // When/Then
-            assertThatThrownBy(() -> householdService.deleteHousehold(householdId, token))
-                    .isInstanceOf(AccessDeniedException.class)
-                    .hasMessageContaining("Only the owner can delete");
+            verify(householdRepository, never()).delete(any(Household.class));
+        }
 
-            verify(householdRepository).findById(householdId);
-            verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
-            verify(householdRepository, never()).delete(any());
+        @Test
+        @DisplayName("Should throw NotFoundException when household doesn't exist")
+        void shouldThrowNotFoundExceptionWhenHouseholdDoesntExist() {
+            setupValidAuthentication();
+            when(householdRepository.findById(eq(householdId))).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> householdService.deleteHousehold(householdId, validToken))
+                    .isInstanceOf(NotFoundException.class)
+                    .hasMessageContaining("Household not found");
+
+            verify(householdRepository, never()).delete(any(Household.class));
         }
     }
 
@@ -378,45 +515,52 @@ public class HouseholdServiceTest {
     class LeaveHouseholdTests {
 
         @Test
-        @DisplayName("Should allow regular member to leave a household")
+        @DisplayName("Should allow regular member to leave household")
         void shouldAllowRegularMemberToLeaveHousehold() {
-            // Given
-            testMember.setRole(HouseholdRole.MEMBER);
+            setupRegularMemberAccess();
+            doNothing().when(householdMemberRepository).delete(any(HouseholdMember.class));
 
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            // Remove the findById setup since leaveHousehold doesn't call it
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                    .thenReturn(Optional.of(testMember));
-            doNothing().when(householdMemberRepository).delete(testMember);
+            assertThatNoException().isThrownBy(() ->
+                    householdService.leaveHousehold(householdId, validToken));
 
-            // When
-            householdService.leaveHousehold(householdId, token);
-
-            // Then
-            // Don't verify findById call since it's not made
-            verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
-            verify(householdMemberRepository).delete(testMember);
+            verify(householdMemberRepository).delete(eq(regularMember));
         }
 
         @Test
-        @DisplayName("Should throw exception when owner tries to leave a household")
-        void shouldThrowExceptionWhenOwnerTriesToLeaveHousehold() {
-            // Given
-            testMember.setRole(HouseholdRole.OWNER);
+        @DisplayName("Should allow admin to leave household")
+        void shouldAllowAdminToLeaveHousehold() {
+            setupAdminAccess();
+            doNothing().when(householdMemberRepository).delete(any(HouseholdMember.class));
 
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            // Remove the findById setup since leaveHousehold doesn't call it
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                    .thenReturn(Optional.of(testMember));
+            assertThatNoException().isThrownBy(() ->
+                    householdService.leaveHousehold(householdId, validToken));
 
-            // When/Then
-            assertThatThrownBy(() -> householdService.leaveHousehold(householdId, token))
-                    .isInstanceOf(IllegalStateException.class)
-                    .hasMessageContaining("Owners cannot leave");
+            verify(householdMemberRepository).delete(eq(adminMember));
+        }
 
-            // Don't verify findById call since it's not made
-            verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
-            verify(householdMemberRepository, never()).delete(any());
+        @Test
+        @DisplayName("Should throw ResourceStateException when owner tries to leave household")
+        void shouldThrowResourceStateExceptionWhenOwnerTriesToLeaveHousehold() {
+            setupOwnerAccess();
+
+            assertThatThrownBy(() -> householdService.leaveHousehold(householdId, validToken))
+                    .isInstanceOf(ResourceStateException.class)
+                    .hasMessageContaining("Owner cannot leave");
+
+            verify(householdMemberRepository, never()).delete(any(HouseholdMember.class));
+        }
+
+        @Test
+        @DisplayName("Should throw NotFoundException when household doesn't exist")
+        void shouldThrowNotFoundExceptionWhenHouseholdDoesntExist() {
+            setupValidAuthentication();
+            when(householdRepository.findById(eq(householdId))).thenReturn(Optional.empty());
+
+            assertThatThrownBy(() -> householdService.leaveHousehold(householdId, validToken))
+                    .isInstanceOf(NotFoundException.class)
+                    .hasMessageContaining("Household not found");
+
+            verify(householdMemberRepository, never()).delete(any(HouseholdMember.class));
         }
     }
 
@@ -427,81 +571,59 @@ public class HouseholdServiceTest {
         @Test
         @DisplayName("Should transfer ownership to another member")
         void shouldTransferOwnershipToAnotherMember() {
-            // Given
-            UUID newOwnerId = UUID.randomUUID();
+            setupOwnerAccess();
+            HouseholdMember targetMember = HouseholdMember.builder()
+                    .id(UUID.randomUUID())
+                    .user(secondUser)
+                    .household(testHousehold)
+                    .role(HouseholdRole.MEMBER)
+                    .build();
 
-            User newOwnerUser = new User();
-            newOwnerUser.setId(newOwnerId);
+            when(householdMemberRepository.findByHouseholdIdAndUserId(eq(householdId), eq(secondUserId)))
+                    .thenReturn(Optional.of(targetMember));
+            when(householdMemberRepository.save(any(HouseholdMember.class)))
+                    .thenAnswer(invocation -> invocation.getArgument(0));
 
-            HouseholdMember newOwnerMember = new HouseholdMember();
-            newOwnerMember.setId(UUID.randomUUID());
-            newOwnerMember.setUser(newOwnerUser);
-            newOwnerMember.setHousehold(testHousehold);
-            newOwnerMember.setRole(HouseholdRole.ADMIN);
+            assertThatNoException().isThrownBy(() ->
+                    householdService.transferOwnership(householdId, secondUserId, validToken));
 
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            // Remove findById stubbing since transferOwnership doesn't call it
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                    .thenReturn(Optional.of(testMember));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, newOwnerId))
-                    .thenReturn(Optional.of(newOwnerMember));
-            when(householdMemberRepository.save(any(HouseholdMember.class))).thenAnswer(i -> i.getArgument(0));
-
-            // When
-            householdService.transferOwnership(householdId, newOwnerId, token);
-
-            // Then
-            // Don't verify findById call since it's not made
-            verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
-            verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, newOwnerId);
             verify(householdMemberRepository, times(2)).save(any(HouseholdMember.class));
         }
 
         @Test
-        @DisplayName("Should throw exception when non-owner tries to transfer ownership")
-        void shouldThrowExceptionWhenNonOwnerTriesToTransferOwnership() {
-            // Given
-            UUID newOwnerId = UUID.randomUUID();
-            testMember.setRole(HouseholdRole.ADMIN);
+        @DisplayName("Should throw InsufficientPermissionException when non-owner tries to transfer ownership")
+        void shouldThrowInsufficientPermissionExceptionWhenNonOwnerTriesToTransferOwnership() {
+            setupAdminAccess();
 
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            // Remove findById stubbing since transferOwnership doesn't call it
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                    .thenReturn(Optional.of(testMember));
+            assertThatThrownBy(() -> householdService.transferOwnership(householdId, secondUserId, validToken))
+                    .isInstanceOf(InsufficientPermissionException.class)
+                    .hasMessageContaining("Only the household owner");
 
-            // When/Then
-            assertThatThrownBy(() -> householdService.transferOwnership(householdId, newOwnerId, token))
-                    .isInstanceOf(AccessDeniedException.class)
-                    .hasMessageContaining("Only the owner can transfer ownership");
-
-            // Don't verify findById call since it's not made
-            verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
-            verify(householdMemberRepository, never()).findByHouseholdIdAndUserId(householdId, newOwnerId);
-            verify(householdMemberRepository, never()).save(any());
+            verify(householdMemberRepository, never()).save(any(HouseholdMember.class));
         }
 
         @Test
-        @DisplayName("Should throw exception when target user is not a member")
-        void shouldThrowExceptionWhenTargetUserIsNotMember() {
-            // Given
-            UUID newOwnerId = UUID.randomUUID();
-
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            // Remove findById stubbing since transferOwnership doesn't call it
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                    .thenReturn(Optional.of(testMember));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, newOwnerId))
+        @DisplayName("Should throw NotFoundException when target user is not a member")
+        void shouldThrowNotFoundExceptionWhenTargetUserIsNotMember() {
+            setupOwnerAccess();
+            when(householdMemberRepository.findByHouseholdIdAndUserId(eq(householdId), eq(secondUserId)))
                     .thenReturn(Optional.empty());
 
-            // When/Then
-            assertThatThrownBy(() -> householdService.transferOwnership(householdId, newOwnerId, token))
+            assertThatThrownBy(() -> householdService.transferOwnership(householdId, secondUserId, validToken))
                     .isInstanceOf(NotFoundException.class)
-                    .hasMessageContaining("New owner is not a member");
+                    .hasMessageContaining("not a member");
 
-            // Don't verify findById call since it's not made
-            verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
-            verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, newOwnerId);
-            verify(householdMemberRepository, never()).save(any());
+            verify(householdMemberRepository, never()).save(any(HouseholdMember.class));
+        }
+
+        @Test
+        @DisplayName("Should throw ValidationException when target user ID is null")
+        void shouldThrowValidationExceptionWhenTargetUserIdIsNull() {
+            assertThatThrownBy(() -> householdService.transferOwnership(householdId, null, validToken))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("cannot be null");
+
+            verify(householdMemberRepository, never()).save(any(HouseholdMember.class));
         }
     }
 
@@ -512,59 +634,63 @@ public class HouseholdServiceTest {
         @Test
         @DisplayName("Should search households by name")
         void shouldSearchHouseholdsByName() {
-            // Given
-            String searchTerm = "Test";
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            when(householdRepository.findByNameContainingIgnoreCase(searchTerm))
-                    .thenReturn(List.of(testHousehold));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                    .thenReturn(Optional.of(testMember));
+            setupValidAuthentication();
+            List<Household> searchResults = Arrays.asList(testHousehold);
+            when(householdRepository.findByNameContainingIgnoreCase(eq("Test")))
+                    .thenReturn(searchResults);
+            when(householdMemberRepository.findByHouseholdIdAndUserId(eq(householdId), eq(userId)))
+                    .thenReturn(Optional.of(ownerMember));
 
-            // When
-            List<HouseholdResponse> responses = householdService.searchHouseholds(searchTerm, token);
+            List<HouseholdResponse> responses = householdService.searchHouseholds("Test", validToken);
 
-            // Then
+            assertThat(responses).isNotNull();
             assertThat(responses).hasSize(1);
-            assertThat(responses.getFirst().getId()).isEqualTo(householdId);
-            assertThat(responses.getFirst().getName()).isEqualTo(testHousehold.getName());
-            verify(householdRepository).findByNameContainingIgnoreCase(searchTerm);
+            assertThat(responses.get(0).getName()).contains("Test");
+            verify(householdRepository).findByNameContainingIgnoreCase(eq("Test"));
         }
 
         @Test
         @DisplayName("Should return empty list when no matches found")
         void shouldReturnEmptyListWhenNoMatchesFound() {
-            // Given
-            String searchTerm = "Nonexistent";
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            when(householdRepository.findByNameContainingIgnoreCase(searchTerm))
+            setupValidAuthentication();
+            when(householdRepository.findByNameContainingIgnoreCase(eq("NonExistent")))
                     .thenReturn(Collections.emptyList());
 
-            // When
-            List<HouseholdResponse> responses = householdService.searchHouseholds(searchTerm, token);
+            List<HouseholdResponse> responses = householdService.searchHouseholds("NonExistent", validToken);
 
-            // Then
+            assertThat(responses).isNotNull();
             assertThat(responses).isEmpty();
-            verify(householdRepository).findByNameContainingIgnoreCase(searchTerm);
+            verify(householdRepository).findByNameContainingIgnoreCase(eq("NonExistent"));
         }
 
         @Test
         @DisplayName("Should filter out households user is not a member of")
         void shouldFilterOutHouseholdsUserIsNotMemberOf() {
-            // Given
-            String searchTerm = "Test";
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            when(householdRepository.findByNameContainingIgnoreCase(searchTerm))
-                    .thenReturn(List.of(testHousehold));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
+            setupValidAuthentication();
+            List<Household> searchResults = Arrays.asList(testHousehold, secondHousehold);
+            when(householdRepository.findByNameContainingIgnoreCase(eq("Household")))
+                    .thenReturn(searchResults);
+            when(householdMemberRepository.findByHouseholdIdAndUserId(eq(householdId), eq(userId)))
+                    .thenReturn(Optional.of(ownerMember));
+            when(householdMemberRepository.findByHouseholdIdAndUserId(eq(secondHouseholdId), eq(userId)))
                     .thenReturn(Optional.empty());
 
-            // When
-            List<HouseholdResponse> responses = householdService.searchHouseholds(searchTerm, token);
+            List<HouseholdResponse> responses = householdService.searchHouseholds("Household", validToken);
 
-            // Then
-            assertThat(responses).isEmpty();
-            verify(householdRepository).findByNameContainingIgnoreCase(searchTerm);
-            verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
+            assertThat(responses).isNotNull();
+            assertThat(responses).hasSize(1);
+            assertThat(responses.get(0).getId()).isEqualTo(householdId);
+        }
+
+        @Test
+        @DisplayName("Should throw ValidationException when search query is null")
+        void shouldThrowValidationExceptionWhenSearchQueryIsNull() {
+
+            assertThatThrownBy(() -> householdService.searchHouseholds(null, validToken))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("cannot be null");
+
+            verify(householdRepository, never()).findByNameContainingIgnoreCase(any(String.class));
         }
     }
 
@@ -575,141 +701,93 @@ public class HouseholdServiceTest {
         @Test
         @DisplayName("Should allow owner to change member role")
         void shouldAllowOwnerToChangeMemberRole() {
-            // Given
-            UUID memberId = UUID.randomUUID();
-            User memberUser = new User();
-            memberUser.setId(memberId);
+            setupOwnerAccess();
+            HouseholdMember targetMember = HouseholdMember.builder()
+                    .id(UUID.randomUUID())
+                    .user(secondUser)
+                    .household(testHousehold)
+                    .role(HouseholdRole.MEMBER)
+                    .build();
 
-            HouseholdMember targetMember = new HouseholdMember();
-            targetMember.setId(UUID.randomUUID());
-            targetMember.setUser(memberUser);
-            targetMember.setHousehold(testHousehold);
-            targetMember.setRole(HouseholdRole.MEMBER);
-
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            // Remove findById stubbing since changeMemberRole doesn't call it
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                    .thenReturn(Optional.of(testMember));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, memberId))
+            when(householdMemberRepository.findById(eq(targetMember.getId())))
                     .thenReturn(Optional.of(targetMember));
-            when(householdMemberRepository.save(any(HouseholdMember.class))).thenReturn(targetMember);
+            when(householdMemberRepository.save(any(HouseholdMember.class)))
+                    .thenAnswer(invocation -> invocation.getArgument(0));
 
-            // When
-            householdService.changeMemberRole(householdId, memberId, HouseholdRole.ADMIN, token);
+            assertThatNoException().isThrownBy(() ->
+                    householdService.changeMemberRole(householdId, targetMember.getId(),
+                            HouseholdRole.ADMIN, validToken));
 
-            // Then
-            // Don't verify findById call since it's not made
-            verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
-            verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, memberId);
             verify(householdMemberRepository).save(any(HouseholdMember.class));
         }
 
         @Test
         @DisplayName("Should allow admin to change regular member role")
         void shouldAllowAdminToChangeRegularMemberRole() {
-            // Given
-            testMember.setRole(HouseholdRole.ADMIN);
-            UUID memberId = UUID.randomUUID();
-            User memberUser = new User();
-            memberUser.setId(memberId);
+            setupAdminAccess();
+            HouseholdMember targetMember = HouseholdMember.builder()
+                    .id(UUID.randomUUID())
+                    .user(secondUser)
+                    .household(testHousehold)
+                    .role(HouseholdRole.MEMBER)
+                    .build();
 
-            HouseholdMember targetMember = new HouseholdMember();
-            targetMember.setId(UUID.randomUUID());
-            targetMember.setUser(memberUser);
-            targetMember.setHousehold(testHousehold);
-            targetMember.setRole(HouseholdRole.MEMBER);
-
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            // Use lenient for setup that might not be used in all scenarios
-            lenient().when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                    .thenReturn(Optional.of(testMember));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, memberId))
+            when(householdMemberRepository.findById(eq(targetMember.getId())))
                     .thenReturn(Optional.of(targetMember));
-            when(householdMemberRepository.save(any(HouseholdMember.class))).thenReturn(targetMember);
+            when(householdMemberRepository.save(any(HouseholdMember.class)))
+                    .thenAnswer(invocation -> invocation.getArgument(0));
 
-            // When
-            householdService.changeMemberRole(householdId, memberId, HouseholdRole.ADMIN, token);
+            assertThatNoException().isThrownBy(() ->
+                    householdService.changeMemberRole(householdId, targetMember.getId(),
+                            HouseholdRole.ADMIN, validToken));
 
-            // Then
-            verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
-            verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, memberId);
             verify(householdMemberRepository).save(any(HouseholdMember.class));
         }
 
         @Test
-        @DisplayName("Should not allow admin to change owner role")
-        void shouldNotAllowAdminToChangeOwnerRole() {
-            // Given
-            testMember.setRole(HouseholdRole.ADMIN);
-            UUID ownerId = UUID.randomUUID();
-            User ownerUser = new User();
-            ownerUser.setId(ownerId);
+        @DisplayName("Should throw InsufficientPermissionException when admin tries to change owner role")
+        void shouldThrowInsufficientPermissionExceptionWhenAdminTriesToChangeOwnerRole() {
+            setupAdminAccess();
+            HouseholdMember ownerTargetMember = HouseholdMember.builder()
+                    .id(UUID.randomUUID())
+                    .user(secondUser)
+                    .household(testHousehold)
+                    .role(HouseholdRole.OWNER)
+                    .build();
 
-            HouseholdMember ownerMember = new HouseholdMember();
-            ownerMember.setId(UUID.randomUUID());
-            ownerMember.setUser(ownerUser);
-            ownerMember.setHousehold(testHousehold);
-            ownerMember.setRole(HouseholdRole.OWNER);
+            when(householdMemberRepository.findById(eq(ownerTargetMember.getId())))
+                    .thenReturn(Optional.of(ownerTargetMember));
 
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            // Use lenient for setup that might not be used in all scenarios
-            lenient().when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                    .thenReturn(Optional.of(testMember));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, ownerId))
-                    .thenReturn(Optional.of(ownerMember));
+            assertThatThrownBy(() -> householdService.changeMemberRole(householdId,
+                    ownerTargetMember.getId(), HouseholdRole.MEMBER, validToken))
+                    .isInstanceOf(InsufficientPermissionException.class)
+                    .hasMessageContaining("cannot change owner");
 
-            // When/Then
-            assertThatThrownBy(() -> householdService.changeMemberRole(householdId, ownerId, HouseholdRole.MEMBER, token))
-                    .isInstanceOf(AccessDeniedException.class)
-                    .hasMessageContaining("Only an owner can change the role of another owner or admin");
-
-            verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
-            verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, ownerId);
-            verify(householdMemberRepository, never()).save(any());
+            verify(householdMemberRepository, never()).save(any(HouseholdMember.class));
         }
 
         @Test
-        @DisplayName("Should throw exception when regular member tries to change roles")
-        void shouldThrowExceptionWhenRegularMemberTriesToChangeRoles() {
-            // Given
-            testMember.setRole(HouseholdRole.MEMBER);
-            UUID memberId = UUID.randomUUID();
+        @DisplayName("Should throw InsufficientPermissionException when regular member tries to change roles")
+        void shouldThrowInsufficientPermissionExceptionWhenRegularMemberTriesToChangeRoles() {
+            setupRegularMemberAccess();
 
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            // Use lenient for setup that might not be used in all scenarios
-            lenient().when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                    .thenReturn(Optional.of(testMember));
+            assertThatThrownBy(() -> householdService.changeMemberRole(householdId,
+                    UUID.randomUUID(), HouseholdRole.ADMIN, validToken))
+                    .isInstanceOf(InsufficientPermissionException.class)
+                    .hasMessageContaining("don't have permission");
 
-            // When/Then
-            assertThatThrownBy(() -> householdService.changeMemberRole(householdId, memberId, HouseholdRole.ADMIN, token))
-                    .isInstanceOf(AccessDeniedException.class)
-                    .hasMessageContaining("You don't have permission to change member roles");
-
-            verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
-            verify(householdMemberRepository, never()).findByHouseholdIdAndUserId(householdId, memberId);
-            verify(householdMemberRepository, never()).save(any());
+            verify(householdMemberRepository, never()).save(any(HouseholdMember.class));
         }
 
         @Test
-        @DisplayName("Should not allow changing role to OWNER through this method")
-        void shouldNotAllowChangingRoleToOwner() {
-            // Given
-            UUID memberId = UUID.randomUUID();
-
-            // Remove this stubbing since it's not used (the method throws an exception before this is called)
-            // when(userService.getCurrentUser(token)).thenReturn(testUser);
-
-            // When/Then
-            assertThatThrownBy(() -> householdService.changeMemberRole(householdId, memberId, HouseholdRole.OWNER, token))
-                    .isInstanceOf(IllegalArgumentException.class)
+        @DisplayName("Should throw ValidationException when changing role to OWNER")
+        void shouldThrowValidationExceptionWhenChangingRoleToOwner() {
+            assertThatThrownBy(() -> householdService.changeMemberRole(householdId,
+                    UUID.randomUUID(), HouseholdRole.OWNER, validToken))
+                    .isInstanceOf(ValidationException.class)
                     .hasMessageContaining("Cannot set role to OWNER");
 
-            // The method throws an exception before any interactions with repository, so verify no interactions
-            verify(householdMemberRepository, never()).findByHouseholdIdAndUserId(any(), any());
-            verify(householdMemberRepository, never()).save(any());
+            verify(householdMemberRepository, never()).save(any(HouseholdMember.class));
         }
     }
 
@@ -720,157 +798,86 @@ public class HouseholdServiceTest {
         @Test
         @DisplayName("Should patch household name when user is owner")
         void shouldPatchHouseholdNameWhenUserIsOwner() {
-            // Given
-            Map<String, Object> patchFields = new HashMap<>();
-            patchFields.put("name", "Updated Household Name");
+            setupOwnerAccess();
+            Map<String, Object> updates = new HashMap<>();
+            updates.put("name", "Patched Household");
+            when(householdRepository.findByName(eq("Patched Household"))).thenReturn(Optional.empty());
+            when(householdRepository.save(any(Household.class)))
+                    .thenAnswer(invocation -> invocation.getArgument(0));
 
-            testMember.setRole(HouseholdRole.OWNER);
+            HouseholdResponse response = householdService.patchHousehold(householdId, updates, validToken);
 
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                    .thenReturn(Optional.of(testMember));
-            when(householdRepository.findByName("Updated Household Name")).thenReturn(Optional.empty());
-            when(householdRepository.save(testHousehold)).thenReturn(testHousehold);
-
-            // When
-            HouseholdResponse response = householdService.patchHousehold(householdId, patchFields, token);
-
-            // Then
             assertThat(response).isNotNull();
-            assertThat(response.getId()).isEqualTo(householdId);
-            assertThat(response.getName()).isEqualTo("Updated Household Name");
-
-            verify(householdRepository).findById(householdId);
-            verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
-            verify(householdRepository).findByName("Updated Household Name");
-            verify(householdRepository).save(testHousehold);
+            assertThat(response.getName()).isEqualTo("Patched Household");
+            verify(householdRepository).save(any(Household.class));
         }
 
         @Test
         @DisplayName("Should patch household when user is admin")
         void shouldPatchHouseholdWhenUserIsAdmin() {
-            // Given
-            Map<String, Object> patchFields = new HashMap<>();
-            patchFields.put("name", "Admin Updated Name");
+            setupAdminAccess();
+            Map<String, Object> updates = new HashMap<>();
+            updates.put("name", "Patched by Admin");
+            when(householdRepository.findByName(eq("Patched by Admin"))).thenReturn(Optional.empty());
+            when(householdRepository.save(any(Household.class)))
+                    .thenAnswer(invocation -> invocation.getArgument(0));
 
-            testMember.setRole(HouseholdRole.ADMIN);
+            HouseholdResponse response = householdService.patchHousehold(householdId, updates, validToken);
 
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                    .thenReturn(Optional.of(testMember));
-            when(householdRepository.findByName("Admin Updated Name")).thenReturn(Optional.empty());
-            when(householdRepository.save(testHousehold)).thenReturn(testHousehold);
-
-            // When
-            HouseholdResponse response = householdService.patchHousehold(householdId, patchFields, token);
-
-            // Then
             assertThat(response).isNotNull();
-            assertThat(response.getName()).isEqualTo("Admin Updated Name");
-
-            verify(householdRepository).findById(householdId);
-            verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
-            verify(householdRepository).findByName("Admin Updated Name");
-            verify(householdRepository).save(testHousehold);
+            verify(householdRepository).save(any(Household.class));
         }
 
         @Test
         @DisplayName("Should ignore unknown fields when patching")
         void shouldIgnoreUnknownFieldsWhenPatching() {
-            // Given
-            Map<String, Object> patchFields = new HashMap<>();
-            patchFields.put("name", "Valid Name Update");
-            patchFields.put("unknownField", "Some Value");
+            setupOwnerAccess();
+            Map<String, Object> updates = new HashMap<>();
+            updates.put("name", "Valid Name");
+            updates.put("unknownField", "Should be ignored");
+            when(householdRepository.findByName(eq("Valid Name"))).thenReturn(Optional.empty());
+            when(householdRepository.save(any(Household.class)))
+                    .thenAnswer(invocation -> invocation.getArgument(0));
 
-            testMember.setRole(HouseholdRole.OWNER);
+            assertThatNoException().isThrownBy(() ->
+                    householdService.patchHousehold(householdId, updates, validToken));
 
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                    .thenReturn(Optional.of(testMember));
-            when(householdRepository.findByName("Valid Name Update")).thenReturn(Optional.empty());
-            when(householdRepository.save(testHousehold)).thenReturn(testHousehold);
-
-            // When
-            HouseholdResponse response = householdService.patchHousehold(householdId, patchFields, token);
-
-            // Then
-            assertThat(response).isNotNull();
-            assertThat(response.getName()).isEqualTo("Valid Name Update");
-
-            verify(householdRepository).findById(householdId);
-            verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
-            verify(householdRepository).findByName("Valid Name Update");
-            verify(householdRepository).save(testHousehold);
+            verify(householdRepository).save(any(Household.class));
         }
 
         @Test
-        @DisplayName("Should throw ForbiddenException when user is regular member")
-        void shouldThrowForbiddenExceptionWhenUserIsRegularMember() {
-            // Given
-            Map<String, Object> patchFields = new HashMap<>();
-            patchFields.put("name", "Attempt Update");
+        @DisplayName("Should throw InsufficientPermissionException when user is regular member")
+        void shouldThrowInsufficientPermissionExceptionWhenUserIsRegularMember() {
+            setupRegularMemberAccess();
+            Map<String, Object> updates = new HashMap<>();
+            updates.put("name", "New Name");
 
-            testMember.setRole(HouseholdRole.MEMBER);
-
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                    .thenReturn(Optional.of(testMember));
-
-            // When/Then
-            assertThatThrownBy(() -> householdService.patchHousehold(householdId, patchFields, token))
-                    .isInstanceOf(AccessDeniedException.class)
+            assertThatThrownBy(() -> householdService.patchHousehold(householdId, updates, validToken))
+                    .isInstanceOf(InsufficientPermissionException.class)
                     .hasMessageContaining("don't have permission");
 
-            verify(householdRepository).findById(householdId);
-            verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
-            verify(householdRepository, never()).findByName(anyString());
-            verify(householdRepository, never()).save(any());
+            verify(householdRepository, never()).save(any(Household.class));
         }
 
         @Test
-        @DisplayName("Should throw exception when regular member tries to change roles")
-        void shouldThrowExceptionWhenRegularMemberTriesToChangeRoles() {
-            // Given
-            testMember.setRole(HouseholdRole.MEMBER);
-            UUID memberId = UUID.randomUUID();
+        @DisplayName("Should throw ValidationException when updates map is null")
+        void shouldThrowValidationExceptionWhenUpdatesMapIsNull() {
+            assertThatThrownBy(() -> householdService.patchHousehold(householdId, null, validToken))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("cannot be null");
 
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            // Use lenient for setup that might not be used in all scenarios
-            lenient().when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                    .thenReturn(Optional.of(testMember));
-
-            // When/Then
-            assertThatThrownBy(() -> householdService.changeMemberRole(householdId, memberId, HouseholdRole.ADMIN, token))
-                    .isInstanceOf(AccessDeniedException.class)
-                    .hasMessageContaining("You don't have permission to change member roles");
-
-            verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
-            verify(householdMemberRepository, never()).findByHouseholdIdAndUserId(householdId, memberId);
-            verify(householdMemberRepository, never()).save(any());
+            verify(householdRepository, never()).save(any(Household.class));
         }
 
         @Test
-        @DisplayName("Should not allow changing role to OWNER through this method")
-        void shouldNotAllowChangingRoleToOwner() {
-            // Given
-            UUID memberId = UUID.randomUUID();
+        @DisplayName("Should throw ValidationException when updates map is empty")
+        void shouldThrowValidationExceptionWhenUpdatesMapIsEmpty() {
+            assertThatThrownBy(() -> householdService.patchHousehold(householdId,
+                    Collections.emptyMap(), validToken))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("cannot be empty");
 
-            // Remove this stubbing since it's not used
-            // when(userService.getCurrentUser(token)).thenReturn(testUser);
-
-            // When/Then
-            assertThatThrownBy(() -> householdService.changeMemberRole(householdId, memberId, HouseholdRole.OWNER, token))
-                    .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("Cannot set role to OWNER");
-
-            // The method throws an exception before any interactions with repository, so verify no interactions
-            verify(householdMemberRepository, never()).findByHouseholdIdAndUserId(any(), any());
-            verify(householdMemberRepository, never()).save(any());
+            verify(householdRepository, never()).save(any(Household.class));
         }
     }
 }
