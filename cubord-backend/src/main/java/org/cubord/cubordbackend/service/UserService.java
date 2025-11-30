@@ -5,239 +5,190 @@ import lombok.extern.slf4j.Slf4j;
 import org.cubord.cubordbackend.domain.User;
 import org.cubord.cubordbackend.dto.user.UserResponse;
 import org.cubord.cubordbackend.dto.user.UserUpdateRequest;
-import org.cubord.cubordbackend.exception.AuthenticationRequiredException;
-import org.cubord.cubordbackend.exception.ConflictException;
-import org.cubord.cubordbackend.exception.DataIntegrityException;
-import org.cubord.cubordbackend.exception.InsufficientPermissionException;
-import org.cubord.cubordbackend.exception.NotFoundException;
-import org.cubord.cubordbackend.exception.TokenExpiredException;
-import org.cubord.cubordbackend.exception.ValidationException;
+import org.cubord.cubordbackend.exception.*;
 import org.cubord.cubordbackend.repository.UserRepository;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.cubord.cubordbackend.security.SecurityService;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.HashSet;
-import java.util.UUID;
 import java.util.Map;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
+/**
+ * Service class for managing user-related operations.
+ * 
+ * <p>This service follows the modernized security architecture where:</p>
+ * <ul>
+ *   <li>Authentication is handled by Spring Security filters</li>
+ *   <li>Authorization is declarative via @PreAuthorize annotations</li>
+ *   <li>SecurityService provides business-level security context access</li>
+ *   <li>No manual token validation or permission checks in business logic</li>
+ * </ul>
+ * 
+ * <h2>Authorization Rules</h2>
+ * <ul>
+ *   <li><strong>Read:</strong> Users can view their own profile or profiles of users in shared households</li>
+ *   <li><strong>Update:</strong> Users can only modify their own profile</li>
+ *   <li><strong>Delete:</strong> Users can only delete their own account</li>
+ * </ul>
+ *
+ * @see SecurityService
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class UserService {
+
     private final UserRepository userRepository;
+    private final SecurityService securityService;
+    
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,6}$");
 
+    // ==================== Query Operations ====================
+
     /**
-     * Retrieves the current user from the database or creates a new user if not found.
+     * Retrieves the current authenticated user's details.
      * 
-     * @param token JWT authentication token containing user information
-     * @return User entity corresponding to the authenticated user
-     * @throws AuthenticationRequiredException if the JWT token doesn't contain a subject claim
-     * @throws TokenExpiredException if the JWT token structure is invalid or corrupted
+     * <p>This method leverages SecurityService to get the current user from the security context.
+     * If the user doesn't exist in the database (first-time login), SecurityService will create them.</p>
+     *
+     * @return UserResponse containing the authenticated user's details
+     * @throws AuthenticationRequiredException if no authenticated user exists
      */
-    @Transactional
-    public User getCurrentUser(JwtAuthenticationToken token) {
-        if (token == null || token.getToken() == null) {
-            throw new AuthenticationRequiredException("JWT token is required");
-        }
-        
-        String subject = token.getToken().getSubject();
-        if (subject == null) {
-            throw new AuthenticationRequiredException("JWT token does not contain a subject claim");
-        }
-        
-        try {
-            UUID userId = UUID.fromString(subject);
-            return userRepository.findById(userId)
-                    .orElseGet(() -> createUser(token));
-        } catch (IllegalArgumentException e) {
-            log.error("Invalid UUID format in JWT subject: {}", subject, e);
-            throw new TokenExpiredException("Invalid token format: subject is not a valid UUID");
-        }
+    @Transactional(readOnly = true)
+    public UserResponse getCurrentUserDetails() {
+        log.debug("Fetching current user details from security context");
+        User currentUser = securityService.getCurrentUser();
+        return mapToResponse(currentUser);
     }
 
     /**
-     * Retrieves current user details as a DTO.
+     * Retrieves the current authenticated user's details from JWT token.
      * 
-     * @param token JWT authentication token containing user information
+     * @deprecated Use {@link #getCurrentUserDetails()} instead.
+     *             This method is maintained for backward compatibility with controllers
+     *             and services that haven't been migrated to the new security architecture.
+     *             Token-based authentication is now handled by Spring Security filters,
+     *             and user resolution should be done through SecurityService without explicit tokens.
+     * 
+     * @param token JWT authentication token containing user information (ignored in favor of SecurityContext)
      * @return UserResponse containing the authenticated user's details
+     * @throws AuthenticationRequiredException if no authenticated user exists
      */
+    @Deprecated(since = "2.0", forRemoval = true)
     @Transactional(readOnly = true)
-    public UserResponse getCurrentUserDetails(JwtAuthenticationToken token) {
-        User user = getCurrentUser(token);
-        return mapToResponse(user);
+    public UserResponse getCurrentUserDetails(org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken token) {
+        log.warn("DEPRECATED: getCurrentUserDetails(JwtAuthenticationToken) called. " +
+                "Migrate to getCurrentUserDetails() for improved security architecture. " +
+                "The token parameter is ignored - using SecurityContext instead.");
+        
+        // Delegate to the modern method which uses SecurityService
+        return getCurrentUserDetails();
+    }
+
+    /**
+     * Retrieves the current authenticated user from the JWT token.
+     * 
+     * @deprecated Use {@link SecurityService#getCurrentUser()} instead.
+     *             This method is maintained for backward compatibility with services
+     *             that haven't been migrated to the new security architecture.
+     *             Token-based authentication is now handled by Spring Security filters,
+     *             and user resolution should be done through SecurityService.
+     * 
+     * @param token JWT authentication token containing user information (ignored in favor of SecurityContext)
+     * @return User entity corresponding to the authenticated user
+     * @throws AuthenticationRequiredException if the JWT token is invalid or missing
+     */
+    @Deprecated(since = "2.0", forRemoval = true)
+    @Transactional(readOnly = true)
+    public User getCurrentUser(org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken token) {
+        log.warn("DEPRECATED: getCurrentUser(JwtAuthenticationToken) called. " +
+                "Migrate to SecurityService.getCurrentUser() for improved security architecture. " +
+                "The token parameter is ignored - using SecurityContext instead.");
+        
+        // Delegate to SecurityService which handles the same logic
+        return securityService.getCurrentUser();
     }
 
     /**
      * Retrieves a user by their ID.
      * 
+     * <p>Authorization: User must be able to access the target user's profile
+     * (own profile or shared household member).</p>
+     *
      * @param id UUID of the user to retrieve
      * @return UserResponse containing the user's details
      * @throws ValidationException if the provided ID is null
      * @throws NotFoundException if no user with the given ID exists
+     * @throws InsufficientPermissionException if the current user cannot access the profile
      */
     @Transactional(readOnly = true)
+    @PreAuthorize("@security.canAccessUserProfile(#id)")
     public UserResponse getUser(UUID id) {
         if (id == null) {
             throw new ValidationException("User ID cannot be null");
         }
+
+        log.debug("Fetching user with ID: {}", id);
         
         User user = userRepository.findById(id)
-                .orElseThrow(() -> new NotFoundException("User", id));
+                .orElseThrow(() -> new NotFoundException("User not found with ID: " + id));
+        
         return mapToResponse(user);
     }
 
     /**
      * Retrieves a user by their username.
      * 
+     * <p>Authorization: User must be able to access the target user's profile
+     * (own profile or shared household member). Authorization is checked after finding the user.</p>
+     *
      * @param username Username of the user to retrieve
      * @return UserResponse containing the user's details
      * @throws ValidationException if the provided username is null or blank
      * @throws NotFoundException if no user with the given username exists
+     * @throws InsufficientPermissionException if the current user cannot access the profile
      */
     @Transactional(readOnly = true)
     public UserResponse getUserByUsername(String username) {
-        if (username == null || username.trim().isEmpty()) {
+        if (username == null || username.isBlank()) {
             throw new ValidationException("Username cannot be null or blank");
         }
+
+        log.debug("Fetching user with username: {}", username);
         
         User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new NotFoundException("User with username '" + username + "' not found"));
+                .orElseThrow(() -> new NotFoundException("User not found with username: " + username));
+        
+        // Authorization check after finding a user (since we need the ID)
+        if (!securityService.canAccessUserProfile(user.getId())) {
+            log.warn("User {} attempted to access unauthorized profile: {}", 
+                    securityService.getCurrentUserId(), user.getId());
+            throw new InsufficientPermissionException("You do not have permission to access this user profile");
+        }
+        
         return mapToResponse(user);
     }
 
-    /**
-     * Creates a new user from JWT token information.
-     * 
-     * @param token JWT authentication token containing user information
-     * @return Newly created and persisted User entity
-     * @throws DataIntegrityException if user creation fails due to data constraints
-     */
-    private User createUser(JwtAuthenticationToken token) {
-        try {
-            User user = new User();
-            user.setId(UUID.fromString(token.getToken().getSubject()));
-            user.setEmail(token.getToken().getClaimAsString("email"));
-            user.setUsername(extractUsernameFromEmail(token.getToken().getClaimAsString("email")));
-            user.setDisplayName(token.getToken().getClaimAsString("name"));
-            user.setHouseholdMembers(new HashSet<>());
-            
-            log.info("Creating new user with ID: {} and email: {}", user.getId(), user.getEmail());
-            return userRepository.save(user);
-        } catch (Exception e) {
-            log.error("Failed to create user from JWT token", e);
-            throw new DataIntegrityException("Failed to create user: " + e.getMessage(), e);
-        }
-    }
-
-    /**
-     * Extracts a username from an email address by taking the part before the @ symbol.
-     * 
-     * @param email Email address to extract username from
-     * @return Username extracted from email, or null if email is null
-     * @throws ValidationException if an email format is invalid
-     */
-    private String extractUsernameFromEmail(String email) {
-        if (email == null || email.isBlank()) {
-            return null;
-        }
-
-        if (!email.contains("@")) {
-            throw new ValidationException("Invalid email format: missing @ symbol");
-        }
-
-        String username = email.split("@")[0].trim();
-        
-        // Handle empty username part
-        if (username.isEmpty()) {
-            throw new ValidationException("Invalid email format: empty username part");
-        }
-        
-        // Optional: sanitize username (remove special characters, etc.)
-        // username = username.replaceAll("[^a-zA-Z0-9_-]", "");
-        
-        return username;
-    }
-
-    /**
-     * Maps a User entity to a UserResponse DTO.
-     * 
-     * @param user User entity to map
-     * @return UserResponse containing the user's details
-     */
-    private UserResponse mapToResponse(User user) {
-        return UserResponse.builder()
-                .id(user.getId())
-                .username(user.getUsername())
-                .email(user.getEmail())
-                .displayName(user.getDisplayName())
-                .createdAt(user.getCreatedAt())
-                .build();
-    }
-
-    /**
-     * Validates an email format
-     * 
-     * @param email Email to validate
-     * @throws ValidationException if an email format is invalid
-     */
-    private void validateEmail(String email) {
-        if (email == null || !EMAIL_PATTERN.matcher(email).matches()) {
-            throw new ValidationException("Invalid email format: must be a valid email address");
-        }
-    }
-
-    /**
-     * Checks if an email is already in use by another user
-     * 
-     * @param newEmail Email to check
-     * @param userId ID of the current user (to exclude from the check)
-     * @throws ConflictException if email is already in use
-     */
-    private void checkEmailAlreadyInUse(String newEmail, UUID userId) {
-        userRepository.findByEmail(newEmail)
-                .ifPresent(existingUser -> {
-                    if (!existingUser.getId().equals(userId)) {
-                        throw new ConflictException("Email address is already in use by another user");
-                    }
-                });
-    }
-
-    /**
-     * Updates user email if it has changed
-     * 
-     * @param user User to update
-     * @param newEmail New email value
-     * @throws ConflictException if email is already in use
-     * @throws ValidationException if an email format is invalid
-     */
-    private void updateEmailIfChanged(User user, String newEmail) {
-        String currentEmail = user.getEmail();
-        // Only check for email conflicts if the email is actually changing
-        if (newEmail != null && !newEmail.equals(currentEmail)) {
-            validateEmail(newEmail);
-            checkEmailAlreadyInUse(newEmail, user.getId());
-            
-            // TODO: Add confirmation logic for updating the email and figure out how to change it with supabase
-            // For now, we'll just update the local record
-            user.setEmail(newEmail);
-            log.info("Updated email for user {} from {} to {}", user.getId(), currentEmail, newEmail);
-        }
-    }
+    // ==================== Update Operations ====================
 
     /**
      * Updates a user with the provided information.
      * 
+     * <p>Authorization: Users can only update their own profile.</p>
+     *
      * @param id UUID of the user to update
      * @param updateRequest DTO containing the updated user information
      * @return UserResponse containing the updated user's details
      * @throws ValidationException if the provided data is invalid
      * @throws NotFoundException if no user with the given ID exists
      * @throws ConflictException if the email is already in use by another user
+     * @throws InsufficientPermissionException if attempting to modify another user's profile
      */
     @Transactional
+    @PreAuthorize("@security.canModifyUserProfile(#id)")
     public UserResponse updateUser(UUID id, UserUpdateRequest updateRequest) {
         if (id == null) {
             throw new ValidationException("User ID cannot be null");
@@ -245,158 +196,237 @@ public class UserService {
         if (updateRequest == null) {
             throw new ValidationException("Update request cannot be null");
         }
-        
+
+        UUID currentUserId = securityService.getCurrentUserId();
+        log.debug("User {} updating user profile: {}", currentUserId, id);
+
         User user = userRepository.findById(id)
-                .orElseThrow(() -> new NotFoundException("User", id));
-        
-        if (updateRequest.getDisplayName() != null) {
-            String displayName = updateRequest.getDisplayName().trim();
-            if (displayName.length() < 2 || displayName.length() > 50) {
-                throw new ValidationException("Display name must be between 2 and 50 characters");
+                .orElseThrow(() -> new NotFoundException("User not found with ID: " + id));
+
+        // Update fields
+        if (updateRequest.getDisplayName() != null && !updateRequest.getDisplayName().isBlank()) {
+            user.setDisplayName(updateRequest.getDisplayName());
+            log.debug("Updated display name for user {}", id);
+        }
+
+        if (updateRequest.getEmail() != null && !updateRequest.getEmail().isBlank()) {
+            updateEmailIfChanged(user, updateRequest.getEmail());
+        }
+
+        if (updateRequest.getUsername() != null && !updateRequest.getUsername().isBlank()) {
+            if (!updateRequest.getUsername().equals(user.getUsername())) {
+                if (userRepository.findByUsername(updateRequest.getUsername()).isPresent()) {
+                    throw new ConflictException("Username '" + updateRequest.getUsername() + "' is already in use");
+                }
+                user.setUsername(updateRequest.getUsername());
+                log.debug("Updated username for user {}", id);
             }
-            user.setDisplayName(displayName);
         }
+
+        User savedUser = userRepository.save(user);
+        log.info("User {} successfully updated profile: {}", currentUserId, id);
         
-        updateEmailIfChanged(user, updateRequest.getEmail());
-        
-        // Note: Username updates are not supported to maintain consistency with the authentication provider
-        
-        try {
-            User updatedUser = userRepository.save(user);
-            log.info("Updated user with ID: {}", updatedUser.getId());
-            return mapToResponse(updatedUser);
-        } catch (Exception e) {
-            log.error("Failed to update user with ID: {}", id, e);
-            throw new DataIntegrityException("Failed to update user: " + e.getMessage(), e);
-        }
+        return mapToResponse(savedUser);
     }
 
     /**
      * Partially updates a user with the provided field values.
      * 
+     * <p>Authorization: Users can only patch their own profile.</p>
+     * 
+     * <p>Supported fields: displayName, email, username</p>
+     *
      * @param id UUID of the user to update
      * @param patchData Map containing field names and their new values
      * @return UserResponse containing the updated user's details
      * @throws ValidationException if invalid field values are provided or patch data is null/empty
      * @throws NotFoundException if no user with the given ID exists
      * @throws ConflictException if the email is already in use by another user
+     * @throws InsufficientPermissionException if attempting to modify another user's profile
      */
     @Transactional
+    @PreAuthorize("@security.canModifyUserProfile(#id)")
     public UserResponse patchUser(UUID id, Map<String, Object> patchData) {
-        // Validate input
         if (id == null) {
             throw new ValidationException("User ID cannot be null");
         }
         if (patchData == null || patchData.isEmpty()) {
             throw new ValidationException("Patch data cannot be null or empty");
         }
-        
-        // Find user by ID
+
+        UUID currentUserId = securityService.getCurrentUserId();
+        log.debug("User {} patching user profile: {} with fields: {}", 
+                currentUserId, id, patchData.keySet());
+
         User user = userRepository.findById(id)
-                .orElseThrow(() -> new NotFoundException("User", id));
-        
-        // Process each field in the patch data
-        for (Map.Entry<String, Object> entry : patchData.entrySet()) {
-            String field = entry.getKey();
-            Object value = entry.getValue();
-            
+                .orElseThrow(() -> new NotFoundException("User not found with ID: " + id));
+
+        // Apply patches
+        patchData.forEach((field, value) -> {
             switch (field) {
                 case "displayName":
-                    if (value != null) {
-                        if (!(value instanceof String)) {
-                            throw new ValidationException("Display name must be a string");
-                        }
-                        String displayName = ((String) value).trim();
-                        if (displayName.length() < 2 || displayName.length() > 50) {
-                            throw new ValidationException("Display name must be between 2 and 50 characters");
-                        }
-                        user.setDisplayName(displayName);
+                    if (value != null && !value.toString().isBlank()) {
+                        user.setDisplayName(value.toString());
+                        log.debug("Patched displayName for user {}", id);
                     }
                     break;
-                
+                    
                 case "email":
-                    if (value != null) {
-                        if (!(value instanceof String)) {
-                            throw new ValidationException("Email must be a string");
-                        }
-                        updateEmailIfChanged(user, (String) value);
+                    if (value != null && !value.toString().isBlank()) {
+                        updateEmailIfChanged(user, value.toString());
                     }
                     break;
-                
-                // Username updates are not supported to maintain consistency with the authentication provider
+                    
                 case "username":
-                    // Ignore username changes silently for backward compatibility
-                    log.warn("Attempted to update username for user {}, operation ignored", id);
+                    if (value != null && !value.toString().isBlank()) {
+                        String newUsername = value.toString();
+                        if (!newUsername.equals(user.getUsername())) {
+                            if (userRepository.findByUsername(newUsername).isPresent()) {
+                                throw new ConflictException("Username '" + newUsername + "' is already in use");
+                            }
+                            user.setUsername(newUsername);
+                            log.debug("Patched username for user {}", id);
+                        }
+                    }
                     break;
-                
+                    
                 default:
-                    // Ignore unknown fields but log for debugging
-                    log.debug("Ignoring unknown field '{}' in patch request for user {}", field, id);
-                    break;
+                    log.warn("Attempted to patch unsupported field: {}", field);
+                    throw new ValidationException("Unsupported field for patching: " + field);
             }
-        }
+        });
+
+        User savedUser = userRepository.save(user);
+        log.info("User {} successfully patched profile: {}", currentUserId, id);
         
-        try {
-            User updatedUser = userRepository.save(user);
-            log.info("Patched user with ID: {}", updatedUser.getId());
-            return mapToResponse(updatedUser);
-        } catch (Exception e) {
-            log.error("Failed to patch user with ID: {}", id, e);
-            throw new DataIntegrityException("Failed to update user: " + e.getMessage(), e);
-        }
+        return mapToResponse(savedUser);
     }
+
+    // ==================== Delete Operations ====================
 
     /**
      * Deletes a user by their ID.
+     * 
+     * <p>Authorization: Users can only delete their own account.</p>
      *
      * @param id UUID of the user to delete
      * @throws ValidationException if the provided ID is null
      * @throws NotFoundException if no user with the given ID exists
      * @throws DataIntegrityException if deletion fails due to data constraints
+     * @throws InsufficientPermissionException if attempting to delete another user's account
      */
     @Transactional
+    @PreAuthorize("@security.canModifyUserProfile(#id)")
     public void deleteUser(UUID id) {
         if (id == null) {
             throw new ValidationException("User ID cannot be null");
         }
-        
-        // Verify the user exists
+
+        UUID currentUserId = securityService.getCurrentUserId();
+        log.debug("User {} deleting user: {}", currentUserId, id);
+
         User user = userRepository.findById(id)
-                .orElseThrow(() -> new NotFoundException("User", id));
-        
+                .orElseThrow(() -> new NotFoundException("User not found with ID: " + id));
+
         try {
-            // Perform the deletion
             userRepository.delete(user);
-            log.info("Deleted user with ID: {}", id);
+            log.info("User {} successfully deleted account: {}", currentUserId, id);
         } catch (Exception e) {
             log.error("Failed to delete user with ID: {}", id, e);
-            throw new DataIntegrityException("Failed to delete user: user may have dependent records", e);
+            throw new DataIntegrityException(
+                    "Failed to delete user. User may have associated data that must be removed first.", e);
+        }
+    }
+
+    // ==================== Helper Methods ====================
+
+    /**
+     * Extracts a username from an email address by taking the part before the @ symbol.
+     *
+     * @param email Email address to extract username from
+     * @return Username extracted from email, or null if email is null
+     * @throws ValidationException if an email format is invalid
+     */
+    private String extractUsernameFromEmail(String email) {
+        if (email == null) {
+            return null;
+        }
+        
+        validateEmail(email);
+        
+        int atIndex = email.indexOf('@');
+        return email.substring(0, atIndex);
+    }
+
+    /**
+     * Maps a User entity to a UserResponse DTO.
+     *
+     * @param user User entity to map
+     * @return UserResponse containing the user's details
+     */
+    private UserResponse mapToResponse(User user) {
+        return UserResponse.builder()
+                .id(user.getId())
+                .email(user.getEmail())
+                .displayName(user.getDisplayName())
+                .username(user.getUsername())
+                .createdAt(user.getCreatedAt())
+                .updatedAt(user.getUpdatedAt())
+                .build();
+    }
+
+    /**
+     * Validates an email format using a regex pattern.
+     *
+     * @param email Email to validate
+     * @throws ValidationException if an email format is invalid
+     */
+    private void validateEmail(String email) {
+        if (email == null || email.isBlank()) {
+            throw new ValidationException("Email cannot be null or blank");
+        }
+        
+        if (!EMAIL_PATTERN.matcher(email).matches()) {
+            throw new ValidationException("Invalid email format: " + email);
         }
     }
 
     /**
-     * Deletes a user by their ID with authorization check.
+     * Checks if an email is already in use by another user.
      *
-     * @param id UUID of the user to delete
-     * @param currentUserId UUID of the user requesting the deletion
-     * @throws NotFoundException if no user with the given ID exists
-     * @throws InsufficientPermissionException if the current user is not authorized to delete the target user
-     * @throws DataIntegrityException if deletion fails due to data constraints
+     * @param newEmail Email to check
+     * @param userId ID of the current user (to exclude from the check)
+     * @throws ConflictException if email is already in use
      */
-    @Transactional
-    public void deleteUser(UUID id, UUID currentUserId) {
-        if (id == null) {
-            throw new ValidationException("User ID cannot be null");
-        }
-        if (currentUserId == null) {
-            throw new ValidationException("Current user ID cannot be null");
+    private void checkEmailAlreadyInUse(String newEmail, UUID userId) {
+        userRepository.findByEmail(newEmail).ifPresent(existingUser -> {
+            if (!existingUser.getId().equals(userId)) {
+                throw new ConflictException("Email '" + newEmail + "' is already in use by another user");
+            }
+        });
+    }
+
+    /**
+     * Updates user email if it has changed, with validation and conflict checking.
+     *
+     * @param user User to update
+     * @param newEmail New email value
+     * @throws ConflictException if email is already in use
+     * @throws ValidationException if an email format is invalid
+     */
+    private void updateEmailIfChanged(User user, String newEmail) {
+        if (newEmail == null || newEmail.isBlank()) {
+            return;
         }
         
-        // Authorization checks first
-        if (!id.equals(currentUserId)) {
-            throw new InsufficientPermissionException("delete", "user account");
+        if (newEmail.equals(user.getEmail())) {
+            return; // No change needed
         }
         
-        deleteUser(id);
+        validateEmail(newEmail);
+        checkEmailAlreadyInUse(newEmail, user.getId());
+        
+        user.setEmail(newEmail);
+        log.debug("Updated email for user {}", user.getId());
     }
 }

@@ -18,4 +18,5 @@ public class UserResponse {
     private String email;
     private String displayName;
     private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 }

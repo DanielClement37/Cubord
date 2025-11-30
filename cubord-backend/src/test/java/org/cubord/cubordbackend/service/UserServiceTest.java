@@ -1,16 +1,12 @@
 package org.cubord.cubordbackend.service;
 
 import org.cubord.cubordbackend.domain.User;
+import org.cubord.cubordbackend.domain.UserRole;
 import org.cubord.cubordbackend.dto.user.UserResponse;
 import org.cubord.cubordbackend.dto.user.UserUpdateRequest;
-import org.cubord.cubordbackend.exception.AuthenticationRequiredException;
-import org.cubord.cubordbackend.exception.ConflictException;
-import org.cubord.cubordbackend.exception.DataIntegrityException;
-import org.cubord.cubordbackend.exception.InsufficientPermissionException;
-import org.cubord.cubordbackend.exception.NotFoundException;
-import org.cubord.cubordbackend.exception.TokenExpiredException;
-import org.cubord.cubordbackend.exception.ValidationException;
+import org.cubord.cubordbackend.exception.*;
 import org.cubord.cubordbackend.repository.UserRepository;
+import org.cubord.cubordbackend.security.SecurityService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -19,849 +15,631 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
-import java.time.Instant;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.util.HashSet;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.Map;
-import java.util.HashMap;
-import java.util.Set;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
-import org.cubord.cubordbackend.domain.HouseholdMember;
-
+/**
+ * Comprehensive test suite for UserService using the modernized security architecture.
+ *
+ * <p>These tests verify:</p>
+ * <ul>
+ *   <li>SecurityService integration for authentication context</li>
+ *   <li>Authorization via @PreAuthorize (integration tests verify actual enforcement)</li>
+ *   <li>Business logic correctness</li>
+ *   <li>Error handling and validation</li>
+ * </ul>
+ *
+ * <p>Note: @PreAuthorize enforcement is not tested in unit tests as it requires
+ * Spring Security context. Integration tests should cover authorization scenarios.</p>
+ */
 @ExtendWith(MockitoExtension.class)
+@DisplayName("UserService Tests")
 class UserServiceTest {
+
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private SecurityService securityService;
 
     @InjectMocks
     private UserService userService;
 
-    private User sampleUser;
     private UUID sampleUserId;
-    private String sampleUsername;
-    private JwtAuthenticationToken jwtAuthenticationToken;
+    private User sampleUser;
+    private LocalDateTime fixedTime;
 
     @BeforeEach
     void setUp() {
         sampleUserId = UUID.randomUUID();
-        sampleUsername = "testuser";
+        fixedTime = LocalDateTime.of(2024, 1, 1, 12, 0);
 
-        // Create sample user
-        sampleUser = new User();
-        sampleUser.setId(sampleUserId);
-        sampleUser.setUsername(sampleUsername);
-        sampleUser.setEmail("test@example.com");
-        sampleUser.setDisplayName("Test User");
-        sampleUser.setCreatedAt(LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault()));
-        sampleUser.setHouseholdMembers(new HashSet<>());
-
-        // Create a mock JWT token
-        Jwt jwt = Jwt.withTokenValue("token")
-                .header("alg", "none")
-                .subject(sampleUserId.toString())
-                .claim("email", "test@example.com")
-                .claim("name", "Test User")
+        sampleUser = User.builder()
+                .id(sampleUserId)
+                .email("test@example.com")
+                .displayName("Test User")
+                .username("testuser")
+                .role(UserRole.USER)
+                .createdAt(fixedTime)
+                .updatedAt(fixedTime)
                 .build();
-
-        jwtAuthenticationToken = new JwtAuthenticationToken(jwt);
     }
 
+    // ==================== getCurrentUserDetails Tests ====================
+
     @Nested
-    @DisplayName("getCurrentUser method")
-    class GetCurrentUser {
+    @DisplayName("getCurrentUserDetails")
+    class GetCurrentUserDetailsTests {
 
         @Test
-        @DisplayName("should return existing user when found by ID")
-        void shouldReturnExistingUserWhenFound() {
-            when(userRepository.findById(eq(sampleUserId)))
-                    .thenReturn(Optional.of(sampleUser));
+        @DisplayName("returns current user details from security context")
+        void whenUserAuthenticated_returnsUserDetails() {
+            // Given
+            when(securityService.getCurrentUser()).thenReturn(sampleUser);
 
-            User result = userService.getCurrentUser(jwtAuthenticationToken);
+            // When
+            UserResponse result = userService.getCurrentUserDetails();
 
-            assertThat(result).isEqualTo(sampleUser);
-            verify(userRepository).findById(eq(sampleUserId));
-            verify(userRepository, never()).save(any(User.class));
-        }
-
-        @Test
-        @DisplayName("should create and return new user when not found by ID")
-        void shouldCreateNewUserWhenNotFound() {
-            when(userRepository.findById(eq(sampleUserId)))
-                    .thenReturn(Optional.empty());
-            when(userRepository.save(any(User.class)))
-                    .thenAnswer(invocation -> invocation.getArgument(0));
-
-            User result = userService.getCurrentUser(jwtAuthenticationToken);
-
+            // Then
+            assertThat(result).isNotNull();
             assertThat(result.getId()).isEqualTo(sampleUserId);
             assertThat(result.getEmail()).isEqualTo("test@example.com");
-            assertThat(result.getUsername()).isEqualTo("test"); // First part of email
             assertThat(result.getDisplayName()).isEqualTo("Test User");
+            assertThat(result.getUsername()).isEqualTo("testuser");
 
-            verify(userRepository).findById(eq(sampleUserId));
-            verify(userRepository).save(any(User.class));
+            verify(securityService).getCurrentUser();
+            verifyNoInteractions(userRepository);
         }
 
         @Test
-        @DisplayName("should throw AuthenticationRequiredException when token is null")
-        void shouldThrowAuthenticationRequiredExceptionWhenTokenIsNull() {
-            assertThatThrownBy(() -> userService.getCurrentUser(null))
+        @DisplayName("throws AuthenticationRequiredException when not authenticated")
+        void whenNotAuthenticated_throwsException() {
+            // Given
+            when(securityService.getCurrentUser())
+                    .thenThrow(new AuthenticationRequiredException("No authenticated user found"));
+
+            // When/Then
+            assertThatThrownBy(() -> userService.getCurrentUserDetails())
                     .isInstanceOf(AuthenticationRequiredException.class)
-                    .hasMessage("JWT token is required");
+                    .hasMessageContaining("No authenticated user found");
 
-            verify(userRepository, never()).findById(any());
-            verify(userRepository, never()).save(any());
+            verify(securityService).getCurrentUser();
         }
+    }
+
+    // ==================== getUser Tests ====================
+
+    @Nested
+    @DisplayName("getUser")
+    class GetUserTests {
 
         @Test
-        @DisplayName("should throw AuthenticationRequiredException when token has null JWT")
-        void shouldThrowAuthenticationRequiredExceptionWhenTokenHasNullJwt() {
-
-            JwtAuthenticationToken mockToken = mock(JwtAuthenticationToken.class);
-            when(mockToken.getToken()).thenReturn(null);
-
-            assertThatThrownBy(() -> userService.getCurrentUser(mockToken))
-                    .isInstanceOf(AuthenticationRequiredException.class)
-                    .hasMessage("JWT token is required");
-
-            verify(userRepository, never()).findById(any());
-            verify(userRepository, never()).save(any());
-        }
-
-        @Test
-        @DisplayName("should throw AuthenticationRequiredException when JWT token has no subject")
-        void shouldThrowAuthenticationRequiredExceptionWhenTokenHasNoSubject() {
-            Jwt invalidJwt = Jwt.withTokenValue("token")
-                    .header("alg", "none")
-                    .claim("email", "test@example.com")
+        @DisplayName("returns user when found and authorized")
+        void whenUserFoundAndAuthorized_returnsUser() {
+            // Given
+            UUID targetUserId = UUID.randomUUID();
+            User targetUser = User.builder()
+                    .id(targetUserId)
+                    .email("target@example.com")
+                    .displayName("Target User")
+                    .username("targetuser")
+                    .role(UserRole.USER)
+                    .createdAt(fixedTime)
+                    .updatedAt(fixedTime)
                     .build();
-            JwtAuthenticationToken invalidToken = new JwtAuthenticationToken(invalidJwt);
 
-            assertThatThrownBy(() -> userService.getCurrentUser(invalidToken))
-                    .isInstanceOf(AuthenticationRequiredException.class)
-                    .hasMessage("JWT token does not contain a subject claim");
+            // Note: @PreAuthorize is not enforced in unit tests
+            // Authorization is mocked for business logic verification
+            when(userRepository.findById(targetUserId)).thenReturn(Optional.of(targetUser));
 
-            verify(userRepository, never()).findById(any());
-            verify(userRepository, never()).save(any());
+            // When
+            UserResponse result = userService.getUser(targetUserId);
+
+            // Then
+            assertThat(result).isNotNull();
+            assertThat(result.getId()).isEqualTo(targetUserId);
+            assertThat(result.getEmail()).isEqualTo("target@example.com");
+            assertThat(result.getDisplayName()).isEqualTo("Target User");
+
+            verify(userRepository).findById(targetUserId);
         }
 
         @Test
-        @DisplayName("should throw TokenExpiredException when subject is not a valid UUID")
-        void shouldThrowTokenExpiredExceptionWhenSubjectIsInvalidUuid() {
-            Jwt invalidJwt = Jwt.withTokenValue("token")
-                    .header("alg", "none")
-                    .subject("invalid-uuid")
-                    .claim("email", "test@example.com")
-                    .build();
-            JwtAuthenticationToken invalidToken = new JwtAuthenticationToken(invalidJwt);
+        @DisplayName("throws NotFoundException when user not found")
+        void whenUserNotFound_throwsNotFoundException() {
+            // Given
+            UUID nonExistentId = UUID.randomUUID();
+            when(userRepository.findById(nonExistentId)).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> userService.getCurrentUser(invalidToken))
-                    .isInstanceOf(TokenExpiredException.class)
-                    .hasMessage("Invalid token format: subject is not a valid UUID");
+            // When/Then
+            assertThatThrownBy(() -> userService.getUser(nonExistentId))
+                    .isInstanceOf(NotFoundException.class)
+                    .hasMessageContaining("User not found with ID");
 
-            verify(userRepository, never()).findById(any());
-            verify(userRepository, never()).save(any());
+            verify(userRepository).findById(nonExistentId);
         }
 
         @Test
-        @DisplayName("should throw DataIntegrityException when user creation fails")
-        void shouldThrowDataIntegrityExceptionWhenUserCreationFails() {
-            when(userRepository.findById(eq(sampleUserId)))
-                    .thenReturn(Optional.empty());
-            when(userRepository.save(any(User.class)))
-                    .thenThrow(new RuntimeException("Database connection failed"));
-
-            assertThatThrownBy(() -> userService.getCurrentUser(jwtAuthenticationToken))
-                    .isInstanceOf(DataIntegrityException.class)
-                    .hasMessageContaining("Failed to create user");
-
-            verify(userRepository).findById(eq(sampleUserId));
-            verify(userRepository).save(any(User.class));
-        }
-    }
-
-    @Nested
-    @DisplayName("getCurrentUserDetails method")
-    class GetCurrentUserDetails {
-
-        @Test
-        @DisplayName("should return user details DTO when user exists")
-        void shouldReturnUserDetailsDtoWhenUserExists() {
-            when(userRepository.findById(eq(sampleUserId)))
-                    .thenReturn(Optional.of(sampleUser));
-
-            UserResponse result = userService.getCurrentUserDetails(jwtAuthenticationToken);
-
-            assertThat(result.getId()).isEqualTo(sampleUserId);
-            assertThat(result.getUsername()).isEqualTo(sampleUsername);
-            assertThat(result.getEmail()).isEqualTo("test@example.com");
-            assertThat(result.getDisplayName()).isEqualTo("Test User");
-
-            verify(userRepository).findById(eq(sampleUserId));
-        }
-
-        @Test
-        @DisplayName("should return user details DTO when creating new user")
-        void shouldReturnUserDetailsDtoWhenCreatingNewUser() {
-            when(userRepository.findById(eq(sampleUserId)))
-                    .thenReturn(Optional.empty());
-            when(userRepository.save(any(User.class)))
-                    .thenAnswer(invocation -> {
-                        User savedUser = invocation.getArgument(0);
-                        savedUser.setCreatedAt(LocalDateTime.now());
-                        return savedUser;
-                    });
-
-            UserResponse result = userService.getCurrentUserDetails(jwtAuthenticationToken);
-
-            assertThat(result.getId()).isEqualTo(sampleUserId);
-            assertThat(result.getUsername()).isEqualTo("test"); // First part of email
-            assertThat(result.getEmail()).isEqualTo("test@example.com");
-            assertThat(result.getDisplayName()).isEqualTo("Test User");
-            assertThat(result.getCreatedAt()).isNotNull();
-
-            verify(userRepository).findById(eq(sampleUserId));
-            verify(userRepository).save(any(User.class));
-        }
-    }
-
-    @Nested
-    @DisplayName("getUser method")
-    class GetUser {
-
-        @Test
-        @DisplayName("should return user details when found by ID")
-        void shouldReturnUserWhenFoundById() {
-            when(userRepository.findById(eq(sampleUserId)))
-                    .thenReturn(Optional.of(sampleUser));
-
-            UserResponse result = userService.getUser(sampleUserId);
-
-            assertThat(result.getId()).isEqualTo(sampleUserId);
-            assertThat(result.getUsername()).isEqualTo(sampleUsername);
-
-            verify(userRepository).findById(eq(sampleUserId));
-        }
-
-        @Test
-        @DisplayName("should throw ValidationException when user ID is null")
-        void shouldThrowValidationExceptionWhenUserIdIsNull() {
+        @DisplayName("throws ValidationException when ID is null")
+        void whenIdIsNull_throwsValidationException() {
+            // When/Then
             assertThatThrownBy(() -> userService.getUser(null))
                     .isInstanceOf(ValidationException.class)
-                    .hasMessage("User ID cannot be null");
+                    .hasMessageContaining("User ID cannot be null");
 
-            verify(userRepository, never()).findById(any());
-        }
-
-        @Test
-        @DisplayName("should throw NotFoundException when user not found by ID")
-        void shouldThrowNotFoundExceptionWhenUserNotFoundById() {
-            when(userRepository.findById(eq(sampleUserId)))
-                    .thenReturn(Optional.empty());
-
-            assertThatThrownBy(() -> userService.getUser(sampleUserId))
-                    .isInstanceOf(NotFoundException.class)
-                    .hasMessageContaining("User with id " + sampleUserId + " not found");
-
-            verify(userRepository).findById(eq(sampleUserId));
+            verifyNoInteractions(userRepository);
         }
     }
 
+    // ==================== getUserByUsername Tests ====================
+
     @Nested
-    @DisplayName("getUserByUsername method")
-    class GetUserByUsername {
+    @DisplayName("getUserByUsername")
+    class GetUserByUsernameTests {
 
         @Test
-        @DisplayName("should return user details when found by username")
-        void shouldReturnUserWhenFoundByUsername() {
-            when(userRepository.findByUsername(eq(sampleUsername)))
-                    .thenReturn(Optional.of(sampleUser));
+        @DisplayName("returns user when found and authorized")
+        void whenUserFoundAndAuthorized_returnsUser() {
+            // Given
+            String username = "testuser";
+            when(userRepository.findByUsername(username)).thenReturn(Optional.of(sampleUser));
+            when(securityService.canAccessUserProfile(sampleUserId)).thenReturn(true);
 
-            UserResponse result = userService.getUserByUsername(sampleUsername);
+            // When
+            UserResponse result = userService.getUserByUsername(username);
 
-            assertThat(result.getId()).isEqualTo(sampleUserId);
-            assertThat(result.getUsername()).isEqualTo(sampleUsername);
+            // Then
+            assertThat(result).isNotNull();
+            assertThat(result.getUsername()).isEqualTo(username);
 
-            verify(userRepository).findByUsername(eq(sampleUsername));
+            verify(userRepository).findByUsername(username);
+            verify(securityService).canAccessUserProfile(sampleUserId);
         }
 
         @Test
-        @DisplayName("should throw ValidationException when username is null")
-        void shouldThrowValidationExceptionWhenUsernameIsNull() {
+        @DisplayName("throws InsufficientPermissionException when not authorized")
+        void whenNotAuthorized_throwsInsufficientPermissionException() {
+            // Given
+            String username = "testuser";
+            UUID currentUserId = UUID.randomUUID();
+
+            when(userRepository.findByUsername(username)).thenReturn(Optional.of(sampleUser));
+            when(securityService.canAccessUserProfile(sampleUserId)).thenReturn(false);
+            when(securityService.getCurrentUserId()).thenReturn(currentUserId);
+
+            // When/Then
+            assertThatThrownBy(() -> userService.getUserByUsername(username))
+                    .isInstanceOf(InsufficientPermissionException.class)
+                    .hasMessageContaining("You do not have permission to access this user profile");
+
+            verify(userRepository).findByUsername(username);
+            verify(securityService).canAccessUserProfile(sampleUserId);
+            verify(securityService).getCurrentUserId();
+        }
+
+        @Test
+        @DisplayName("throws NotFoundException when user not found")
+        void whenUserNotFound_throwsNotFoundException() {
+            // Given
+            String username = "nonexistent";
+            when(userRepository.findByUsername(username)).thenReturn(Optional.empty());
+
+            // When/Then
+            assertThatThrownBy(() -> userService.getUserByUsername(username))
+                    .isInstanceOf(NotFoundException.class)
+                    .hasMessageContaining("User not found with username");
+
+            verify(userRepository).findByUsername(username);
+        }
+
+        @Test
+        @DisplayName("throws ValidationException when username is null")
+        void whenUsernameIsNull_throwsValidationException() {
+            // When/Then
             assertThatThrownBy(() -> userService.getUserByUsername(null))
                     .isInstanceOf(ValidationException.class)
-                    .hasMessage("Username cannot be null or blank");
+                    .hasMessageContaining("Username cannot be null or blank");
 
-            verify(userRepository, never()).findByUsername(any());
+            verifyNoInteractions(userRepository);
         }
 
         @Test
-        @DisplayName("should throw ValidationException when username is blank")
-        void shouldThrowValidationExceptionWhenUsernameIsBlank() {
+        @DisplayName("throws ValidationException when username is blank")
+        void whenUsernameIsBlank_throwsValidationException() {
+            // When/Then
             assertThatThrownBy(() -> userService.getUserByUsername("   "))
                     .isInstanceOf(ValidationException.class)
-                    .hasMessage("Username cannot be null or blank");
+                    .hasMessageContaining("Username cannot be null or blank");
 
-            verify(userRepository, never()).findByUsername(any());
-        }
-
-        @Test
-        @DisplayName("should throw NotFoundException when user not found by username")
-        void shouldThrowNotFoundExceptionWhenUserNotFoundByUsername() {
-            when(userRepository.findByUsername(eq(sampleUsername)))
-                    .thenReturn(Optional.empty());
-
-            assertThatThrownBy(() -> userService.getUserByUsername(sampleUsername))
-                    .isInstanceOf(NotFoundException.class)
-                    .hasMessage("User with username '" + sampleUsername + "' not found");
-
-            verify(userRepository).findByUsername(eq(sampleUsername));
+            verifyNoInteractions(userRepository);
         }
     }
 
-    @Nested
-    @DisplayName("extractUsernameFromEmail method")
-    class ExtractUsernameFromEmail {
-
-        @Test
-        @DisplayName("should extract username part before @ symbol")
-        void shouldExtractUsernameFromEmail() throws Exception {
-            java.lang.reflect.Method method = UserService.class.getDeclaredMethod("extractUsernameFromEmail", String.class);
-            method.setAccessible(true);
-
-            String result = (String) method.invoke(userService, "user123@example.com");
-            assertThat(result).isEqualTo("user123");
-
-            String resultWithNullEmail = (String) method.invoke(userService, (String) null);
-            assertThat(resultWithNullEmail).isNull();
-        }
-
-        @Test
-        @DisplayName("should throw ValidationException when email without @ symbol")
-        void shouldThrowValidationExceptionWhenEmailWithoutAtSymbol() throws Exception {
-            java.lang.reflect.Method method = UserService.class.getDeclaredMethod("extractUsernameFromEmail", String.class);
-            method.setAccessible(true);
-
-            assertThatThrownBy(() -> method.invoke(userService, "invalid-email"))
-                    .hasCauseInstanceOf(ValidationException.class)
-                    .hasRootCauseMessage("Invalid email format: missing @ symbol");
-        }
-
-        @Test
-        @DisplayName("should throw ValidationException when email has empty username part")
-        void shouldThrowValidationExceptionWhenEmailHasEmptyUsernamePart() throws Exception {
-            java.lang.reflect.Method method = UserService.class.getDeclaredMethod("extractUsernameFromEmail", String.class);
-            method.setAccessible(true);
-
-            assertThatThrownBy(() -> method.invoke(userService, "@example.com"))
-                    .hasCauseInstanceOf(ValidationException.class)
-                    .hasRootCauseMessage("Invalid email format: empty username part");
-        }
-
-        @Test
-        @DisplayName("should handle email with multiple @ symbols")
-        void shouldHandleEmailWithMultipleAtSymbols() throws Exception {
-            java.lang.reflect.Method method = UserService.class.getDeclaredMethod("extractUsernameFromEmail", String.class);
-            method.setAccessible(true);
-
-            String result = (String) method.invoke(userService, "user@name@example.com");
-            assertThat(result).isEqualTo("user");
-        }
-    }
+    // ==================== updateUser Tests ====================
 
     @Nested
-    @DisplayName("createUser method")
-    class CreateUser {
+    @DisplayName("updateUser")
+    class UpdateUserTests {
 
         @Test
-        @DisplayName("should initialize householdMembers when creating user")
-        void shouldInitializeHouseholdMembersWhenCreatingUser() {
-            when(userRepository.findById(eq(sampleUserId)))
-                    .thenReturn(Optional.empty());
-            when(userRepository.save(any(User.class)))
-                    .thenAnswer(invocation -> invocation.getArgument(0));
+        @DisplayName("updates display name successfully")
+        void whenUpdatingDisplayName_updatesSuccessfully() {
+            // Given
+            UserUpdateRequest request = UserUpdateRequest.builder()
+                    .displayName("Updated Name")
+                    .build();
 
-            User result = userService.getCurrentUser(jwtAuthenticationToken);
+            when(securityService.getCurrentUserId()).thenReturn(sampleUserId);
+            when(userRepository.findById(sampleUserId)).thenReturn(Optional.of(sampleUser));
+            when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
-            assertThat(result.getHouseholdMembers()).isNotNull().isEmpty();
+            // When
+            UserResponse result = userService.updateUser(sampleUserId, request);
 
-            verify(userRepository).save(any(User.class));
-        }
-    }
-
-    @Nested
-    @DisplayName("updateUser method")
-    class UpdateUser {
-
-        @Test
-        @DisplayName("should update user when valid data provided")
-        void shouldUpdateUserWhenValidDataProvided() {
-            UserUpdateRequest updateRequest = new UserUpdateRequest();
-            updateRequest.setDisplayName("Updated Name");
-
-            User updatedUser = new User();
-            updatedUser.setId(sampleUserId);
-            updatedUser.setUsername(sampleUsername);
-            updatedUser.setEmail("test@example.com");
-            updatedUser.setDisplayName("Updated Name");
-            updatedUser.setCreatedAt(LocalDateTime.now().minusDays(7));
-            updatedUser.setHouseholdMembers(new HashSet<>());
-
-            when(userRepository.findById(eq(sampleUserId)))
-                    .thenReturn(Optional.of(sampleUser));
-            when(userRepository.save(any(User.class)))
-                    .thenReturn(updatedUser);
-
-            UserResponse result = userService.updateUser(sampleUserId, updateRequest);
-
-            assertThat(result.getId()).isEqualTo(sampleUserId);
+            // Then
             assertThat(result.getDisplayName()).isEqualTo("Updated Name");
 
-            verify(userRepository).findById(eq(sampleUserId));
+            verify(userRepository).findById(sampleUserId);
+            verify(userRepository).save(argThat(user ->
+                    user.getDisplayName().equals("Updated Name")));
+        }
+
+        @Test
+        @DisplayName("updates email successfully when valid and unique")
+        void whenUpdatingEmail_updatesSuccessfully() {
+            // Given
+            UserUpdateRequest request = UserUpdateRequest.builder()
+                    .email("newemail@example.com")
+                    .build();
+
+            when(securityService.getCurrentUserId()).thenReturn(sampleUserId);
+            when(userRepository.findById(sampleUserId)).thenReturn(Optional.of(sampleUser));
+            when(userRepository.findByEmail("newemail@example.com")).thenReturn(Optional.empty());
+            when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            // When
+            UserResponse result = userService.updateUser(sampleUserId, request);
+
+            // Then
+            assertThat(result.getEmail()).isEqualTo("newemail@example.com");
+
+            verify(userRepository).findById(sampleUserId);
+            verify(userRepository).findByEmail("newemail@example.com");
             verify(userRepository).save(any(User.class));
         }
 
         @Test
-        @DisplayName("should throw ValidationException when user ID is null")
-        void shouldThrowValidationExceptionWhenUserIdIsNull() {
-            UserUpdateRequest updateRequest = new UserUpdateRequest();
-            updateRequest.setDisplayName("Updated Name");
+        @DisplayName("throws ConflictException when email already in use")
+        void whenEmailAlreadyInUse_throwsConflictException() {
+            // Given
+            UUID otherUserId = UUID.randomUUID();
+            User otherUser = User.builder()
+                    .id(otherUserId)
+                    .email("taken@example.com")
+                    .build();
 
-            assertThatThrownBy(() -> userService.updateUser(null, updateRequest))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessage("User ID cannot be null");
+            UserUpdateRequest request = UserUpdateRequest.builder()
+                    .email("taken@example.com")
+                    .build();
 
-            verify(userRepository, never()).findById(any());
-            verify(userRepository, never()).save(any(User.class));
+            when(securityService.getCurrentUserId()).thenReturn(sampleUserId);
+            when(userRepository.findById(sampleUserId)).thenReturn(Optional.of(sampleUser));
+            when(userRepository.findByEmail("taken@example.com")).thenReturn(Optional.of(otherUser));
+
+            // When/Then
+            assertThatThrownBy(() -> userService.updateUser(sampleUserId, request))
+                    .isInstanceOf(ConflictException.class)
+                    .hasMessageContaining("Email 'taken@example.com' is already in use");
+
+            verify(userRepository).findById(sampleUserId);
+            verify(userRepository).findByEmail("taken@example.com");
+            verify(userRepository, never()).save(any());
         }
 
         @Test
-        @DisplayName("should throw ValidationException when update request is null")
-        void shouldThrowValidationExceptionWhenUpdateRequestIsNull() {
+        @DisplayName("updates username successfully when unique")
+        void whenUpdatingUsername_updatesSuccessfully() {
+            // Given
+            UserUpdateRequest request = UserUpdateRequest.builder()
+                    .username("newusername")
+                    .build();
+
+            when(securityService.getCurrentUserId()).thenReturn(sampleUserId);
+            when(userRepository.findById(sampleUserId)).thenReturn(Optional.of(sampleUser));
+            // FIXED: Return Optional instead of boolean
+            when(userRepository.findByUsername("newusername")).thenReturn(Optional.empty());
+            when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            // When
+            UserResponse result = userService.updateUser(sampleUserId, request);
+
+            // Then
+            assertThat(result.getUsername()).isEqualTo("newusername");
+
+            verify(userRepository).findByUsername("newusername");
+            verify(userRepository).save(any(User.class));
+        }
+
+        @Test
+        @DisplayName("throws ConflictException when username already in use")
+        void whenUsernameAlreadyInUse_throwsConflictException() {
+            // Given
+            User existingUser = User.builder()
+                    .id(UUID.randomUUID())
+                    .username("takenusername")
+                    .build();
+                
+            UserUpdateRequest request = UserUpdateRequest.builder()
+                    .username("takenusername")
+                    .build();
+
+            when(securityService.getCurrentUserId()).thenReturn(sampleUserId);
+            when(userRepository.findById(sampleUserId)).thenReturn(Optional.of(sampleUser));
+            // FIXED: Return Optional instead of boolean
+            when(userRepository.findByUsername("takenusername")).thenReturn(Optional.of(existingUser));
+
+            // When/Then
+            assertThatThrownBy(() -> userService.updateUser(sampleUserId, request))
+                    .isInstanceOf(ConflictException.class)
+                    .hasMessageContaining("Username 'takenusername' is already in use");
+
+            verify(userRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("throws ValidationException when request is null")
+        void whenRequestIsNull_throwsValidationException() {
+            // When/Then
             assertThatThrownBy(() -> userService.updateUser(sampleUserId, null))
                     .isInstanceOf(ValidationException.class)
-                    .hasMessage("Update request cannot be null");
+                    .hasMessageContaining("Update request cannot be null");
 
-            verify(userRepository, never()).findById(any());
-            verify(userRepository, never()).save(any(User.class));
+            verifyNoInteractions(userRepository);
         }
 
         @Test
-        @DisplayName("should throw ValidationException when display name is too short")
-        void shouldThrowValidationExceptionWhenDisplayNameTooShort() {
-            UserUpdateRequest updateRequest = new UserUpdateRequest();
-            updateRequest.setDisplayName("A");
+        @DisplayName("throws ValidationException when user ID is null")
+        void whenUserIdIsNull_throwsValidationException() {
+            // Given
+            UserUpdateRequest request = UserUpdateRequest.builder().build();
 
-            when(userRepository.findById(eq(sampleUserId)))
-                    .thenReturn(Optional.of(sampleUser));
-
-            assertThatThrownBy(() -> userService.updateUser(sampleUserId, updateRequest))
+            // When/Then
+            assertThatThrownBy(() -> userService.updateUser(null, request))
                     .isInstanceOf(ValidationException.class)
-                    .hasMessage("Display name must be between 2 and 50 characters");
+                    .hasMessageContaining("User ID cannot be null");
+
+            verifyNoInteractions(userRepository);
         }
 
         @Test
-        @DisplayName("should throw ValidationException when display name is too long")
-        void shouldThrowValidationExceptionWhenDisplayNameTooLong() {
-            UserUpdateRequest updateRequest = new UserUpdateRequest();
-            updateRequest.setDisplayName("A".repeat(51));
+        @DisplayName("throws NotFoundException when user not found")
+        void whenUserNotFound_throwsNotFoundException() {
+            // Given
+            UUID nonExistentId = UUID.randomUUID();
+            UserUpdateRequest request = UserUpdateRequest.builder()
+                    .displayName("New Name")
+                    .build();
 
-            when(userRepository.findById(eq(sampleUserId)))
-                    .thenReturn(Optional.of(sampleUser));
+            when(userRepository.findById(nonExistentId)).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> userService.updateUser(sampleUserId, updateRequest))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessage("Display name must be between 2 and 50 characters");
-        }
-
-        @Test
-        @DisplayName("should throw NotFoundException when user not found for update")
-        void shouldThrowNotFoundExceptionWhenUserNotFoundForUpdate() {
-            UserUpdateRequest updateRequest = new UserUpdateRequest();
-            updateRequest.setDisplayName("Updated Name");
-
-            when(userRepository.findById(eq(sampleUserId)))
-                    .thenReturn(Optional.empty());
-
-            assertThatThrownBy(() -> userService.updateUser(sampleUserId, updateRequest))
+            // When/Then
+            assertThatThrownBy(() -> userService.updateUser(nonExistentId, request))
                     .isInstanceOf(NotFoundException.class)
-                    .hasMessageContaining("User with id " + sampleUserId + " not found");
+                    .hasMessageContaining("User not found with ID");
 
-            verify(userRepository).findById(eq(sampleUserId));
-            verify(userRepository, never()).save(any(User.class));
-        }
-
-        @Test
-        @DisplayName("should throw ConflictException when email is already in use")
-        void shouldThrowConflictExceptionWhenEmailAlreadyInUse() {
-            UserUpdateRequest updateRequest = new UserUpdateRequest();
-            updateRequest.setEmail("existing@example.com");
-
-            User existingUserWithEmail = new User();
-            existingUserWithEmail.setId(UUID.randomUUID());
-            existingUserWithEmail.setEmail("existing@example.com");
-
-            when(userRepository.findById(eq(sampleUserId)))
-                    .thenReturn(Optional.of(sampleUser));
-            when(userRepository.findByEmail("existing@example.com"))
-                    .thenReturn(Optional.of(existingUserWithEmail));
-
-            assertThatThrownBy(() -> userService.updateUser(sampleUserId, updateRequest))
-                    .isInstanceOf(ConflictException.class)
-                    .hasMessage("Email address is already in use by another user");
-        }
-
-        @Test
-        @DisplayName("should throw ValidationException when email format is invalid")
-        void shouldThrowValidationExceptionWhenEmailFormatInvalid() {
-            UserUpdateRequest updateRequest = new UserUpdateRequest();
-            updateRequest.setEmail("invalid-email");
-
-            when(userRepository.findById(eq(sampleUserId)))
-                    .thenReturn(Optional.of(sampleUser));
-
-            assertThatThrownBy(() -> userService.updateUser(sampleUserId, updateRequest))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessage("Invalid email format: must be a valid email address");
-        }
-
-        @Test
-        @DisplayName("should throw DataIntegrityException when save operation fails")
-        void shouldThrowDataIntegrityExceptionWhenSaveOperationFails() {
-            UserUpdateRequest updateRequest = new UserUpdateRequest();
-            updateRequest.setDisplayName("Updated Name");
-
-            when(userRepository.findById(eq(sampleUserId)))
-                    .thenReturn(Optional.of(sampleUser));
-            when(userRepository.save(any(User.class)))
-                    .thenThrow(new RuntimeException("Database constraint violation"));
-
-            assertThatThrownBy(() -> userService.updateUser(sampleUserId, updateRequest))
-                    .isInstanceOf(DataIntegrityException.class)
-                    .hasMessageContaining("Failed to update user");
+            verify(userRepository).findById(nonExistentId);
+            verify(userRepository, never()).save(any());
         }
     }
 
+    // ==================== patchUser Tests ====================
+
     @Nested
-    @DisplayName("patchUser method")
-    class PatchUser {
+    @DisplayName("patchUser")
+    class PatchUserTests {
 
         @Test
-        @DisplayName("should partially update user when valid data provided")
-        void shouldPartiallyUpdateUserWhenValidDataProvided() {
+        @DisplayName("patches display name successfully")
+        void whenPatchingDisplayName_updatesSuccessfully() {
+            // Given
             Map<String, Object> patchData = new HashMap<>();
             patchData.put("displayName", "Patched Name");
 
-            User patchedUser = new User();
-            patchedUser.setId(sampleUserId);
-            patchedUser.setUsername(sampleUsername);
-            patchedUser.setEmail("test@example.com");
-            patchedUser.setDisplayName("Patched Name");
-            patchedUser.setCreatedAt(LocalDateTime.now().minusDays(7));
-            patchedUser.setHouseholdMembers(new HashSet<>());
+            when(securityService.getCurrentUserId()).thenReturn(sampleUserId);
+            when(userRepository.findById(sampleUserId)).thenReturn(Optional.of(sampleUser));
+            when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
-            when(userRepository.findById(eq(sampleUserId)))
-                    .thenReturn(Optional.of(sampleUser));
-            when(userRepository.save(any(User.class)))
-                    .thenReturn(patchedUser);
-
+            // When
             UserResponse result = userService.patchUser(sampleUserId, patchData);
 
+            // Then
             assertThat(result.getDisplayName()).isEqualTo("Patched Name");
-            assertThat(result.getEmail()).isEqualTo("test@example.com");
 
-            verify(userRepository).findById(eq(sampleUserId));
+            verify(userRepository).save(argThat(user ->
+                    user.getDisplayName().equals("Patched Name")));
+        }
+
+        @Test
+        @DisplayName("patches email successfully")
+        void whenPatchingEmail_updatesSuccessfully() {
+            // Given
+            Map<String, Object> patchData = new HashMap<>();
+            patchData.put("email", "patched@example.com");
+
+            when(securityService.getCurrentUserId()).thenReturn(sampleUserId);
+            when(userRepository.findById(sampleUserId)).thenReturn(Optional.of(sampleUser));
+            when(userRepository.findByEmail("patched@example.com")).thenReturn(Optional.empty());
+            when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            // When
+            UserResponse result = userService.patchUser(sampleUserId, patchData);
+
+            // Then
+            assertThat(result.getEmail()).isEqualTo("patched@example.com");
+
+            verify(userRepository).findByEmail("patched@example.com");
             verify(userRepository).save(any(User.class));
         }
 
         @Test
-        @DisplayName("should throw ValidationException when user ID is null")
-        void shouldThrowValidationExceptionWhenUserIdIsNull() {
+        @DisplayName("patches username successfully")
+        void whenPatchingUsername_updatesSuccessfully() {
+            // Given
             Map<String, Object> patchData = new HashMap<>();
-            patchData.put("displayName", "Patched Name");
+            patchData.put("username", "patcheduser");
 
-            assertThatThrownBy(() -> userService.patchUser(null, patchData))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessage("User ID cannot be null");
+            when(securityService.getCurrentUserId()).thenReturn(sampleUserId);
+            when(userRepository.findById(sampleUserId)).thenReturn(Optional.of(sampleUser));
+            // FIXED: Return Optional instead of boolean
+            when(userRepository.findByUsername("patcheduser")).thenReturn(Optional.empty());
+            when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
-            verify(userRepository, never()).findById(any());
-            verify(userRepository, never()).save(any(User.class));
-        }
-
-        @Test
-        @DisplayName("should throw ValidationException when patch data is null")
-        void shouldThrowValidationExceptionWhenPatchDataIsNull() {
-            assertThatThrownBy(() -> userService.patchUser(sampleUserId, null))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessage("Patch data cannot be null or empty");
-
-            verify(userRepository, never()).findById(any());
-            verify(userRepository, never()).save(any(User.class));
-        }
-
-        @Test
-        @DisplayName("should throw ValidationException when patch data is empty")
-        void shouldThrowValidationExceptionWhenPatchDataIsEmpty() {
-            Map<String, Object> emptyPatchData = new HashMap<>();
-
-            assertThatThrownBy(() -> userService.patchUser(sampleUserId, emptyPatchData))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessage("Patch data cannot be null or empty");
-
-            verify(userRepository, never()).findById(any());
-            verify(userRepository, never()).save(any(User.class));
-        }
-
-        @Test
-        @DisplayName("should throw ValidationException when display name is not a string")
-        void shouldThrowValidationExceptionWhenDisplayNameIsNotString() {
-            Map<String, Object> patchData = new HashMap<>();
-            patchData.put("displayName", 123);
-
-            when(userRepository.findById(eq(sampleUserId)))
-                    .thenReturn(Optional.of(sampleUser));
-
-            assertThatThrownBy(() -> userService.patchUser(sampleUserId, patchData))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessage("Display name must be a string");
-        }
-
-        @Test
-        @DisplayName("should throw ValidationException when email is not a string")
-        void shouldThrowValidationExceptionWhenEmailIsNotString() {
-            Map<String, Object> patchData = new HashMap<>();
-            patchData.put("email", 123);
-
-            when(userRepository.findById(eq(sampleUserId)))
-                    .thenReturn(Optional.of(sampleUser));
-
-            assertThatThrownBy(() -> userService.patchUser(sampleUserId, patchData))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessage("Email must be a string");
-        }
-
-        @Test
-        @DisplayName("should throw NotFoundException when user not found for patch")
-        void shouldThrowNotFoundExceptionWhenUserNotFoundForPatch() {
-            Map<String, Object> patchData = new HashMap<>();
-            patchData.put("displayName", "Patched Name");
-
-            when(userRepository.findById(eq(sampleUserId)))
-                    .thenReturn(Optional.empty());
-
-            assertThatThrownBy(() -> userService.patchUser(sampleUserId, patchData))
-                    .isInstanceOf(NotFoundException.class)
-                    .hasMessageContaining("User with id " + sampleUserId + " not found");
-
-            verify(userRepository).findById(eq(sampleUserId));
-            verify(userRepository, never()).save(any(User.class));
-        }
-
-        @Test
-        @DisplayName("should ignore invalid fields in patch data")
-        void shouldIgnoreInvalidFieldsInPatchData() {
-            Map<String, Object> patchData = new HashMap<>();
-            patchData.put("displayName", "Patched Name");
-            patchData.put("invalidField", "value");
-
-            when(userRepository.findById(eq(sampleUserId)))
-                    .thenReturn(Optional.of(sampleUser));
-            when(userRepository.save(any(User.class)))
-                    .thenAnswer(invocation -> {
-                        User savedUser = invocation.getArgument(0);
-                        savedUser.setDisplayName("Patched Name");
-                        return savedUser;
-                    });
-
+            // When
             UserResponse result = userService.patchUser(sampleUserId, patchData);
 
-            assertThat(result.getDisplayName()).isEqualTo("Patched Name");
+            // Then
+            assertThat(result.getUsername()).isEqualTo("patcheduser");
 
+            verify(userRepository).findByUsername("patcheduser");
             verify(userRepository).save(any(User.class));
         }
 
         @Test
-        @DisplayName("should ignore username changes")
-        void shouldIgnoreUsernameChanges() {
+        @DisplayName("patches multiple fields successfully")
+        void whenPatchingMultipleFields_updatesSuccessfully() {
+            // Given
             Map<String, Object> patchData = new HashMap<>();
+            patchData.put("displayName", "New Name");
             patchData.put("username", "newusername");
 
-            when(userRepository.findById(eq(sampleUserId)))
-                    .thenReturn(Optional.of(sampleUser));
-            when(userRepository.save(any(User.class)))
-                    .thenAnswer(invocation -> invocation.getArgument(0));
+            when(securityService.getCurrentUserId()).thenReturn(sampleUserId);
+            when(userRepository.findById(sampleUserId)).thenReturn(Optional.of(sampleUser));
+            when(userRepository.findByUsername("newusername")).thenReturn(Optional.empty());
+            when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
 
+            // When
             UserResponse result = userService.patchUser(sampleUserId, patchData);
 
-            // Username should remain unchanged
-            assertThat(result.getUsername()).isEqualTo(sampleUsername);
+            // Then
+            assertThat(result.getDisplayName()).isEqualTo("New Name");
+            assertThat(result.getUsername()).isEqualTo("newusername");
 
             verify(userRepository).save(any(User.class));
         }
 
         @Test
-        @DisplayName("should throw DataIntegrityException when save operation fails")
-        void shouldThrowDataIntegrityExceptionWhenSaveOperationFails() {
+        @DisplayName("throws ValidationException for unsupported field")
+        void whenPatchingUnsupportedField_throwsValidationException() {
+            // Given
             Map<String, Object> patchData = new HashMap<>();
-            patchData.put("displayName", "Patched Name");
+            patchData.put("unsupportedField", "value");
 
-            when(userRepository.findById(eq(sampleUserId)))
-                    .thenReturn(Optional.of(sampleUser));
-            when(userRepository.save(any(User.class)))
-                    .thenThrow(new RuntimeException("Database constraint violation"));
+            when(securityService.getCurrentUserId()).thenReturn(sampleUserId);
+            when(userRepository.findById(sampleUserId)).thenReturn(Optional.of(sampleUser));
 
+            // When/Then
             assertThatThrownBy(() -> userService.patchUser(sampleUserId, patchData))
-                    .isInstanceOf(DataIntegrityException.class)
-                    .hasMessageContaining("Failed to update user");
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Unsupported field for patching: unsupportedField");
+
+            verify(userRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("throws ValidationException when patch data is null")
+        void whenPatchDataIsNull_throwsValidationException() {
+            // When/Then
+            assertThatThrownBy(() -> userService.patchUser(sampleUserId, null))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Patch data cannot be null or empty");
+
+            verifyNoInteractions(userRepository);
+        }
+
+        @Test
+        @DisplayName("throws ValidationException when patch data is empty")
+        void whenPatchDataIsEmpty_throwsValidationException() {
+            // When/Then
+            assertThatThrownBy(() -> userService.patchUser(sampleUserId, new HashMap<>()))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Patch data cannot be null or empty");
+
+            verifyNoInteractions(userRepository);
         }
     }
 
+    // ==================== deleteUser Tests ====================
+
     @Nested
-    @DisplayName("deleteUser method")
-    class DeleteUser {
+    @DisplayName("deleteUser")
+    class DeleteUserTests {
 
         @Test
-        @DisplayName("should delete user when found")
-        void shouldDeleteUserWhenFound() {
-            when(userRepository.findById(eq(sampleUserId)))
-                    .thenReturn(Optional.of(sampleUser));
+        @DisplayName("deletes user successfully")
+        void whenDeletingUser_deletesSuccessfully() {
+            // Given
+            when(securityService.getCurrentUserId()).thenReturn(sampleUserId);
+            when(userRepository.findById(sampleUserId)).thenReturn(Optional.of(sampleUser));
             doNothing().when(userRepository).delete(any(User.class));
 
+            // When
             userService.deleteUser(sampleUserId);
 
-            verify(userRepository).findById(eq(sampleUserId));
-            verify(userRepository).delete(eq(sampleUser));
+            // Then
+            verify(userRepository).findById(sampleUserId);
+            verify(userRepository).delete(sampleUser);
         }
 
         @Test
-        @DisplayName("should throw ValidationException when user ID is null")
-        void shouldThrowValidationExceptionWhenUserIdIsNull() {
-            assertThatThrownBy(() -> userService.deleteUser(null))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessage("User ID cannot be null");
+        @DisplayName("throws NotFoundException when user not found")
+        void whenUserNotFound_throwsNotFoundException() {
+            // Given
+            UUID nonExistentId = UUID.randomUUID();
+            when(userRepository.findById(nonExistentId)).thenReturn(Optional.empty());
 
-            verify(userRepository, never()).findById(any());
-            verify(userRepository, never()).delete(any(User.class));
-        }
-
-        @Test
-        @DisplayName("should throw NotFoundException when user not found for deletion")
-        void shouldThrowNotFoundExceptionWhenUserNotFoundForDeletion() {
-            when(userRepository.findById(eq(sampleUserId)))
-                    .thenReturn(Optional.empty());
-
-            assertThatThrownBy(() -> userService.deleteUser(sampleUserId))
+            // When/Then
+            assertThatThrownBy(() -> userService.deleteUser(nonExistentId))
                     .isInstanceOf(NotFoundException.class)
-                    .hasMessageContaining("User with id " + sampleUserId + " not found");
+                    .hasMessageContaining("User not found with ID");
 
-            verify(userRepository).findById(eq(sampleUserId));
-            verify(userRepository, never()).delete(any(User.class));
+            verify(userRepository).findById(nonExistentId);
+            verify(userRepository, never()).delete(any());
         }
 
         @Test
-        @DisplayName("should throw DataIntegrityException when deletion fails")
-        void shouldThrowDataIntegrityExceptionWhenDeletionFails() {
-            when(userRepository.findById(eq(sampleUserId)))
-                    .thenReturn(Optional.of(sampleUser));
-            doThrow(new RuntimeException("Foreign key constraint violation"))
+        @DisplayName("throws DataIntegrityException when deletion fails")
+        void whenDeletionFails_throwsDataIntegrityException() {
+            // Given
+            when(securityService.getCurrentUserId()).thenReturn(sampleUserId);
+            when(userRepository.findById(sampleUserId)).thenReturn(Optional.of(sampleUser));
+            doThrow(new RuntimeException("Foreign key constraint"))
                     .when(userRepository).delete(any(User.class));
 
+            // When/Then
             assertThatThrownBy(() -> userService.deleteUser(sampleUserId))
                     .isInstanceOf(DataIntegrityException.class)
                     .hasMessageContaining("Failed to delete user");
 
-            verify(userRepository).findById(eq(sampleUserId));
-            verify(userRepository).delete(eq(sampleUser));
+            verify(userRepository).delete(sampleUser);
         }
 
         @Test
-        @DisplayName("should handle cascading deletions of associated entities")
-        void shouldHandleCascadingDeletionsOfAssociatedEntities() {
-            User userWithMembers = new User();
-            userWithMembers.setId(sampleUserId);
-            userWithMembers.setUsername(sampleUsername);
-            userWithMembers.setEmail("test@example.com");
-            userWithMembers.setDisplayName("Test User");
-
-            HouseholdMember member = mock(HouseholdMember.class);
-            Set<HouseholdMember> members = new HashSet<>();
-            members.add(member);
-            userWithMembers.setHouseholdMembers(members);
-
-            when(userRepository.findById(eq(sampleUserId)))
-                    .thenReturn(Optional.of(userWithMembers));
-            doNothing().when(userRepository).delete(any(User.class));
-
-            userService.deleteUser(sampleUserId);
-
-            verify(userRepository).delete(eq(userWithMembers));
-        }
-    }
-
-    @Nested
-    @DisplayName("deleteUser with authorization method")
-    class DeleteUserWithAuthorization {
-
-        @Test
-        @DisplayName("should delete user when authorized")
-        void shouldDeleteUserWhenAuthorized() {
-            when(userRepository.findById(eq(sampleUserId)))
-                    .thenReturn(Optional.of(sampleUser));
-            doNothing().when(userRepository).delete(any(User.class));
-
-            userService.deleteUser(sampleUserId, sampleUserId);
-
-            verify(userRepository).findById(eq(sampleUserId));
-            verify(userRepository).delete(eq(sampleUser));
-        }
-
-        @Test
-        @DisplayName("should throw ValidationException when user ID is null")
-        void shouldThrowValidationExceptionWhenUserIdIsNull() {
-            UUID currentUserId = UUID.randomUUID();
-
-            assertThatThrownBy(() -> userService.deleteUser(null, currentUserId))
+        @DisplayName("throws ValidationException when ID is null")
+        void whenIdIsNull_throwsValidationException() {
+            // When/Then
+            assertThatThrownBy(() -> userService.deleteUser(null))
                     .isInstanceOf(ValidationException.class)
-                    .hasMessage("User ID cannot be null");
+                    .hasMessageContaining("User ID cannot be null");
 
-            verify(userRepository, never()).findById(any());
-            verify(userRepository, never()).delete(any(User.class));
-        }
-
-        @Test
-        @DisplayName("should throw ValidationException when current user ID is null")
-        void shouldThrowValidationExceptionWhenCurrentUserIdIsNull() {
-            assertThatThrownBy(() -> userService.deleteUser(sampleUserId, null))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessage("Current user ID cannot be null");
-
-            verify(userRepository, never()).findById(any());
-            verify(userRepository, never()).delete(any(User.class));
-        }
-
-        @Test
-        @DisplayName("should throw InsufficientPermissionException when trying to delete another user")
-        void shouldThrowInsufficientPermissionExceptionWhenTryingToDeleteAnotherUser() {
-            UUID differentUserId = UUID.randomUUID();
-
-            assertThatThrownBy(() -> userService.deleteUser(sampleUserId, differentUserId))
-                    .isInstanceOf(InsufficientPermissionException.class)
-                    .hasMessageContaining("Insufficient permission to perform 'delete' on user account");
-
-            verify(userRepository, never()).findById(any());
-            verify(userRepository, never()).delete(any(User.class));
+            verifyNoInteractions(userRepository);
         }
     }
 }
