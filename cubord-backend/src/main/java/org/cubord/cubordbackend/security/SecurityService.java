@@ -5,6 +5,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.cubord.cubordbackend.domain.HouseholdMember;
 import org.cubord.cubordbackend.domain.HouseholdRole;
 import org.cubord.cubordbackend.domain.User;
+import org.cubord.cubordbackend.domain.UserRole;
 import org.cubord.cubordbackend.exception.AuthenticationRequiredException;
 import org.cubord.cubordbackend.repository.HouseholdMemberRepository;
 import org.cubord.cubordbackend.repository.UserRepository;
@@ -319,6 +320,31 @@ public class SecurityService {
     }
 
     // ==================== User Access Checks ====================
+
+    /**
+     * Checks if the current user has administrator privileges.
+     * 
+     * <p>This check is used for operations that require admin access,
+     * such as modifying or deleting system-wide resources like products.</p>
+     *
+     * @return true if the current user is an admin
+     */
+    @Transactional(readOnly = true)
+    public boolean isAdmin() {
+        try {
+            User currentUser = getCurrentUser();
+            boolean isAdmin = currentUser.getRole() == UserRole.ADMIN;
+            
+            log.debug("User {} admin status: {}", currentUser.getId(), isAdmin);
+            return isAdmin;
+        } catch (AuthenticationRequiredException e) {
+            log.debug("No authenticated user, denying admin status");
+            return false;
+        }
+    }
+
+    /**
+     * Checks if the current user can access another user's profile.
 
     /**
      * Checks if the current user can access another user's profile.

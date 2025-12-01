@@ -2,7 +2,11 @@ package org.cubord.cubordbackend.repository;
 
 import org.cubord.cubordbackend.domain.Product;
 import org.cubord.cubordbackend.domain.ProductDataSource;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
@@ -39,4 +43,11 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
     long countByDataSource(ProductDataSource dataSource);
     
     long countByCategory(String category);
+
+    // Search query with pagination
+    @Query("SELECT p FROM Product p WHERE " +
+           "LOWER(p.name) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+           "OR LOWER(COALESCE(p.brand, '')) LIKE LOWER(CONCAT('%', :searchTerm, '%')) " +
+           "OR LOWER(COALESCE(p.category, '')) LIKE LOWER(CONCAT('%', :searchTerm, '%'))")
+    Page<Product> searchByNameBrandOrCategory(@Param("searchTerm") String searchTerm, Pageable pageable);
 }
