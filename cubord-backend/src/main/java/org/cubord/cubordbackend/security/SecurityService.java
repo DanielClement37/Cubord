@@ -8,6 +8,8 @@ import org.cubord.cubordbackend.domain.User;
 import org.cubord.cubordbackend.domain.UserRole;
 import org.cubord.cubordbackend.exception.AuthenticationRequiredException;
 import org.cubord.cubordbackend.repository.HouseholdMemberRepository;
+import org.cubord.cubordbackend.repository.LocationRepository;
+import org.cubord.cubordbackend.repository.PantryItemRepository;
 import org.cubord.cubordbackend.repository.UserRepository;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
@@ -56,6 +58,8 @@ public class SecurityService {
     private final UserRepository userRepository;
     private final HouseholdMemberRepository householdMemberRepository;
     private final SecurityContextProvider securityContextProvider;
+    private final PantryItemRepository pantryItemRepository;
+    private final LocationRepository locationRepository;
 
     /**
      * Roles that grant administrative access to household resources.
@@ -317,6 +321,68 @@ public class SecurityService {
     public boolean canModifyPantryItems(UUID householdId) {
         // All household members can modify pantry items
         return canAccessHousehold(householdId);
+    }
+
+    /**
+     * Checks if the current user can access a specific pantry item.
+     * 
+     * <p>A user can access a pantry item if they are a member of the household
+     * that contains the pantry item's location.</p>
+     *
+     * @param pantryItemId The pantry item to check access for
+     * @return true if the user can access the pantry item
+     */
+    @Transactional(readOnly = true)
+    public boolean canAccessPantryItem(UUID pantryItemId) {
+        if (pantryItemId == null) {
+            log.debug("Pantry item ID is null, denying access");
+            return false;
+        }
+
+        try {
+            UUID userId = getCurrentUserId();
+            
+            // Query to check if user has access through household membership
+            boolean hasAccess = pantryItemRepository.existsByIdAndLocationHouseholdMembers_UserId(
+                    pantryItemId, userId);
+
+            log.debug("User {} access to pantry item {}: {}", userId, pantryItemId, hasAccess);
+            return hasAccess;
+        } catch (AuthenticationRequiredException e) {
+            log.debug("No authenticated user, denying pantry item access");
+            return false;
+        }
+    }
+
+    /**
+     * Checks if the current user can access a location for pantry item operations.
+     * 
+     * <p>A user can access a location if they are a member of the household
+     * that owns the location.</p>
+     *
+     * @param locationId The location to check access for
+     * @return true if the user can access the location
+     */
+    @Transactional(readOnly = true)
+    public boolean canAccessLocationForPantryItem(UUID locationId) {
+        if (locationId == null) {
+            log.debug("Location ID is null, denying access");
+            return false;
+        }
+
+        try {
+            UUID userId = getCurrentUserId();
+            
+            // Query to check if user has access through household membership
+            boolean hasAccess = locationRepository.existsByIdAndHouseholdMembers_UserId(
+                    locationId, userId);
+
+            log.debug("User {} access to location {} for pantry item: {}", userId, locationId, hasAccess);
+            return hasAccess;
+        } catch (AuthenticationRequiredException e) {
+            log.debug("No authenticated user, denying location access");
+            return false;
+        }
     }
 
     // ==================== User Access Checks ====================

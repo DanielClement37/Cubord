@@ -113,4 +113,18 @@ public interface PantryItemRepository extends JpaRepository<PantryItem, UUID> {
     
     @Query("SELECT SUM(p.quantity) FROM PantryItem p WHERE p.location.id = :locationId AND p.product.id = :productId")
     Integer sumQuantityByLocationAndProduct(@Param("locationId") UUID locationId, @Param("productId") UUID productId);
+    
+    // Security check queries
+    /**
+     * Checks if a pantry item exists and the user has access to it through household membership.
+     * Used for authorization checks in SecurityService.
+     */
+    @Query("SELECT CASE WHEN COUNT(p) > 0 THEN true ELSE false END FROM PantryItem p " +
+           "JOIN p.location l " +
+           "JOIN l.household h " +
+           "JOIN h.members m " +
+           "WHERE p.id = :pantryItemId AND m.user.id = :userId")
+    boolean existsByIdAndLocationHouseholdMembers_UserId(
+            @Param("pantryItemId") UUID pantryItemId,
+            @Param("userId") UUID userId);
 }

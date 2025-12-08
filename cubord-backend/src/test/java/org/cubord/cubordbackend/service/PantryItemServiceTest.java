@@ -1,17 +1,10 @@
 package org.cubord.cubordbackend.service;
 
 import org.cubord.cubordbackend.domain.*;
-import org.cubord.cubordbackend.dto.pantryItem.CreatePantryItemRequest;
-import org.cubord.cubordbackend.dto.pantryItem.PantryItemResponse;
-import org.cubord.cubordbackend.dto.pantryItem.UpdatePantryItemRequest;
-import org.cubord.cubordbackend.exception.DataIntegrityException;
-import org.cubord.cubordbackend.exception.InsufficientPermissionException;
-import org.cubord.cubordbackend.exception.NotFoundException;
-import org.cubord.cubordbackend.exception.ValidationException;
-import org.cubord.cubordbackend.repository.HouseholdMemberRepository;
-import org.cubord.cubordbackend.repository.LocationRepository;
-import org.cubord.cubordbackend.repository.PantryItemRepository;
-import org.cubord.cubordbackend.repository.ProductRepository;
+import org.cubord.cubordbackend.dto.pantryItem.*;
+import org.cubord.cubordbackend.exception.*;
+import org.cubord.cubordbackend.repository.*;
+import org.cubord.cubordbackend.security.SecurityService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -24,574 +17,313 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+/**
+ * Comprehensive test suite for PantryItemService using the modernized security architecture.
+ *
+ * <p>These tests verify:</p>
+ * <ul>
+ *   <li>SecurityService integration for authentication and authorization</li>
+ *   <li>Authorization via @PreAuthorize (integration tests verify actual enforcement)</li>
+ *   <li>Business logic correctness (quantity consolidation, expiration tracking)</li>
+ *   <li>Error handling and validation</li>
+ * </ul>
+ *
+ * <p>Note: @PreAuthorize enforcement is not tested in unit tests as it requires
+ * Spring Security context. Integration tests should cover authorization scenarios.</p>
+ */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("Pantry Item Service Tests")
+@DisplayName("PantryItemService Tests")
 class PantryItemServiceTest {
 
     @Mock
     private PantryItemRepository pantryItemRepository;
+
     @Mock
     private LocationRepository locationRepository;
+
     @Mock
     private ProductRepository productRepository;
+
     @Mock
-    private HouseholdMemberRepository householdMemberRepository;
-    @Mock
-    private UserService userService;
-    @Mock
-    private JwtAuthenticationToken validToken;
-    @Mock
-    private JwtAuthenticationToken invalidToken;
+    private SecurityService securityService;
 
     @InjectMocks
     private PantryItemService pantryItemService;
 
     // Test data
-    private User testUser;
-    private User otherUser;
-    private Household testHousehold;
-    private Household otherHousehold;
-    private HouseholdMember testHouseholdMember;
-    private Location testLocation;
-    private Location otherLocation;
-    private Product testProduct;
-    private PantryItem testPantryItem;
-    private CreatePantryItemRequest testCreateRequest;
-    private UpdatePantryItemRequest testUpdateRequest;
-    private UUID pantryItemId;
     private UUID userId;
+    private UUID householdId;
     private UUID locationId;
     private UUID productId;
-    private UUID householdId;
+    private UUID pantryItemId;
+
+    private User testUser;
+    private Household testHousehold;
+    private Location testLocation;
+    private Product testProduct;
+    private PantryItem testPantryItem;
+    
+    private CreatePantryItemRequest createRequest;
+    private UpdatePantryItemRequest updateRequest;
+
+    private LocalDateTime fixedTime;
 
     @BeforeEach
     void setUp() {
-        reset(pantryItemRepository, locationRepository, productRepository,
-                householdMemberRepository, userService, validToken, invalidToken);
-
-        pantryItemId = UUID.randomUUID();
         userId = UUID.randomUUID();
+        householdId = UUID.randomUUID();
         locationId = UUID.randomUUID();
         productId = UUID.randomUUID();
-        householdId = UUID.randomUUID();
+        pantryItemId = UUID.randomUUID();
+        fixedTime = LocalDateTime.of(2024, 1, 1, 12, 0);
 
         testUser = User.builder()
                 .id(userId)
-                .username("testuser")
                 .email("test@example.com")
                 .displayName("Test User")
+                .username("testuser")
                 .role(UserRole.USER)
-                .createdAt(LocalDateTime.now())
-                .build();
-
-        otherUser = User.builder()
-                .id(UUID.randomUUID())
-                .username("otheruser")
-                .email("other@example.com")
-                .displayName("Other User")
-                .role(UserRole.USER)
-                .createdAt(LocalDateTime.now())
+                .createdAt(fixedTime)
+                .updatedAt(fixedTime)
                 .build();
 
         testHousehold = Household.builder()
                 .id(householdId)
                 .name("Test Household")
-                .createdAt(LocalDateTime.now())
-                .build();
-
-        otherHousehold = Household.builder()
-                .id(UUID.randomUUID())
-                .name("Other Household")
-                .createdAt(LocalDateTime.now())
-                .build();
-
-        testHouseholdMember = HouseholdMember.builder()
-                .id(UUID.randomUUID())
-                .user(testUser)
-                .household(testHousehold)
-                .role(HouseholdRole.MEMBER)
+                .createdAt(fixedTime)
+                .updatedAt(fixedTime)
                 .build();
 
         testLocation = Location.builder()
                 .id(locationId)
-                .name("Kitchen Pantry")
+                .name("Pantry")
                 .household(testHousehold)
-                .createdAt(LocalDateTime.now())
-                .build();
-
-        otherLocation = Location.builder()
-                .id(UUID.randomUUID())
-                .name("Other Kitchen")
-                .household(otherHousehold)
-                .createdAt(LocalDateTime.now())
+                .createdAt(fixedTime)
+                .updatedAt(fixedTime)
                 .build();
 
         testProduct = Product.builder()
                 .id(productId)
                 .upc("123456789012")
-                .name("Milk")
-                .brand("Fresh Dairy")
-                .category("Dairy")
-                .defaultExpirationDays(7)
+                .name("Test Product")
+                .brand("Test Brand")
+                .category("Test Category")
+                .defaultExpirationDays(30)
                 .dataSource(ProductDataSource.MANUAL)
-                .createdAt(LocalDateTime.now())
+                .createdAt(fixedTime)
+                .updatedAt(fixedTime)
                 .build();
 
         testPantryItem = PantryItem.builder()
                 .id(pantryItemId)
                 .product(testProduct)
                 .location(testLocation)
-                .quantity(2)
-                .unitOfMeasure("liters")
-                .expirationDate(LocalDate.now().plusDays(5))
+                .quantity(5)
+                .expirationDate(LocalDate.now().plusDays(30))
                 .notes("Test notes")
-                .createdAt(LocalDateTime.now().minusDays(1))
-                .updatedAt(LocalDateTime.now().minusDays(1))
+                .createdAt(fixedTime)
+                .updatedAt(fixedTime)
                 .build();
 
-        testCreateRequest = CreatePantryItemRequest.builder()
+        createRequest = CreatePantryItemRequest.builder()
                 .productId(productId)
                 .locationId(locationId)
-                .quantity(2)
-                .unitOfMeasure("liters")
-                .expirationDate(LocalDate.now().plusDays(7))
-                .notes("Fresh milk")
+                .quantity(5)
+                .expirationDate(LocalDate.now().plusDays(30))
+                .notes("Test notes")
                 .build();
 
-        testUpdateRequest = UpdatePantryItemRequest.builder()
-                .quantity(3)
-                .unitOfMeasure("gallons")
-                .expirationDate(LocalDate.now().plusDays(10))
+        updateRequest = UpdatePantryItemRequest.builder()
+                .locationId(locationId)
+                .quantity(10)
+                .expirationDate(LocalDate.now().plusDays(60))
                 .notes("Updated notes")
                 .build();
     }
 
-    // Helper method to set up authentication behavior
-    private void setupValidAuthentication() {
-        when(userService.getCurrentUser(eq(validToken))).thenReturn(testUser);
+    // ==================== Helper Methods ====================
+
+    private void mockAuthenticatedUser() {
+        when(securityService.getCurrentUserId()).thenReturn(userId);
+        when(securityService.getCurrentUser()).thenReturn(testUser);
     }
 
-    private void setupInvalidAuthentication() {
-        when(userService.getCurrentUser(eq(invalidToken))).thenThrow(new NotFoundException("User not found"));
-    }
-
-    private void setupHouseholdMembership() {
-        when(householdMemberRepository.existsByHouseholdIdAndUserId(eq(householdId), eq(userId)))
-                .thenReturn(true);
-    }
-
-    private void setupNoHouseholdMembership() {
-        when(householdMemberRepository.existsByHouseholdIdAndUserId(eq(householdId), eq(userId)))
-                .thenReturn(false);
-    }
+    // ==================== Create Pantry Item Tests ====================
 
     @Nested
-    @DisplayName("Authentication Tests")
-    class AuthenticationTests {
-
-        @Test
-        @DisplayName("Should throw ValidationException when token is null for create")
-        void shouldThrowValidationExceptionWhenTokenIsNullForCreate() {
-            assertThatThrownBy(() -> pantryItemService.createPantryItem(testCreateRequest, null))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessageContaining("token cannot be null");
-
-            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
-            verify(pantryItemRepository, never()).save(any(PantryItem.class));
-        }
-
-        @Test
-        @DisplayName("Should throw ValidationException when token is null for getById")
-        void shouldThrowValidationExceptionWhenTokenIsNullForGetById() {
-            assertThatThrownBy(() -> pantryItemService.getPantryItemById(pantryItemId, null))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessageContaining("token cannot be null");
-
-            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
-            verify(pantryItemRepository, never()).findById(any(UUID.class));
-        }
-
-        @Test
-        @DisplayName("Should throw ValidationException when token is null for update")
-        void shouldThrowValidationExceptionWhenTokenIsNullForUpdate() {
-            assertThatThrownBy(() -> pantryItemService.updatePantryItem(pantryItemId, testUpdateRequest, null))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessageContaining("token cannot be null");
-
-            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
-            verify(pantryItemRepository, never()).save(any(PantryItem.class));
-        }
-
-        @Test
-        @DisplayName("Should throw ValidationException when token is null for delete")
-        void shouldThrowValidationExceptionWhenTokenIsNullForDelete() {
-            assertThatThrownBy(() -> pantryItemService.deletePantryItem(pantryItemId, null))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessageContaining("token cannot be null");
-
-            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
-            verify(pantryItemRepository, never()).delete(any(PantryItem.class));
-        }
-
-        @Test
-        @DisplayName("Should throw ValidationException when request is null for create")
-        void shouldThrowValidationExceptionWhenRequestIsNull() {
-            assertThatThrownBy(() -> pantryItemService.createPantryItem(null, validToken))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessageContaining("request cannot be null");
-
-            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
-            verify(pantryItemRepository, never()).save(any(PantryItem.class));
-        }
-
-        @Test
-        @DisplayName("Should throw ValidationException when pantry item ID is null for getById")
-        void shouldThrowValidationExceptionWhenPantryItemIdIsNull() {
-            assertThatThrownBy(() -> pantryItemService.getPantryItemById(null, validToken))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessageContaining("Pantry item ID cannot be null");
-
-            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
-            verify(pantryItemRepository, never()).findById(any(UUID.class));
-        }
-
-        @Test
-        @DisplayName("Should throw NotFoundException when user not found")
-        void shouldThrowNotFoundExceptionWhenUserNotFound() {
-            setupInvalidAuthentication();
-
-            assertThatThrownBy(() -> pantryItemService.createPantryItem(testCreateRequest, invalidToken))
-                    .isInstanceOf(NotFoundException.class)
-                    .hasMessage("User not found");
-
-            verify(userService).getCurrentUser(eq(invalidToken));
-            verify(pantryItemRepository, never()).save(any(PantryItem.class));
-        }
-    }
-
-    @Nested
-    @DisplayName("Create Pantry Item Tests")
+    @DisplayName("createPantryItem")
     class CreatePantryItemTests {
 
         @Test
-        @DisplayName("Should create new pantry item successfully")
-        void shouldCreateNewPantryItemSuccessfully() {
+        @DisplayName("should create new pantry item successfully")
+        void whenValidRequest_createsNewPantryItem() {
             // Given
-            setupValidAuthentication();
-            setupHouseholdMembership();
             when(locationRepository.findById(eq(locationId))).thenReturn(Optional.of(testLocation));
             when(productRepository.findById(eq(productId))).thenReturn(Optional.of(testProduct));
+            // Use correct method name with correct parameter order
             when(pantryItemRepository.findByLocationIdAndProductIdAndExpirationDate(
-                    eq(locationId), eq(productId), eq(testCreateRequest.getExpirationDate())))
-                    .thenReturn(Optional.empty());
+                    eq(locationId), eq(productId), any(LocalDate.class))).thenReturn(Optional.empty());
             when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(testPantryItem);
 
             // When
-            PantryItemResponse response = pantryItemService.createPantryItem(testCreateRequest, validToken);
+            PantryItemResponse response = pantryItemService.createPantryItem(createRequest);
 
             // Then
             assertThat(response).isNotNull();
             assertThat(response.getId()).isEqualTo(pantryItemId);
-            assertThat(response.getQuantity()).isEqualTo(testPantryItem.getQuantity());
-            assertThat(response.getUnitOfMeasure()).isEqualTo(testPantryItem.getUnitOfMeasure());
+            // Access nested product and location objects
+            assertThat(response.getProduct().getId()).isEqualTo(productId);
+            assertThat(response.getLocation().getId()).isEqualTo(locationId);
+            assertThat(response.getQuantity()).isEqualTo(5);
 
-            verify(userService).getCurrentUser(eq(validToken));
+            verify(securityService).getCurrentUserId();
             verify(locationRepository).findById(eq(locationId));
             verify(productRepository).findById(eq(productId));
-            verify(householdMemberRepository).existsByHouseholdIdAndUserId(eq(householdId), eq(userId));
             verify(pantryItemRepository).save(any(PantryItem.class));
         }
 
         @Test
-        @DisplayName("Should consolidate quantity when item with same expiration date exists")
-        void shouldConsolidateQuantityWhenItemWithSameExpirationDateExists() {
+        @DisplayName("should consolidate quantity when item with same expiration exists")
+        void whenDuplicateItem_consolidatesQuantity() {
             // Given
-            LocalDate expirationDate = LocalDate.now().plusDays(7);
-            CreatePantryItemRequest request = CreatePantryItemRequest.builder()
-                    .productId(productId)
-                    .locationId(locationId)
-                    .quantity(3)
-                    .unitOfMeasure("liters")
-                    .expirationDate(expirationDate)
-                    .notes("Additional milk")
-                    .build();
-
             PantryItem existingItem = PantryItem.builder()
-                    .id(UUID.randomUUID())
+                    .id(pantryItemId)
                     .product(testProduct)
                     .location(testLocation)
-                    .quantity(2)
-                    .unitOfMeasure("liters")
-                    .expirationDate(expirationDate)
-                    .createdAt(LocalDateTime.now())
-                    .updatedAt(LocalDateTime.now())
+                    .quantity(5)
+                    .expirationDate(createRequest.getExpirationDate())
+                    .createdAt(fixedTime)
+                    .updatedAt(fixedTime)
                     .build();
 
-            PantryItem updatedItem = PantryItem.builder()
-                    .id(existingItem.getId())
-                    .product(testProduct)
-                    .location(testLocation)
-                    .quantity(5) // 2 + 3
-                    .unitOfMeasure("liters")
-                    .expirationDate(expirationDate)
-                    .notes("Additional milk")
-                    .createdAt(existingItem.getCreatedAt())
-                    .updatedAt(LocalDateTime.now())
-                    .build();
-
-            setupValidAuthentication();
-            setupHouseholdMembership();
             when(locationRepository.findById(eq(locationId))).thenReturn(Optional.of(testLocation));
             when(productRepository.findById(eq(productId))).thenReturn(Optional.of(testProduct));
+            // Use correct method name with correct parameter order
             when(pantryItemRepository.findByLocationIdAndProductIdAndExpirationDate(
-                    eq(locationId), eq(productId), eq(expirationDate)))
+                    eq(locationId), eq(productId), eq(createRequest.getExpirationDate())))
                     .thenReturn(Optional.of(existingItem));
-            when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(updatedItem);
 
-            // When
-            PantryItemResponse response = pantryItemService.createPantryItem(request, validToken);
-
-            // Then
-            assertThat(response).isNotNull();
-            assertThat(response.getQuantity()).isEqualTo(5);
-
-            verify(pantryItemRepository).findByLocationIdAndProductIdAndExpirationDate(
-                    eq(locationId), eq(productId), eq(expirationDate));
-            verify(pantryItemRepository).save(argThat(item ->
-                    item.getQuantity() == 5 && item.getId().equals(existingItem.getId())));
-        }
-
-        @Test
-        @DisplayName("Should create separate item when item with different expiration date exists")
-        void shouldCreateSeparateItemWhenItemWithDifferentExpirationDateExists() {
-            // Given
-            LocalDate differentDate = LocalDate.now().plusDays(14);
-            CreatePantryItemRequest request = CreatePantryItemRequest.builder()
-                    .productId(productId)
-                    .locationId(locationId)
-                    .quantity(3)
-                    .unitOfMeasure("liters")
-                    .expirationDate(differentDate)
-                    .build();
-
-            setupValidAuthentication();
-            setupHouseholdMembership();
-            when(locationRepository.findById(eq(locationId))).thenReturn(Optional.of(testLocation));
-            when(productRepository.findById(eq(productId))).thenReturn(Optional.of(testProduct));
-            when(pantryItemRepository.findByLocationIdAndProductIdAndExpirationDate(
-                    eq(locationId), eq(productId), eq(differentDate)))
-                    .thenReturn(Optional.empty());
-            when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(testPantryItem);
-
-            // When
-            PantryItemResponse response = pantryItemService.createPantryItem(request, validToken);
-
-            // Then
-            assertThat(response).isNotNull();
-            verify(pantryItemRepository).save(argThat(item ->
-                    item.getId() != null && item.getQuantity() == 3));
-        }
-
-        @Test
-        @DisplayName("Should consolidate items with null expiration dates")
-        void shouldConsolidateItemsWithNullExpirationDates() {
-            // Given
-            CreatePantryItemRequest request = CreatePantryItemRequest.builder()
-                    .productId(productId)
-                    .locationId(locationId)
-                    .quantity(3)
-                    .unitOfMeasure("units")
-                    .expirationDate(null)
-                    .build();
-
-            PantryItem existingItem = PantryItem.builder()
-                    .id(UUID.randomUUID())
+            PantryItem consolidatedItem = PantryItem.builder()
+                    .id(pantryItemId)
                     .product(testProduct)
                     .location(testLocation)
-                    .quantity(2)
-                    .unitOfMeasure("units")
-                    .expirationDate(null)
-                    .createdAt(LocalDateTime.now())
-                    .updatedAt(LocalDateTime.now())
+                    .quantity(10) // 5 existing + 5 new
+                    .expirationDate(createRequest.getExpirationDate())
+                    .createdAt(fixedTime)
+                    .updatedAt(fixedTime)
                     .build();
-
-            setupValidAuthentication();
-            setupHouseholdMembership();
-            when(locationRepository.findById(eq(locationId))).thenReturn(Optional.of(testLocation));
-            when(productRepository.findById(eq(productId))).thenReturn(Optional.of(testProduct));
-            when(pantryItemRepository.findByLocationIdAndProductIdAndExpirationDateIsNull(
-                    eq(locationId), eq(productId)))
-                    .thenReturn(Optional.of(existingItem));
-            when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(existingItem);
+            when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(consolidatedItem);
 
             // When
-            PantryItemResponse response = pantryItemService.createPantryItem(request, validToken);
+            PantryItemResponse response = pantryItemService.createPantryItem(createRequest);
 
             // Then
             assertThat(response).isNotNull();
-            verify(pantryItemRepository).findByLocationIdAndProductIdAndExpirationDateIsNull(
-                    eq(locationId), eq(productId));
-            verify(pantryItemRepository).save(argThat(item ->
-                    item.getQuantity() == 5 && item.getId().equals(existingItem.getId())));
+            assertThat(response.getQuantity()).isEqualTo(10);
+
+            verify(pantryItemRepository).save(argThat(item -> item.getQuantity() == 10));
         }
 
         @Test
-        @DisplayName("Should not consolidate null expiration item with dated expiration item")
-        void shouldNotConsolidateNullExpirationItemWithDatedExpirationItem() {
-            // Given
-            CreatePantryItemRequest request = CreatePantryItemRequest.builder()
-                    .productId(productId)
-                    .locationId(locationId)
-                    .quantity(3)
-                    .unitOfMeasure("units")
-                    .expirationDate(null)
-                    .build();
+        @DisplayName("should throw ValidationException when request is null")
+        void whenRequestIsNull_throwsValidationException() {
+            // When/Then
+            assertThatThrownBy(() -> pantryItemService.createPantryItem(null))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Pantry item request cannot be null");
 
-            setupValidAuthentication();
-            setupHouseholdMembership();
-            when(locationRepository.findById(eq(locationId))).thenReturn(Optional.of(testLocation));
-            when(productRepository.findById(eq(productId))).thenReturn(Optional.of(testProduct));
-            when(pantryItemRepository.findByLocationIdAndProductIdAndExpirationDateIsNull(
-                    eq(locationId), eq(productId)))
-                    .thenReturn(Optional.empty());
-            when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(testPantryItem);
-
-            // When
-            PantryItemResponse response = pantryItemService.createPantryItem(request, validToken);
-
-            // Then
-            assertThat(response).isNotNull();
-            verify(pantryItemRepository).save(argThat(item ->
-                    item.getExpirationDate() == null && item.getQuantity() == 3));
+            verifyNoInteractions(securityService, locationRepository, productRepository, pantryItemRepository);
         }
 
         @Test
-        @DisplayName("Should throw NotFoundException when location not found")
-        void shouldThrowNotFoundExceptionWhenLocationNotFound() {
+        @DisplayName("should throw ValidationException when product ID is null")
+        void whenProductIdIsNull_throwsValidationException() {
             // Given
-            setupValidAuthentication();
+            createRequest.setProductId(null);
+
+            // When/Then
+            assertThatThrownBy(() -> pantryItemService.createPantryItem(createRequest))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Product ID cannot be null");
+
+            verify(securityService).getCurrentUserId();
+            verifyNoInteractions(locationRepository, productRepository, pantryItemRepository);
+        }
+
+        @Test
+        @DisplayName("should throw ValidationException when location ID is null")
+        void whenLocationIdIsNull_throwsValidationException() {
+            // Given
+            createRequest.setLocationId(null);
+
+            // When/Then
+            assertThatThrownBy(() -> pantryItemService.createPantryItem(createRequest))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Location ID cannot be null");
+
+            verify(securityService).getCurrentUserId();
+            verifyNoInteractions(locationRepository, productRepository, pantryItemRepository);
+        }
+
+        @Test
+        @DisplayName("should throw ValidationException when quantity is negative")
+        void whenQuantityIsNegative_throwsValidationException() {
+            // Given
+            createRequest.setQuantity(-1);
+
+            // When/Then
+            assertThatThrownBy(() -> pantryItemService.createPantryItem(createRequest))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Quantity must be a non-negative value");
+
+            verify(securityService).getCurrentUserId();
+            verifyNoInteractions(locationRepository, productRepository, pantryItemRepository);
+        }
+
+        @Test
+        @DisplayName("should throw NotFoundException when location not found")
+        void whenLocationNotFound_throwsNotFoundException() {
+            // Given
             when(locationRepository.findById(eq(locationId))).thenReturn(Optional.empty());
 
-            // When & Then
-            assertThatThrownBy(() -> pantryItemService.createPantryItem(testCreateRequest, validToken))
+            // When/Then
+            assertThatThrownBy(() -> pantryItemService.createPantryItem(createRequest))
                     .isInstanceOf(NotFoundException.class)
                     .hasMessageContaining("Location not found");
 
-            verify(userService).getCurrentUser(eq(validToken));
             verify(locationRepository).findById(eq(locationId));
-            verify(pantryItemRepository, never()).save(any(PantryItem.class));
+            verifyNoInteractions(productRepository, pantryItemRepository);
         }
 
         @Test
-        @DisplayName("Should throw NotFoundException when product not found")
-        void shouldThrowNotFoundExceptionWhenProductNotFound() {
+        @DisplayName("should throw NotFoundException when product not found")
+        void whenProductNotFound_throwsNotFoundException() {
             // Given
-            setupValidAuthentication();
             when(locationRepository.findById(eq(locationId))).thenReturn(Optional.of(testLocation));
             when(productRepository.findById(eq(productId))).thenReturn(Optional.empty());
 
-            // When & Then
-            assertThatThrownBy(() -> pantryItemService.createPantryItem(testCreateRequest, validToken))
+            // When/Then
+            assertThatThrownBy(() -> pantryItemService.createPantryItem(createRequest))
                     .isInstanceOf(NotFoundException.class)
                     .hasMessageContaining("Product not found");
 
-            verify(userService).getCurrentUser(eq(validToken));
             verify(productRepository).findById(eq(productId));
-            verify(pantryItemRepository, never()).save(any(PantryItem.class));
+            verifyNoInteractions(pantryItemRepository);
         }
 
         @Test
-        @DisplayName("Should throw InsufficientPermissionException when user not member of household")
-        void shouldThrowInsufficientPermissionExceptionWhenUserNotMemberOfHousehold() {
+        @DisplayName("should throw DataIntegrityException when save fails")
+        void whenSaveFails_throwsDataIntegrityException() {
             // Given
-            setupValidAuthentication();
-            setupNoHouseholdMembership();
-            when(locationRepository.findById(eq(locationId))).thenReturn(Optional.of(testLocation));
-            when(productRepository.findById(eq(productId))).thenReturn(Optional.of(testProduct));
-
-            // When & Then
-            assertThatThrownBy(() -> pantryItemService.createPantryItem(testCreateRequest, validToken))
-                    .isInstanceOf(InsufficientPermissionException.class)
-                    .hasMessageContaining("not a member of this household");
-
-            verify(householdMemberRepository).existsByHouseholdIdAndUserId(eq(householdId), eq(userId));
-            verify(pantryItemRepository, never()).save(any(PantryItem.class));
-        }
-
-        @Test
-        @DisplayName("Should throw ValidationException when product ID is null")
-        void shouldThrowValidationExceptionWhenProductIdIsNull() {
-            // Given
-            CreatePantryItemRequest invalidRequest = CreatePantryItemRequest.builder()
-                    .productId(null)
-                    .locationId(locationId)
-                    .quantity(2)
-                    .build();
-
-            // When & Then
-            assertThatThrownBy(() -> pantryItemService.createPantryItem(invalidRequest, validToken))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessageContaining("Product ID");
-
-            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
-            verify(pantryItemRepository, never()).save(any(PantryItem.class));
-        }
-
-        @Test
-        @DisplayName("Should throw ValidationException when location ID is null")
-        void shouldThrowValidationExceptionWhenLocationIdIsNull() {
-            // Given
-            CreatePantryItemRequest invalidRequest = CreatePantryItemRequest.builder()
-                    .productId(productId)
-                    .locationId(null)
-                    .quantity(2)
-                    .build();
-
-            // When & Then
-            assertThatThrownBy(() -> pantryItemService.createPantryItem(invalidRequest, validToken))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessageContaining("Location ID");
-
-            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
-            verify(pantryItemRepository, never()).save(any(PantryItem.class));
-        }
-
-        @Test
-        @DisplayName("Should throw ValidationException when quantity is negative")
-        void shouldThrowValidationExceptionWhenQuantityIsNegative() {
-            // Given
-            CreatePantryItemRequest invalidRequest = CreatePantryItemRequest.builder()
-                    .productId(productId)
-                    .locationId(locationId)
-                    .quantity(-1)
-                    .build();
-
-            // When & Then
-            assertThatThrownBy(() -> pantryItemService.createPantryItem(invalidRequest, validToken))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessageContaining("Quantity");
-
-            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
-            verify(pantryItemRepository, never()).save(any(PantryItem.class));
-        }
-
-        @Test
-        @DisplayName("Should throw DataIntegrityException when save fails")
-        void shouldThrowDataIntegrityExceptionWhenSaveFails() {
-            // Given
-            setupValidAuthentication();
-            setupHouseholdMembership();
             when(locationRepository.findById(eq(locationId))).thenReturn(Optional.of(testLocation));
             when(productRepository.findById(eq(productId))).thenReturn(Optional.of(testProduct));
             when(pantryItemRepository.findByLocationIdAndProductIdAndExpirationDate(
@@ -599,1223 +331,538 @@ class PantryItemServiceTest {
             when(pantryItemRepository.save(any(PantryItem.class)))
                     .thenThrow(new RuntimeException("Database error"));
 
-            // When & Then
-            assertThatThrownBy(() -> pantryItemService.createPantryItem(testCreateRequest, validToken))
+            // When/Then
+            assertThatThrownBy(() -> pantryItemService.createPantryItem(createRequest))
                     .isInstanceOf(DataIntegrityException.class)
-                    .hasMessageContaining("Failed to save pantry item");
-
-            verify(pantryItemRepository).save(any(PantryItem.class));
+                    .hasMessageContaining("Failed to create pantry item");
         }
     }
 
+    // ==================== Get Pantry Item Tests ====================
+
     @Nested
-    @DisplayName("Get Pantry Item Tests")
-    class GetPantryItemTests {
+    @DisplayName("getPantryItemById")
+    class GetPantryItemByIdTests {
 
         @Test
-        @DisplayName("Should get pantry item by ID successfully")
-        void shouldGetPantryItemByIdSuccessfully() {
+        @DisplayName("should retrieve pantry item successfully")
+        void whenValidId_returnsPantryItem() {
             // Given
-            setupValidAuthentication();
-            setupHouseholdMembership();
             when(pantryItemRepository.findById(eq(pantryItemId))).thenReturn(Optional.of(testPantryItem));
 
             // When
-            PantryItemResponse response = pantryItemService.getPantryItemById(pantryItemId, validToken);
+            PantryItemResponse response = pantryItemService.getPantryItemById(pantryItemId);
 
             // Then
             assertThat(response).isNotNull();
             assertThat(response.getId()).isEqualTo(pantryItemId);
-            assertThat(response.getQuantity()).isEqualTo(testPantryItem.getQuantity());
+            // Access nested objects
+            assertThat(response.getProduct().getName()).isEqualTo("Test Product");
+            assertThat(response.getLocation().getName()).isEqualTo("Pantry");
 
-            verify(userService).getCurrentUser(eq(validToken));
+            verify(securityService).getCurrentUserId();
             verify(pantryItemRepository).findById(eq(pantryItemId));
-            verify(householdMemberRepository).existsByHouseholdIdAndUserId(eq(householdId), eq(userId));
         }
 
         @Test
-        @DisplayName("Should throw NotFoundException when pantry item not found")
-        void shouldThrowNotFoundExceptionWhenPantryItemNotFound() {
+        @DisplayName("should throw ValidationException when ID is null")
+        void whenIdIsNull_throwsValidationException() {
+            // When/Then
+            assertThatThrownBy(() -> pantryItemService.getPantryItemById(null))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Pantry item ID cannot be null");
+
+            verifyNoInteractions(securityService, pantryItemRepository);
+        }
+
+        @Test
+        @DisplayName("should throw NotFoundException when pantry item not found")
+        void whenPantryItemNotFound_throwsNotFoundException() {
             // Given
-            setupValidAuthentication();
             when(pantryItemRepository.findById(eq(pantryItemId))).thenReturn(Optional.empty());
 
-            // When & Then
-            assertThatThrownBy(() -> pantryItemService.getPantryItemById(pantryItemId, validToken))
+            // When/Then
+            assertThatThrownBy(() -> pantryItemService.getPantryItemById(pantryItemId))
                     .isInstanceOf(NotFoundException.class)
                     .hasMessageContaining("Pantry item not found");
 
-            verify(userService).getCurrentUser(eq(validToken));
             verify(pantryItemRepository).findById(eq(pantryItemId));
         }
-
-        @Test
-        @DisplayName("Should throw InsufficientPermissionException when user not member of household")
-        void shouldThrowInsufficientPermissionExceptionWhenUserNotMemberOfHousehold() {
-            // Given
-            setupValidAuthentication();
-            setupNoHouseholdMembership();
-            when(pantryItemRepository.findById(eq(pantryItemId))).thenReturn(Optional.of(testPantryItem));
-
-            // When & Then
-            assertThatThrownBy(() -> pantryItemService.getPantryItemById(pantryItemId, validToken))
-                    .isInstanceOf(InsufficientPermissionException.class)
-                    .hasMessageContaining("not a member of this household");
-
-            verify(householdMemberRepository).existsByHouseholdIdAndUserId(eq(householdId), eq(userId));
-        }
     }
 
-    @Nested
-    @DisplayName("Update Pantry Item Tests")
-    class UpdatePantryItemTests {
-
-        @Test
-        @DisplayName("Should update pantry item successfully")
-        void shouldUpdatePantryItemSuccessfully() {
-            // Given
-            setupValidAuthentication();
-            setupHouseholdMembership();
-            when(pantryItemRepository.findById(eq(pantryItemId))).thenReturn(Optional.of(testPantryItem));
-            when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(testPantryItem);
-
-            // When
-            PantryItemResponse response = pantryItemService.updatePantryItem(
-                    pantryItemId, testUpdateRequest, validToken);
-
-            // Then
-            assertThat(response).isNotNull();
-            assertThat(response.getId()).isEqualTo(pantryItemId);
-
-            verify(userService).getCurrentUser(eq(validToken));
-            verify(pantryItemRepository).findById(eq(pantryItemId));
-            verify(pantryItemRepository).save(any(PantryItem.class));
-        }
-
-        @Test
-        @DisplayName("Should update location when location ID provided")
-        void shouldUpdateLocationWhenLocationIdProvided() {
-            // Given
-            Location newLocation = Location.builder()
-                    .id(UUID.randomUUID())
-                    .name("Fridge")
-                    .household(testHousehold)
-                    .build();
-
-            UpdatePantryItemRequest requestWithLocation = UpdatePantryItemRequest.builder()
-                    .locationId(newLocation.getId())
-                    .quantity(5)
-                    .build();
-
-            setupValidAuthentication();
-            when(pantryItemRepository.findById(eq(pantryItemId))).thenReturn(Optional.of(testPantryItem));
-            when(locationRepository.findById(eq(newLocation.getId()))).thenReturn(Optional.of(newLocation));
-            when(householdMemberRepository.existsByHouseholdIdAndUserId(
-                    eq(testHousehold.getId()), eq(userId))).thenReturn(true);
-            when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(testPantryItem);
-
-            // When
-            PantryItemResponse response = pantryItemService.updatePantryItem(
-                    pantryItemId, requestWithLocation, validToken);
-
-            // Then
-            assertThat(response).isNotNull();
-            verify(locationRepository).findById(eq(newLocation.getId()));
-            verify(pantryItemRepository).save(any(PantryItem.class));
-        }
-
-        @Test
-        @DisplayName("Should throw NotFoundException when pantry item not found")
-        void shouldThrowNotFoundExceptionWhenPantryItemNotFound() {
-            // Given
-            setupValidAuthentication();
-            when(pantryItemRepository.findById(eq(pantryItemId))).thenReturn(Optional.empty());
-
-            // When & Then
-            assertThatThrownBy(() -> pantryItemService.updatePantryItem(
-                    pantryItemId, testUpdateRequest, validToken))
-                    .isInstanceOf(NotFoundException.class)
-                    .hasMessageContaining("Pantry item not found");
-
-            verify(pantryItemRepository, never()).save(any(PantryItem.class));
-        }
-
-        @Test
-        @DisplayName("Should throw NotFoundException when new location not found")
-        void shouldThrowNotFoundExceptionWhenNewLocationNotFound() {
-            // Given
-            UUID newLocationId = UUID.randomUUID();
-            UpdatePantryItemRequest requestWithLocation = UpdatePantryItemRequest.builder()
-                    .locationId(newLocationId)
-                    .quantity(5)
-                    .build();
-
-            setupValidAuthentication();
-            setupHouseholdMembership();
-            when(pantryItemRepository.findById(eq(pantryItemId))).thenReturn(Optional.of(testPantryItem));
-            when(locationRepository.findById(eq(newLocationId))).thenReturn(Optional.empty());
-
-            // When & Then
-            assertThatThrownBy(() -> pantryItemService.updatePantryItem(
-                    pantryItemId, requestWithLocation, validToken))
-                    .isInstanceOf(NotFoundException.class)
-                    .hasMessageContaining("Location not found");
-
-            verify(pantryItemRepository, never()).save(any(PantryItem.class));
-        }
-
-        @Test
-        @DisplayName("Should throw InsufficientPermissionException when user not member of household")
-        void shouldThrowInsufficientPermissionExceptionWhenUserNotMemberOfHousehold() {
-            // Given
-            setupValidAuthentication();
-            setupNoHouseholdMembership();
-            when(pantryItemRepository.findById(eq(pantryItemId))).thenReturn(Optional.of(testPantryItem));
-
-            // When & Then
-            assertThatThrownBy(() -> pantryItemService.updatePantryItem(
-                    pantryItemId, testUpdateRequest, validToken))
-                    .isInstanceOf(InsufficientPermissionException.class)
-                    .hasMessageContaining("not a member of this household");
-
-            verify(pantryItemRepository, never()).save(any(PantryItem.class));
-        }
-
-        @Test
-        @DisplayName("Should throw ValidationException when quantity is negative")
-        void shouldThrowValidationExceptionWhenQuantityIsNegative() {
-            // Given
-            UpdatePantryItemRequest invalidRequest = UpdatePantryItemRequest.builder()
-                    .quantity(-5)
-                    .build();
-
-            // When & Then
-            assertThatThrownBy(() -> pantryItemService.updatePantryItem(
-                    pantryItemId, invalidRequest, validToken))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessageContaining("Quantity");
-
-            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
-            verify(pantryItemRepository, never()).save(any(PantryItem.class));
-        }
-
-        @Test
-        @DisplayName("Should throw ValidationException when request is null")
-        void shouldThrowValidationExceptionWhenRequestIsNull() {
-            assertThatThrownBy(() -> pantryItemService.updatePantryItem(pantryItemId, null, validToken))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessageContaining("request cannot be null");
-
-            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
-            verify(pantryItemRepository, never()).save(any(PantryItem.class));
-        }
-    }
+    // ==================== Get Pantry Items by Location Tests ====================
 
     @Nested
-    @DisplayName("Delete Pantry Item Tests")
-    class DeletePantryItemTests {
-
-        @Test
-        @DisplayName("Should delete pantry item successfully")
-        void shouldDeletePantryItemSuccessfully() {
-            // Given
-            setupValidAuthentication();
-            setupHouseholdMembership();
-            when(pantryItemRepository.findById(eq(pantryItemId))).thenReturn(Optional.of(testPantryItem));
-
-            // When
-            pantryItemService.deletePantryItem(pantryItemId, validToken);
-
-            // Then
-            verify(userService).getCurrentUser(eq(validToken));
-            verify(pantryItemRepository).findById(eq(pantryItemId));
-            verify(householdMemberRepository).existsByHouseholdIdAndUserId(eq(householdId), eq(userId));
-            verify(pantryItemRepository).delete(eq(testPantryItem));
-        }
-
-        @Test
-        @DisplayName("Should throw NotFoundException when pantry item not found")
-        void shouldThrowNotFoundExceptionWhenPantryItemNotFound() {
-            // Given
-            setupValidAuthentication();
-            when(pantryItemRepository.findById(eq(pantryItemId))).thenReturn(Optional.empty());
-
-            // When & Then
-            assertThatThrownBy(() -> pantryItemService.deletePantryItem(pantryItemId, validToken))
-                    .isInstanceOf(NotFoundException.class)
-                    .hasMessageContaining("Pantry item not found");
-
-            verify(pantryItemRepository, never()).delete(any(PantryItem.class));
-        }
-
-        @Test
-        @DisplayName("Should throw InsufficientPermissionException when user not member of household")
-        void shouldThrowInsufficientPermissionExceptionWhenUserNotMemberOfHousehold() {
-            // Given
-            setupValidAuthentication();
-            setupNoHouseholdMembership();
-            when(pantryItemRepository.findById(eq(pantryItemId))).thenReturn(Optional.of(testPantryItem));
-
-            // When & Then
-            assertThatThrownBy(() -> pantryItemService.deletePantryItem(pantryItemId, validToken))
-                    .isInstanceOf(InsufficientPermissionException.class)
-                    .hasMessageContaining("not a member of this household");
-
-            verify(pantryItemRepository, never()).delete(any(PantryItem.class));
-        }
-    }
-
-        @Nested
-        @DisplayName("Search and Filter Tests")
-        class SearchAndFilterTests {
-
-            @Test
-            @DisplayName("Should search pantry items successfully")
-            void shouldSearchPantryItemsSuccessfully() {
-                // Given
-                String searchTerm = "milk";
-                List<PantryItem> items = List.of(testPantryItem);
-
-                setupValidAuthentication();
-                setupHouseholdMembership();
-                when(pantryItemRepository.searchItemsInHousehold(eq(householdId), eq(searchTerm)))
-                        .thenReturn(items);
-
-                // When
-                List<PantryItemResponse> responses = pantryItemService.searchPantryItems(
-                        householdId, searchTerm, validToken);
-
-                // Then
-                assertThat(responses).hasSize(1);
-                verify(pantryItemRepository).searchItemsInHousehold(eq(householdId), eq(searchTerm));
-            }
-
-            @Test
-            @DisplayName("Should throw ValidationException when search term is null")
-            void shouldThrowValidationExceptionWhenSearchTermIsNull() {
-                assertThatThrownBy(() -> pantryItemService.searchPantryItems(householdId, null, validToken))
-                        .isInstanceOf(ValidationException.class)
-                        .hasMessageContaining("Search term cannot be null");
-
-                verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
-            }
-
-            @Test
-            @DisplayName("Should throw ValidationException when search term is empty")
-            void shouldThrowValidationExceptionWhenSearchTermIsEmpty() {
-                assertThatThrownBy(() -> pantryItemService.searchPantryItems(householdId, "   ", validToken))
-                        .isInstanceOf(ValidationException.class)
-                        .hasMessageContaining("Search term cannot be empty");
-
-                verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
-            }
-
-            @Test
-            @DisplayName("Should get low stock items successfully")
-            void shouldGetLowStockItemsSuccessfully() {
-                // Given
-                Integer threshold = 5;
-                List<PantryItem> items = List.of(testPantryItem);
-
-                setupValidAuthentication();
-                setupHouseholdMembership();
-                when(pantryItemRepository.findLowStockItemsInHousehold(eq(householdId), eq(threshold)))
-                        .thenReturn(items);
-
-                // When
-                List<PantryItemResponse> responses = pantryItemService.getLowStockItems(
-                        householdId, threshold, validToken);
-
-                // Then
-                assertThat(responses).hasSize(1);
-                verify(pantryItemRepository).findLowStockItemsInHousehold(eq(householdId), eq(threshold));
-            }
-
-            @Test
-            @DisplayName("Should throw ValidationException when threshold is null")
-            void shouldThrowValidationExceptionWhenThresholdIsNull() {
-                assertThatThrownBy(() -> pantryItemService.getLowStockItems(householdId, null, validToken))
-                        .isInstanceOf(ValidationException.class)
-                        .hasMessageContaining("Threshold cannot be null");
-
-                verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
-            }
-
-            @Test
-            @DisplayName("Should throw ValidationException when threshold is negative")
-            void shouldThrowValidationExceptionWhenThresholdIsNegative() {
-                assertThatThrownBy(() -> pantryItemService.getLowStockItems(householdId, -1, validToken))
-                        .isInstanceOf(ValidationException.class)
-                        .hasMessageContaining("Threshold must be non-negative");
-
-                verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
-            }
-
-            @Test
-            @DisplayName("Should get expiring items successfully")
-            void shouldGetExpiringItemsSuccessfully() {
-                // Given
-                LocalDate startDate = LocalDate.now();
-                LocalDate endDate = LocalDate.now().plusDays(7);
-                List<PantryItem> items = List.of(testPantryItem);
-
-                setupValidAuthentication();
-                setupHouseholdMembership();
-                when(pantryItemRepository.findExpiringItemsInHouseholdBetweenDates(
-                        eq(householdId), eq(startDate), eq(endDate))).thenReturn(items);
-
-                // When
-                List<PantryItemResponse> responses = pantryItemService.getExpiringItems(
-                        householdId, startDate, endDate, validToken);
-
-                // Then
-                assertThat(responses).hasSize(1);
-                verify(pantryItemRepository).findExpiringItemsInHouseholdBetweenDates(
-                        eq(householdId), eq(startDate), eq(endDate));
-            }
-
-            @Test
-            @DisplayName("Should throw ValidationException when start date is after end date")
-            void shouldThrowValidationExceptionWhenStartDateIsAfterEndDate() {
-                // Given
-                LocalDate startDate = LocalDate.now().plusDays(10);
-                LocalDate endDate = LocalDate.now();
-
-                // When & Then
-                assertThatThrownBy(() -> pantryItemService.getExpiringItems(
-                        householdId, startDate, endDate, validToken))
-                        .isInstanceOf(ValidationException.class)
-                        .hasMessageContaining("Start date must be before or equal to end date");
-
-                verify(pantryItemRepository, never()).findExpiringItemsInHouseholdBetweenDates(
-                        any(), any(), any());
-            }
-        }
-
-    @Nested
-    @DisplayName("Pantry Statistics Tests")
-    class PantryStatisticsTests {
-
-        @Test
-        @DisplayName("Should get pantry statistics successfully")
-        void shouldGetPantryStatisticsSuccessfully() {
-            // Given
-            setupValidAuthentication();
-            setupHouseholdMembership();
-            when(pantryItemRepository.countByLocation_HouseholdId(eq(householdId))).thenReturn(10L);
-            when(pantryItemRepository.countDistinctProductsByHouseholdId(eq(householdId))).thenReturn(5L);
-            when(pantryItemRepository.countExpiringItemsByHouseholdIdAndDate(
-                    eq(householdId), any(LocalDate.class))).thenReturn(3L);
-            when(pantryItemRepository.findLowStockItemsInHousehold(eq(householdId), eq(5)))
-                    .thenReturn(List.of(testPantryItem));
-
-            // When
-            Map<String, Object> statistics = pantryItemService.getPantryStatistics(householdId, validToken);
-
-            // Then
-            assertThat(statistics).isNotNull();
-            assertThat(statistics).containsEntry("totalItems", 10L);
-            assertThat(statistics).containsEntry("uniqueProducts", 5L);
-            assertThat(statistics).containsEntry("expiringInWeek", 3L);
-            assertThat(statistics).containsEntry("lowStockCount", 1L);
-
-            verify(userService).getCurrentUser(eq(validToken));
-            verify(householdMemberRepository).existsByHouseholdIdAndUserId(eq(householdId), eq(userId));
-            verify(pantryItemRepository).countByLocation_HouseholdId(eq(householdId));
-            verify(pantryItemRepository).countDistinctProductsByHouseholdId(eq(householdId));
-            verify(pantryItemRepository).countExpiringItemsByHouseholdIdAndDate(eq(householdId), any(LocalDate.class));
-            verify(pantryItemRepository).findLowStockItemsInHousehold(eq(householdId), eq(5));
-        }
-
-        @Test
-        @DisplayName("Should throw ValidationException when household ID is null for statistics")
-        void shouldThrowValidationExceptionWhenHouseholdIdIsNullForStatistics() {
-            assertThatThrownBy(() -> pantryItemService.getPantryStatistics(null, validToken))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessageContaining("Household ID cannot be null");
-
-            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
-        }
-
-        @Test
-        @DisplayName("Should throw ValidationException when token is null for statistics")
-        void shouldThrowValidationExceptionWhenTokenIsNullForStatistics() {
-            assertThatThrownBy(() -> pantryItemService.getPantryStatistics(householdId, null))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessageContaining("token cannot be null");
-
-            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
-        }
-
-        @Test
-        @DisplayName("Should throw InsufficientPermissionException when user not member of household for statistics")
-        void shouldThrowInsufficientPermissionExceptionWhenUserNotMemberOfHouseholdForStatistics() {
-            // Given
-            setupValidAuthentication();
-            setupNoHouseholdMembership();
-
-            // When & Then
-            assertThatThrownBy(() -> pantryItemService.getPantryStatistics(householdId, validToken))
-                    .isInstanceOf(InsufficientPermissionException.class)
-                    .hasMessageContaining("not a member of this household");
-
-            verify(pantryItemRepository, never()).countByLocation_HouseholdId(any());
-        }
-    }
-
-    @Nested
-    @DisplayName("Product Variant Tests")
-    class ProductVariantTests {
-
-        @Test
-        @DisplayName("Should get product variants by location successfully")
-        void shouldGetProductVariantsByLocationSuccessfully() {
-            // Given
-            List<PantryItem> variants = List.of(testPantryItem);
-
-            setupValidAuthentication();
-            setupHouseholdMembership();
-            when(locationRepository.findById(eq(locationId))).thenReturn(Optional.of(testLocation));
-            when(productRepository.existsById(eq(productId))).thenReturn(true);
-            when(pantryItemRepository.findByLocationIdAndProductIdOrderByExpirationDateNullsLast(
-                    eq(locationId), eq(productId))).thenReturn(variants);
-
-            // When
-            List<PantryItemResponse> responses = pantryItemService.getProductVariantsByLocation(
-                    locationId, productId, validToken);
-
-            // Then
-            assertThat(responses).hasSize(1);
-            verify(pantryItemRepository).findByLocationIdAndProductIdOrderByExpirationDateNullsLast(
-                    eq(locationId), eq(productId));
-        }
-
-        @Test
-        @DisplayName("Should throw ValidationException when location ID is null for variants")
-        void shouldThrowValidationExceptionWhenLocationIdIsNullForVariants() {
-            assertThatThrownBy(() -> pantryItemService.getProductVariantsByLocation(
-                    null, productId, validToken))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessageContaining("Location ID cannot be null");
-
-            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
-        }
-
-        @Test
-        @DisplayName("Should throw ValidationException when product ID is null for variants")
-        void shouldThrowValidationExceptionWhenProductIdIsNullForVariants() {
-            assertThatThrownBy(() -> pantryItemService.getProductVariantsByLocation(
-                    locationId, null, validToken))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessageContaining("Product ID cannot be null");
-
-            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
-        }
-
-        @Test
-        @DisplayName("Should throw NotFoundException when location not found for variants")
-        void shouldThrowNotFoundExceptionWhenLocationNotFoundForVariants() {
-            // Given
-            setupValidAuthentication();
-            when(locationRepository.findById(eq(locationId))).thenReturn(Optional.empty());
-
-            // When & Then
-            assertThatThrownBy(() -> pantryItemService.getProductVariantsByLocation(
-                    locationId, productId, validToken))
-                    .isInstanceOf(NotFoundException.class)
-                    .hasMessageContaining("Location not found");
-
-            verify(pantryItemRepository, never()).findByLocationIdAndProductIdOrderByExpirationDateNullsLast(any(), any());
-        }
-
-        @Test
-        @DisplayName("Should throw NotFoundException when product not found for variants")
-        void shouldThrowNotFoundExceptionWhenProductNotFoundForVariants() {
-            // Given
-            setupValidAuthentication();
-            setupHouseholdMembership();
-            when(locationRepository.findById(eq(locationId))).thenReturn(Optional.of(testLocation));
-            when(productRepository.existsById(eq(productId))).thenReturn(false);
-
-            // When & Then
-            assertThatThrownBy(() -> pantryItemService.getProductVariantsByLocation(
-                    locationId, productId, validToken))
-                    .isInstanceOf(NotFoundException.class)
-                    .hasMessageContaining("Product not found");
-
-            verify(pantryItemRepository, never()).findByLocationIdAndProductIdOrderByExpirationDateNullsLast(any(), any());
-        }
-
-        @Test
-        @DisplayName("Should check if product variant exists with expiration date")
-        void shouldCheckIfProductVariantExistsWithExpirationDate() {
-            // Given
-            LocalDate expirationDate = LocalDate.now().plusDays(7);
-
-            setupValidAuthentication();
-            setupHouseholdMembership();
-            when(locationRepository.findById(eq(locationId))).thenReturn(Optional.of(testLocation));
-            when(pantryItemRepository.existsByLocationIdAndProductIdAndExpirationDate(
-                    eq(locationId), eq(productId), eq(expirationDate))).thenReturn(true);
-
-            // When
-            boolean exists = pantryItemService.productVariantExists(
-                    locationId, productId, expirationDate, validToken);
-
-            // Then
-            assertThat(exists).isTrue();
-            verify(pantryItemRepository).existsByLocationIdAndProductIdAndExpirationDate(
-                    eq(locationId), eq(productId), eq(expirationDate));
-        }
-
-        @Test
-        @DisplayName("Should check if product variant exists with null expiration date")
-        void shouldCheckIfProductVariantExistsWithNullExpirationDate() {
-            // Given
-            setupValidAuthentication();
-            setupHouseholdMembership();
-            when(locationRepository.findById(eq(locationId))).thenReturn(Optional.of(testLocation));
-            when(pantryItemRepository.existsByLocationIdAndProductIdAndExpirationDateIsNull(
-                    eq(locationId), eq(productId))).thenReturn(false);
-
-            // When
-            boolean exists = pantryItemService.productVariantExists(
-                    locationId, productId, null, validToken);
-
-            // Then
-            assertThat(exists).isFalse();
-            verify(pantryItemRepository).existsByLocationIdAndProductIdAndExpirationDateIsNull(
-                    eq(locationId), eq(productId));
-        }
-
-        @Test
-        @DisplayName("Should delete product variant with expiration date")
-        void shouldDeleteProductVariantWithExpirationDate() {
-            // Given
-            LocalDate expirationDate = LocalDate.now().plusDays(7);
-
-            setupValidAuthentication();
-            setupHouseholdMembership();
-            when(locationRepository.findById(eq(locationId))).thenReturn(Optional.of(testLocation));
-            when(pantryItemRepository.deleteByLocationIdAndProductIdAndExpirationDate(
-                    eq(locationId), eq(productId), eq(expirationDate))).thenReturn(1);
-
-            // When
-            int deletedCount = pantryItemService.deleteProductVariant(
-                    locationId, productId, expirationDate, validToken);
-
-            // Then
-            assertThat(deletedCount).isEqualTo(1);
-            verify(pantryItemRepository).deleteByLocationIdAndProductIdAndExpirationDate(
-                    eq(locationId), eq(productId), eq(expirationDate));
-        }
-
-        @Test
-        @DisplayName("Should delete product variant with null expiration date")
-        void shouldDeleteProductVariantWithNullExpirationDate() {
-            // Given
-            setupValidAuthentication();
-            setupHouseholdMembership();
-            when(locationRepository.findById(eq(locationId))).thenReturn(Optional.of(testLocation));
-            when(pantryItemRepository.deleteByLocationIdAndProductIdAndExpirationDateIsNull(
-                    eq(locationId), eq(productId))).thenReturn(2);
-
-            // When
-            int deletedCount = pantryItemService.deleteProductVariant(
-                    locationId, productId, null, validToken);
-
-            // Then
-            assertThat(deletedCount).isEqualTo(2);
-            verify(pantryItemRepository).deleteByLocationIdAndProductIdAndExpirationDateIsNull(
-                    eq(locationId), eq(productId));
-        }
-    }
-
-    @Nested
-    @DisplayName("Quantity Update Tests")
-    class QuantityUpdateTests {
-
-        @Test
-        @DisplayName("Should update quantities for multiple items successfully")
-        void shouldUpdateQuantitiesForMultipleItemsSuccessfully() {
-            // Given
-            UUID itemId1 = UUID.randomUUID();
-            UUID itemId2 = UUID.randomUUID();
-
-            PantryItem item1 = PantryItem.builder()
-                    .id(itemId1)
-                    .product(testProduct)
-                    .location(testLocation)
-                    .quantity(5)
-                    .createdAt(LocalDateTime.now())
-                    .updatedAt(LocalDateTime.now())
-                    .build();
-
-            PantryItem item2 = PantryItem.builder()
-                    .id(itemId2)
-                    .product(testProduct)
-                    .location(testLocation)
-                    .quantity(10)
-                    .createdAt(LocalDateTime.now())
-                    .updatedAt(LocalDateTime.now())
-                    .build();
-
-            Map<UUID, Integer> quantityUpdates = Map.of(
-                    itemId1, 8,
-                    itemId2, 12
-            );
-
-            setupValidAuthentication();
-            setupHouseholdMembership();
-            when(pantryItemRepository.findById(eq(itemId1))).thenReturn(Optional.of(item1));
-            when(pantryItemRepository.findById(eq(itemId2))).thenReturn(Optional.of(item2));
-            when(pantryItemRepository.save(any(PantryItem.class))).thenAnswer(invocation -> invocation.getArgument(0));
-
-            // When
-            List<PantryItemResponse> responses = pantryItemService.updateQuantities(quantityUpdates, validToken);
-
-            // Then
-            assertThat(responses).hasSize(2);
-            verify(pantryItemRepository, times(2)).save(any(PantryItem.class));
-        }
-
-        @Test
-        @DisplayName("Should throw ValidationException when quantity updates map is null")
-        void shouldThrowValidationExceptionWhenQuantityUpdatesMapIsNull() {
-            assertThatThrownBy(() -> pantryItemService.updateQuantities(null, validToken))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessageContaining("Quantity updates map cannot be null");
-
-            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
-        }
-
-        @Test
-        @DisplayName("Should throw ValidationException when quantity updates map is empty")
-        void shouldThrowValidationExceptionWhenQuantityUpdatesMapIsEmpty() {
-            assertThatThrownBy(() -> pantryItemService.updateQuantities(Collections.emptyMap(), validToken))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessageContaining("Quantity updates map cannot be empty");
-
-            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
-        }
-
-        @Test
-        @DisplayName("Should throw ValidationException when quantity is negative in updates")
-        void shouldThrowValidationExceptionWhenQuantityIsNegativeInUpdates() {
-            // Given
-            UUID itemId = UUID.randomUUID();
-            Map<UUID, Integer> quantityUpdates = Map.of(itemId, -5);
-
-            setupValidAuthentication();
-
-            // When & Then
-            assertThatThrownBy(() -> pantryItemService.updateQuantities(quantityUpdates, validToken))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessageContaining("Quantity cannot be negative");
-
-            verify(pantryItemRepository, never()).save(any(PantryItem.class));
-        }
-
-        @Test
-        @DisplayName("Should continue with other items when one item is not found")
-        void shouldContinueWithOtherItemsWhenOneItemIsNotFound() {
-            // Given
-            UUID itemId1 = UUID.randomUUID();
-            UUID itemId2 = UUID.randomUUID();
-
-            PantryItem item2 = PantryItem.builder()
-                    .id(itemId2)
-                    .product(testProduct)
-                    .location(testLocation)
-                    .quantity(10)
-                    .createdAt(LocalDateTime.now())
-                    .updatedAt(LocalDateTime.now())
-                    .build();
-
-            Map<UUID, Integer> quantityUpdates = Map.of(
-                    itemId1, 8,
-                    itemId2, 12
-            );
-
-            setupValidAuthentication();
-            setupHouseholdMembership();
-            when(pantryItemRepository.findById(eq(itemId1))).thenReturn(Optional.empty());
-            when(pantryItemRepository.findById(eq(itemId2))).thenReturn(Optional.of(item2));
-            when(pantryItemRepository.save(any(PantryItem.class))).thenAnswer(invocation -> invocation.getArgument(0));
-
-            // When
-            List<PantryItemResponse> responses = pantryItemService.updateQuantities(quantityUpdates, validToken);
-
-            // Then
-            assertThat(responses).hasSize(1);
-            verify(pantryItemRepository, times(1)).save(any(PantryItem.class));
-        }
-
-        @Test
-        @DisplayName("Should continue with other items when user lacks permission for one item")
-        void shouldContinueWithOtherItemsWhenUserLacksPermissionForOneItem() {
-            // Given
-            UUID itemId1 = UUID.randomUUID();
-            UUID itemId2 = UUID.randomUUID();
-
-            PantryItem item1 = PantryItem.builder()
-                    .id(itemId1)
-                    .product(testProduct)
-                    .location(otherLocation) // Different household
-                    .quantity(5)
-                    .createdAt(LocalDateTime.now())
-                    .updatedAt(LocalDateTime.now())
-                    .build();
-
-            PantryItem item2 = PantryItem.builder()
-                    .id(itemId2)
-                    .product(testProduct)
-                    .location(testLocation)
-                    .quantity(10)
-                    .createdAt(LocalDateTime.now())
-                    .updatedAt(LocalDateTime.now())
-                    .build();
-
-            Map<UUID, Integer> quantityUpdates = Map.of(
-                    itemId1, 8,
-                    itemId2, 12
-            );
-
-            setupValidAuthentication();
-            when(pantryItemRepository.findById(eq(itemId1))).thenReturn(Optional.of(item1));
-            when(pantryItemRepository.findById(eq(itemId2))).thenReturn(Optional.of(item2));
-            when(householdMemberRepository.existsByHouseholdIdAndUserId(
-                    eq(otherHousehold.getId()), eq(userId))).thenReturn(false);
-            when(householdMemberRepository.existsByHouseholdIdAndUserId(
-                    eq(householdId), eq(userId))).thenReturn(true);
-            when(pantryItemRepository.save(any(PantryItem.class))).thenAnswer(invocation -> invocation.getArgument(0));
-
-            // When
-            List<PantryItemResponse> responses = pantryItemService.updateQuantities(quantityUpdates, validToken);
-
-            // Then
-            assertThat(responses).hasSize(1);
-            verify(pantryItemRepository, times(1)).save(any(PantryItem.class));
-        }
-
-        @Test
-        @DisplayName("Should allow setting quantity to null")
-        void shouldAllowSettingQuantityToNull() {
-            // Given
-            UUID itemId = UUID.randomUUID();
-
-            PantryItem item = PantryItem.builder()
-                    .id(itemId)
-                    .product(testProduct)
-                    .location(testLocation)
-                    .quantity(5)
-                    .createdAt(LocalDateTime.now())
-                    .updatedAt(LocalDateTime.now())
-                    .build();
-
-            Map<UUID, Integer> quantityUpdates = new HashMap<>();
-            quantityUpdates.put(itemId, null);
-
-            setupValidAuthentication();
-            setupHouseholdMembership();
-            when(pantryItemRepository.findById(eq(itemId))).thenReturn(Optional.of(item));
-            when(pantryItemRepository.save(any(PantryItem.class))).thenAnswer(invocation -> invocation.getArgument(0));
-
-            // When
-            List<PantryItemResponse> responses = pantryItemService.updateQuantities(quantityUpdates, validToken);
-
-            // Then
-            assertThat(responses).hasSize(1);
-            verify(pantryItemRepository).save(argThat(savedItem -> savedItem.getQuantity() == null));
-        }
-
-
-
-        @Test
-        @DisplayName("Should get pantry items by household with pagination")
-        void shouldGetPantryItemsByHouseholdWithPagination() {
-            // Given
-            Pageable pageable = PageRequest.of(0, 10);
-            List<PantryItem> items = List.of(testPantryItem);
-            Page<PantryItem> page = new PageImpl<>(items, pageable, items.size());
-
-            setupValidAuthentication();
-            setupHouseholdMembership();
-            when(pantryItemRepository.findByLocation_HouseholdId(eq(householdId), eq(pageable)))
-                    .thenReturn(page);
-
-            // When
-            Page<PantryItemResponse> response = pantryItemService.getPantryItemsByHousehold(
-                    householdId, pageable, validToken);
-
-            // Then
-            assertThat(response).isNotNull();
-            assertThat(response.getContent()).hasSize(1);
-            assertThat(response.getTotalElements()).isEqualTo(1);
-
-            verify(userService).getCurrentUser(eq(validToken));
-            verify(householdMemberRepository).existsByHouseholdIdAndUserId(eq(householdId), eq(userId));
-            verify(pantryItemRepository).findByLocation_HouseholdId(eq(householdId), eq(pageable));
-        }
-
-        @Test
-        @DisplayName("Should throw ValidationException when household ID is null")
-        void shouldThrowValidationExceptionWhenHouseholdIdIsNull() {
-            Pageable pageable = PageRequest.of(0, 10);
-
-            assertThatThrownBy(() -> pantryItemService.getPantryItemsByHousehold(null, pageable, validToken))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessageContaining("Household ID cannot be null");
-
-            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
-        }
-
-        @Test
-        @DisplayName("Should throw InsufficientPermissionException when user not member of household")
-        void shouldThrowInsufficientPermissionExceptionWhenUserNotMemberOfHousehold() {
-            // Given
-            Pageable pageable = PageRequest.of(0, 10);
-            setupValidAuthentication();
-            setupNoHouseholdMembership();
-
-            // When & Then
-            assertThatThrownBy(() -> pantryItemService.getPantryItemsByHousehold(
-                    householdId, pageable, validToken))
-                    .isInstanceOf(InsufficientPermissionException.class)
-                    .hasMessageContaining("not a member of this household");
-
-            verify(pantryItemRepository, never()).findByLocation_HouseholdId(any(), any());
-        }
-    }
-
-    @Nested
-    @DisplayName("Get Pantry Items by Location Tests")
+    @DisplayName("getPantryItemsByLocation")
     class GetPantryItemsByLocationTests {
 
         @Test
-        @DisplayName("Should get pantry items by location")
-        void shouldGetPantryItemsByLocation() {
+        @DisplayName("should retrieve pantry items for location successfully")
+        void whenValidLocationId_returnsPantryItems() {
             // Given
-            List<PantryItem> items = List.of(testPantryItem);
-            setupValidAuthentication();
-            setupHouseholdMembership();
-            when(locationRepository.findById(eq(locationId))).thenReturn(Optional.of(testLocation));
+            List<PantryItem> items = Collections.singletonList(testPantryItem);
             when(pantryItemRepository.findByLocationId(eq(locationId))).thenReturn(items);
 
             // When
-            List<PantryItemResponse> response = pantryItemService.getPantryItemsByLocation(
-                    locationId, validToken);
+            List<PantryItemResponse> responses = pantryItemService.getPantryItemsByLocation(locationId);
 
             // Then
-            assertThat(response).isNotNull();
-            assertThat(response).hasSize(1);
+            assertThat(responses).hasSize(1);
+            assertThat(responses.getFirst().getId()).isEqualTo(pantryItemId);
 
-            verify(userService).getCurrentUser(eq(validToken));
-            verify(locationRepository).findById(eq(locationId));
-            verify(householdMemberRepository).existsByHouseholdIdAndUserId(eq(householdId), eq(userId));
+            verify(securityService).getCurrentUserId();
             verify(pantryItemRepository).findByLocationId(eq(locationId));
         }
 
         @Test
-        @DisplayName("Should throw NotFoundException when location not found")
-        void shouldThrowNotFoundExceptionWhenLocationNotFound() {
-            // Given
-            setupValidAuthentication();
-            when(locationRepository.findById(eq(locationId))).thenReturn(Optional.empty());
+        @DisplayName("should throw ValidationException when location ID is null")
+        void whenLocationIdIsNull_throwsValidationException() {
+            // When/Then
+            assertThatThrownBy(() -> pantryItemService.getPantryItemsByLocation(null))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Location ID cannot be null");
 
-            // When & Then
-            assertThatThrownBy(() -> pantryItemService.getPantryItemsByLocation(locationId, validToken))
-                    .isInstanceOf(NotFoundException.class)
-                    .hasMessageContaining("Location not found");
-
-            verify(pantryItemRepository, never()).findByLocationId(any());
-        }
-
-        @Test
-        @DisplayName("Should throw InsufficientPermissionException when user not member of household")
-        void shouldThrowInsufficientPermissionExceptionWhenUserNotMemberOfHousehold() {
-            // Given
-            setupValidAuthentication();
-            setupNoHouseholdMembership();
-            when(locationRepository.findById(eq(locationId))).thenReturn(Optional.of(testLocation));
-
-            // When & Then
-            assertThatThrownBy(() -> pantryItemService.getPantryItemsByLocation(locationId, validToken))
-                    .isInstanceOf(InsufficientPermissionException.class)
-                    .hasMessageContaining("not a member of this household");
-
-            verify(pantryItemRepository, never()).findByLocationId(any());
+            verifyNoInteractions(securityService, pantryItemRepository);
         }
     }
 
+    // ==================== Get Pantry Items by Household Tests ====================
+
     @Nested
-    @DisplayName("Patch Pantry Item Tests")
-    class PatchPantryItemTests {
+    @DisplayName("getPantryItemsByHousehold")
+    class GetPantryItemsByHouseholdTests {
 
         @Test
-        @DisplayName("Should patch single field successfully")
-        void shouldPatchSingleFieldSuccessfully() {
+        @DisplayName("should retrieve paginated pantry items for household successfully")
+        void whenValidHouseholdId_returnsPaginatedPantryItems() {
             // Given
-            Map<String, Object> patchFields = new HashMap<>();
-            patchFields.put("quantity", 10);
-
-            setupValidAuthentication();
-            setupHouseholdMembership();
-            when(pantryItemRepository.findById(eq(pantryItemId))).thenReturn(Optional.of(testPantryItem));
-            when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(testPantryItem);
+            Pageable pageable = PageRequest.of(0, 20);
+            Page<PantryItem> page = new PageImpl<>(Collections.singletonList(testPantryItem));
+            // Use correct method name
+            when(pantryItemRepository.findByLocation_HouseholdId(eq(householdId), eq(pageable)))
+                    .thenReturn(page);
 
             // When
-            PantryItemResponse response = pantryItemService.patchPantryItem(
-                    pantryItemId, patchFields, validToken);
+            Page<PantryItemResponse> responsePage = pantryItemService.getPantryItemsByHousehold(householdId, pageable);
 
             // Then
-            assertThat(response).isNotNull();
-            verify(pantryItemRepository).save(argThat(item -> item.getQuantity() == 10));
+            assertThat(responsePage).isNotNull();
+            assertThat(responsePage.getContent()).hasSize(1);
+            assertThat(responsePage.getContent().getFirst().getId()).isEqualTo(pantryItemId);
+
+            verify(securityService).getCurrentUserId();
+            verify(pantryItemRepository).findByLocation_HouseholdId(eq(householdId), eq(pageable));
         }
 
         @Test
-        @DisplayName("Should patch multiple fields successfully")
-        void shouldPatchMultipleFieldsSuccessfully() {
-            // Given
-            Map<String, Object> patchFields = new HashMap<>();
-            patchFields.put("quantity", 8);
-            patchFields.put("unitOfMeasure", "kg");
-            patchFields.put("notes", "Patched notes");
+        @DisplayName("should throw ValidationException when household ID is null")
+        void whenHouseholdIdIsNull_throwsValidationException() {
+            // When/Then
+            assertThatThrownBy(() -> pantryItemService.getPantryItemsByHousehold(null, PageRequest.of(0, 20)))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Household ID cannot be null");
 
-            setupValidAuthentication();
-            setupHouseholdMembership();
-            when(pantryItemRepository.findById(eq(pantryItemId))).thenReturn(Optional.of(testPantryItem));
-            when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(testPantryItem);
+            verifyNoInteractions(securityService, pantryItemRepository);
+        }
+    }
+
+    // ==================== Get Low Stock Items Tests ====================
+
+    @Nested
+    @DisplayName("getLowStockItems")
+    class GetLowStockItemsTests {
+
+        @Test
+        @DisplayName("should retrieve low stock items successfully")
+        void whenValidParameters_returnsLowStockItems() {
+            // Given
+            int threshold = 5;
+            List<PantryItem> lowStockItems = Collections.singletonList(testPantryItem);
+            // Use correct method name
+            when(pantryItemRepository.findLowStockItemsInHousehold(eq(householdId), eq(threshold)))
+                    .thenReturn(lowStockItems);
 
             // When
-            PantryItemResponse response = pantryItemService.patchPantryItem(
-                    pantryItemId, patchFields, validToken);
+            List<PantryItemResponse> responses = pantryItemService.getLowStockItems(householdId, threshold);
 
             // Then
-            assertThat(response).isNotNull();
-            verify(pantryItemRepository).save(argThat(item ->
-                    item.getQuantity() == 8 &&
-                            "kg".equals(item.getUnitOfMeasure()) &&
-                            "Patched notes".equals(item.getNotes())));
+            assertThat(responses).hasSize(1);
+            assertThat(responses.getFirst().getQuantity()).isLessThanOrEqualTo(threshold);
+
+            verify(securityService).getCurrentUserId();
+            verify(pantryItemRepository).findLowStockItemsInHousehold(eq(householdId), eq(threshold));
         }
 
         @Test
-        @DisplayName("Should patch location successfully")
-        void shouldPatchLocationSuccessfully() {
+        @DisplayName("should throw ValidationException when household ID is null")
+        void whenHouseholdIdIsNull_throwsValidationException() {
+            // When/Then
+            assertThatThrownBy(() -> pantryItemService.getLowStockItems(null, 5))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Household ID cannot be null");
+
+            verifyNoInteractions(securityService, pantryItemRepository);
+        }
+
+        @Test
+        @DisplayName("should throw ValidationException when threshold is negative")
+        void whenThresholdIsNegative_throwsValidationException() {
+            // When/Then
+            assertThatThrownBy(() -> pantryItemService.getLowStockItems(householdId, -1))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Threshold cannot be negative");
+
+            verifyNoInteractions(securityService, pantryItemRepository);
+        }
+    }
+
+    // ==================== Get Expiring Items Tests ====================
+
+    @Nested
+    @DisplayName("getExpiringItems")
+    class GetExpiringItemsTests {
+
+        @Test
+        @DisplayName("should retrieve expiring items successfully")
+        void whenValidParameters_returnsExpiringItems() {
             // Given
-            Location newLocation = Location.builder()
-                    .id(UUID.randomUUID())
-                    .name("Freezer")
-                    .household(testHousehold)
+            int daysUntilExpiration = 7;
+            LocalDate startDate = LocalDate.now();
+            LocalDate endDate = LocalDate.now().plusDays(daysUntilExpiration);
+            List<PantryItem> expiringItems = Collections.singletonList(testPantryItem);
+            // Use correct method name
+            when(pantryItemRepository.findExpiringItemsInHouseholdBetweenDates(
+                    eq(householdId), eq(startDate), eq(endDate)))
+                    .thenReturn(expiringItems);
+
+            // When
+            List<PantryItemResponse> responses = pantryItemService.getExpiringItems(householdId, daysUntilExpiration);
+
+            // Then
+            assertThat(responses).hasSize(1);
+
+            verify(securityService).getCurrentUserId();
+            verify(pantryItemRepository).findExpiringItemsInHouseholdBetweenDates(
+                    eq(householdId), any(LocalDate.class), any(LocalDate.class));
+        }
+
+        @Test
+        @DisplayName("should throw ValidationException when household ID is null")
+        void whenHouseholdIdIsNull_throwsValidationException() {
+            // When/Then
+            assertThatThrownBy(() -> pantryItemService.getExpiringItems(null, 7))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Household ID cannot be null");
+
+            verifyNoInteractions(securityService, pantryItemRepository);
+        }
+
+        @Test
+        @DisplayName("should throw ValidationException when days is negative")
+        void whenDaysIsNegative_throwsValidationException() {
+            // When/Then
+            assertThatThrownBy(() -> pantryItemService.getExpiringItems(householdId, -1))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Days until expiration cannot be negative");
+
+            verifyNoInteractions(securityService, pantryItemRepository);
+        }
+    }
+
+    // ==================== Update Pantry Item Tests ====================
+
+    @Nested
+    @DisplayName("updatePantryItem")
+    class UpdatePantryItemTests {
+
+        @Test
+        @DisplayName("should update pantry item successfully")
+        void whenValidUpdate_updatesPantryItem() {
+            // Given
+            when(pantryItemRepository.findById(eq(pantryItemId))).thenReturn(Optional.of(testPantryItem));
+            
+            PantryItem updatedItem = PantryItem.builder()
+                    .id(pantryItemId)
+                    .product(testProduct)
+                    .location(testLocation)
+                    .quantity(10)
+                    .expirationDate(updateRequest.getExpirationDate())
+                    .notes("Updated notes")
+                    .createdAt(fixedTime)
+                    .updatedAt(LocalDateTime.now())
                     .build();
-
-            Map<String, Object> patchFields = new HashMap<>();
-            patchFields.put("locationId", newLocation.getId().toString());
-
-            setupValidAuthentication();
-            when(pantryItemRepository.findById(eq(pantryItemId))).thenReturn(Optional.of(testPantryItem));
-            when(locationRepository.findById(eq(newLocation.getId()))).thenReturn(Optional.of(newLocation));
-            when(householdMemberRepository.existsByHouseholdIdAndUserId(
-                    eq(testHousehold.getId()), eq(userId))).thenReturn(true);
-            when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(testPantryItem);
+            when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(updatedItem);
 
             // When
-            PantryItemResponse response = pantryItemService.patchPantryItem(
-                    pantryItemId, patchFields, validToken);
+            PantryItemResponse response = pantryItemService.updatePantryItem(pantryItemId, updateRequest);
 
             // Then
             assertThat(response).isNotNull();
-            verify(locationRepository).findById(eq(newLocation.getId()));
+            assertThat(response.getQuantity()).isEqualTo(10);
+            assertThat(response.getNotes()).isEqualTo("Updated notes");
+
+            verify(securityService).getCurrentUserId();
+            verify(pantryItemRepository).findById(eq(pantryItemId));
             verify(pantryItemRepository).save(any(PantryItem.class));
         }
 
         @Test
-        @DisplayName("Should set expiration date to null when null value provided")
-        void shouldSetExpirationDateToNullWhenNullValueProvided() {
-            // Given
-            Map<String, Object> patchFields = new HashMap<>();
-            patchFields.put("expirationDate", null);
-
-            setupValidAuthentication();
-            setupHouseholdMembership();
-            when(pantryItemRepository.findById(eq(pantryItemId))).thenReturn(Optional.of(testPantryItem));
-            when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(testPantryItem);
-
-            // When
-            PantryItemResponse response = pantryItemService.patchPantryItem(
-                    pantryItemId, patchFields, validToken);
-
-            // Then
-            assertThat(response).isNotNull();
-            verify(pantryItemRepository).save(argThat(item -> item.getExpirationDate() == null));
-        }
-
-        @Test
-        @DisplayName("Should set unit of measure and notes to null when null values provided")
-        void shouldSetFieldsToNullWhenNullValuesProvided() {
-            // Given
-            Map<String, Object> patchFields = new HashMap<>();
-            patchFields.put("unitOfMeasure", null);
-            patchFields.put("notes", null);
-
-            setupValidAuthentication();
-            setupHouseholdMembership();
-            when(pantryItemRepository.findById(eq(pantryItemId))).thenReturn(Optional.of(testPantryItem));
-            when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(testPantryItem);
-
-            // When
-            PantryItemResponse response = pantryItemService.patchPantryItem(
-                    pantryItemId, patchFields, validToken);
-
-            // Then
-            assertThat(response).isNotNull();
-            verify(pantryItemRepository).save(argThat(item ->
-                    item.getUnitOfMeasure() == null && item.getNotes() == null));
-        }
-
-        @Test
-        @DisplayName("Should ignore unknown fields")
-        void shouldIgnoreUnknownFields() {
-            // Given
-            Map<String, Object> patchFields = new HashMap<>();
-            patchFields.put("quantity", 5);
-            patchFields.put("unknownField", "should be ignored");
-
-            setupValidAuthentication();
-            setupHouseholdMembership();
-            when(pantryItemRepository.findById(eq(pantryItemId))).thenReturn(Optional.of(testPantryItem));
-            when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(testPantryItem);
-
-            // When
-            PantryItemResponse response = pantryItemService.patchPantryItem(
-                    pantryItemId, patchFields, validToken);
-
-            // Then
-            assertThat(response).isNotNull();
-            verify(pantryItemRepository).save(any(PantryItem.class));
-        }
-
-        @Test
-        @DisplayName("Should throw ValidationException when patch fields is null")
-        void shouldThrowValidationExceptionWhenPatchFieldsIsNull() {
-            assertThatThrownBy(() -> pantryItemService.patchPantryItem(pantryItemId, null, validToken))
+        @DisplayName("should throw ValidationException when ID is null")
+        void whenIdIsNull_throwsValidationException() {
+            // When/Then
+            assertThatThrownBy(() -> pantryItemService.updatePantryItem(null, updateRequest))
                     .isInstanceOf(ValidationException.class)
-                    .hasMessageContaining("Patch fields cannot be null");
+                    .hasMessageContaining("Pantry item ID cannot be null");
 
-            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
-            verify(pantryItemRepository, never()).save(any(PantryItem.class));
+            verifyNoInteractions(securityService, pantryItemRepository);
         }
 
         @Test
-        @DisplayName("Should throw ValidationException when patch fields is empty")
-        void shouldThrowValidationExceptionWhenPatchFieldsIsEmpty() {
-            Map<String, Object> emptyPatchFields = new HashMap<>();
-
-            assertThatThrownBy(() -> pantryItemService.patchPantryItem(
-                    pantryItemId, emptyPatchFields, validToken))
+        @DisplayName("should throw ValidationException when request is null")
+        void whenRequestIsNull_throwsValidationException() {
+            // When/Then
+            assertThatThrownBy(() -> pantryItemService.updatePantryItem(pantryItemId, null))
                     .isInstanceOf(ValidationException.class)
-                    .hasMessageContaining("Patch fields cannot be empty");
+                    .hasMessageContaining("Update request cannot be null");
 
-            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
-            verify(pantryItemRepository, never()).save(any(PantryItem.class));
+            verifyNoInteractions(securityService, pantryItemRepository);
         }
 
         @Test
-        @DisplayName("Should throw ValidationException when quantity is negative in patch")
-        void shouldThrowValidationExceptionWhenQuantityIsNegativeInPatch() {
+        @DisplayName("should throw ValidationException when quantity is negative")
+        void whenQuantityIsNegative_throwsValidationException() {
             // Given
-            Map<String, Object> patchFields = new HashMap<>();
-            patchFields.put("quantity", -5);
+            updateRequest.setQuantity(-1);
 
-            setupValidAuthentication();
-            setupHouseholdMembership();
-            when(pantryItemRepository.findById(eq(pantryItemId))).thenReturn(Optional.of(testPantryItem));
-
-            // When & Then
-            assertThatThrownBy(() -> pantryItemService.patchPantryItem(
-                    pantryItemId, patchFields, validToken))
+            // When/Then
+            assertThatThrownBy(() -> pantryItemService.updatePantryItem(pantryItemId, updateRequest))
                     .isInstanceOf(ValidationException.class)
-                    .hasMessageContaining("Quantity");
+                    .hasMessageContaining("Quantity must be a non-negative value");
 
-            verify(pantryItemRepository, never()).save(any(PantryItem.class));
+            verify(securityService).getCurrentUserId();
+            verifyNoInteractions(pantryItemRepository);
         }
 
         @Test
-        @DisplayName("Should throw NotFoundException when pantry item not found for patch")
-        void shouldThrowNotFoundExceptionWhenPantryItemNotFoundForPatch() {
+        @DisplayName("should throw NotFoundException when pantry item not found")
+        void whenPantryItemNotFound_throwsNotFoundException() {
             // Given
-            Map<String, Object> patchFields = new HashMap<>();
-            patchFields.put("quantity", 5);
-
-            setupValidAuthentication();
             when(pantryItemRepository.findById(eq(pantryItemId))).thenReturn(Optional.empty());
 
-            // When & Then
-            assertThatThrownBy(() -> pantryItemService.patchPantryItem(
-                    pantryItemId, patchFields, validToken))
+            // When/Then
+            assertThatThrownBy(() -> pantryItemService.updatePantryItem(pantryItemId, updateRequest))
                     .isInstanceOf(NotFoundException.class)
                     .hasMessageContaining("Pantry item not found");
 
-            verify(pantryItemRepository, never()).save(any(PantryItem.class));
+            verify(pantryItemRepository).findById(eq(pantryItemId));
         }
 
         @Test
-        @DisplayName("Should throw InsufficientPermissionException when user not member of household for patch")
-        void shouldThrowInsufficientPermissionExceptionWhenUserNotMemberOfHouseholdForPatch() {
+        @DisplayName("should update location when new location provided and accessible")
+        void whenNewLocationProvided_updatesLocation() {
             // Given
-            Map<String, Object> patchFields = new HashMap<>();
-            patchFields.put("quantity", 5);
+            UUID newLocationId = UUID.randomUUID();
+            Location newLocation = Location.builder()
+                    .id(newLocationId)
+                    .name("Fridge")
+                    .household(testHousehold)
+                    .build();
+            updateRequest.setLocationId(newLocationId);
 
-            setupValidAuthentication();
-            setupNoHouseholdMembership();
             when(pantryItemRepository.findById(eq(pantryItemId))).thenReturn(Optional.of(testPantryItem));
+            when(securityService.canAccessLocationForPantryItem(eq(newLocationId))).thenReturn(true);
+            when(locationRepository.findById(eq(newLocationId))).thenReturn(Optional.of(newLocation));
+            when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(testPantryItem);
 
-            // When & Then
-            assertThatThrownBy(() -> pantryItemService.patchPantryItem(
-                    pantryItemId, patchFields, validToken))
+            // When
+            PantryItemResponse response = pantryItemService.updatePantryItem(pantryItemId, updateRequest);
+
+            // Then
+            assertThat(response).isNotNull();
+            verify(locationRepository).findById(eq(newLocationId));
+            verify(securityService).canAccessLocationForPantryItem(eq(newLocationId));
+        }
+
+        @Test
+        @DisplayName("should throw InsufficientPermissionException when no access to new location")
+        void whenNoAccessToNewLocation_throwsInsufficientPermissionException() {
+            // Given
+            UUID newLocationId = UUID.randomUUID();
+            updateRequest.setLocationId(newLocationId);
+
+            when(pantryItemRepository.findById(eq(pantryItemId))).thenReturn(Optional.of(testPantryItem));
+            when(securityService.canAccessLocationForPantryItem(eq(newLocationId))).thenReturn(false);
+
+            // When/Then
+            assertThatThrownBy(() -> pantryItemService.updatePantryItem(pantryItemId, updateRequest))
                     .isInstanceOf(InsufficientPermissionException.class)
-                    .hasMessageContaining("not a member of this household");
+                    .hasMessageContaining("You do not have access to the target location");
 
-            verify(pantryItemRepository, never()).save(any(PantryItem.class));
+            verify(securityService).canAccessLocationForPantryItem(eq(newLocationId));
+            verify(locationRepository, never()).findById(any());
         }
     }
 
+    // ==================== Patch Pantry Item Tests ====================
+
     @Nested
-    @DisplayName("Batch Operations Tests")
-    class BatchOperationsTests {
+    @DisplayName("patchPantryItem")
+    class PatchPantryItemTests {
 
         @Test
-        @DisplayName("Should create multiple pantry items successfully")
-        void shouldCreateMultiplePantryItemsSuccessfully() {
+        @DisplayName("should patch pantry item quantity successfully")
+        void whenPatchingQuantity_updatesQuantity() {
             // Given
-            CreatePantryItemRequest request1 = CreatePantryItemRequest.builder()
-                    .productId(productId)
-                    .locationId(locationId)
-                    .quantity(2)
-                    .build();
+            Map<String, Object> patchData = new HashMap<>();
+            patchData.put("quantity", 15);
 
-            CreatePantryItemRequest request2 = CreatePantryItemRequest.builder()
-                    .productId(productId)
-                    .locationId(locationId)
-                    .quantity(3)
-                    .expirationDate(LocalDate.now().plusDays(10))
-                    .build();
+            when(pantryItemRepository.findById(eq(pantryItemId))).thenReturn(Optional.of(testPantryItem));
+            when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(testPantryItem);
 
-            List<CreatePantryItemRequest> requests = List.of(request1, request2);
+            // When
+            PantryItemResponse response = pantryItemService.patchPantryItem(pantryItemId, patchData);
 
-            setupValidAuthentication();
-            setupHouseholdMembership();
+            // Then
+            assertThat(response).isNotNull();
+            verify(pantryItemRepository).save(argThat(item -> item.getQuantity() == 15));
+        }
+
+        @Test
+        @DisplayName("should patch pantry item notes successfully")
+        void whenPatchingNotes_updatesNotes() {
+            // Given
+            Map<String, Object> patchData = new HashMap<>();
+            patchData.put("notes", "New notes");
+
+            when(pantryItemRepository.findById(eq(pantryItemId))).thenReturn(Optional.of(testPantryItem));
+            when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(testPantryItem);
+
+            // When
+            PantryItemResponse response = pantryItemService.patchPantryItem(pantryItemId, patchData);
+
+            // Then
+            assertThat(response).isNotNull();
+            verify(pantryItemRepository).save(argThat(item -> "New notes".equals(item.getNotes())));
+        }
+
+        @Test
+        @DisplayName("should throw ValidationException when ID is null")
+        void whenIdIsNull_throwsValidationException() {
+            // When/Then
+            assertThatThrownBy(() -> pantryItemService.patchPantryItem(null, Collections.emptyMap()))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Pantry item ID cannot be null");
+
+            verifyNoInteractions(securityService, pantryItemRepository);
+        }
+
+        @Test
+        @DisplayName("should throw ValidationException when patch data is null")
+        void whenPatchDataIsNull_throwsValidationException() {
+            // When/Then
+            assertThatThrownBy(() -> pantryItemService.patchPantryItem(pantryItemId, null))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Patch data cannot be null or empty");
+
+            verifyNoInteractions(securityService, pantryItemRepository);
+        }
+
+        @Test
+        @DisplayName("should throw ValidationException when patch data is empty")
+        void whenPatchDataIsEmpty_throwsValidationException() {
+            // When/Then
+            assertThatThrownBy(() -> pantryItemService.patchPantryItem(pantryItemId, Collections.emptyMap()))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Patch data cannot be null or empty");
+
+            verifyNoInteractions(securityService, pantryItemRepository);
+        }
+
+        @Test
+        @DisplayName("should throw ValidationException when patching negative quantity")
+        void whenPatchingNegativeQuantity_throwsValidationException() {
+            // Given
+            Map<String, Object> patchData = new HashMap<>();
+            patchData.put("quantity", -5);
+
+            when(pantryItemRepository.findById(eq(pantryItemId))).thenReturn(Optional.of(testPantryItem));
+
+            // When/Then
+            assertThatThrownBy(() -> pantryItemService.patchPantryItem(pantryItemId, patchData))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Quantity must be non-negative");
+        }
+    }
+
+    // ==================== Delete Pantry Item Tests ====================
+
+    @Nested
+    @DisplayName("deletePantryItem")
+    class DeletePantryItemTests {
+
+        @Test
+        @DisplayName("should delete pantry item successfully")
+        void whenValidId_deletesPantryItem() {
+            // Given
+            when(pantryItemRepository.findById(eq(pantryItemId))).thenReturn(Optional.of(testPantryItem));
+            doNothing().when(pantryItemRepository).delete(any(PantryItem.class));
+
+            // When
+            pantryItemService.deletePantryItem(pantryItemId);
+
+            // Then
+            verify(securityService).getCurrentUserId();
+            verify(pantryItemRepository).findById(eq(pantryItemId));
+            verify(pantryItemRepository).delete(eq(testPantryItem));
+        }
+
+        @Test
+        @DisplayName("should throw ValidationException when ID is null")
+        void whenIdIsNull_throwsValidationException() {
+            // When/Then
+            assertThatThrownBy(() -> pantryItemService.deletePantryItem(null))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Pantry item ID cannot be null");
+
+            verifyNoInteractions(securityService, pantryItemRepository);
+        }
+
+        @Test
+        @DisplayName("should throw NotFoundException when pantry item not found")
+        void whenPantryItemNotFound_throwsNotFoundException() {
+            // Given
+            when(pantryItemRepository.findById(eq(pantryItemId))).thenReturn(Optional.empty());
+
+            // When/Then
+            assertThatThrownBy(() -> pantryItemService.deletePantryItem(pantryItemId))
+                    .isInstanceOf(NotFoundException.class)
+                    .hasMessageContaining("Pantry item not found");
+
+            verify(pantryItemRepository).findById(eq(pantryItemId));
+            verify(pantryItemRepository, never()).delete(any());
+        }
+    }
+
+    // ==================== Batch Operations Tests ====================
+
+    @Nested
+    @DisplayName("createMultiplePantryItems")
+    class CreateMultiplePantryItemsTests {
+
+        @Test
+        @DisplayName("should create multiple pantry items successfully")
+        void whenValidRequests_createsMultiplePantryItems() {
+            // Given
+            List<CreatePantryItemRequest> requests = Arrays.asList(createRequest, createRequest);
+            
             when(locationRepository.findById(eq(locationId))).thenReturn(Optional.of(testLocation));
             when(productRepository.findById(eq(productId))).thenReturn(Optional.of(testProduct));
-            when(pantryItemRepository.findByLocationIdAndProductIdAndExpirationDateIsNull(any(), any()))
-                    .thenReturn(Optional.empty());
             when(pantryItemRepository.findByLocationIdAndProductIdAndExpirationDate(any(), any(), any()))
                     .thenReturn(Optional.empty());
             when(pantryItemRepository.save(any(PantryItem.class))).thenReturn(testPantryItem);
 
             // When
-            List<PantryItemResponse> responses = pantryItemService.createMultiplePantryItems(
-                    requests, validToken);
+            List<PantryItemResponse> responses = pantryItemService.createMultiplePantryItems(requests);
 
             // Then
             assertThat(responses).hasSize(2);
@@ -1823,114 +870,95 @@ class PantryItemServiceTest {
         }
 
         @Test
-        @DisplayName("Should throw ValidationException when batch requests list is null")
-        void shouldThrowValidationExceptionWhenBatchRequestsIsNull() {
-            assertThatThrownBy(() -> pantryItemService.createMultiplePantryItems(null, validToken))
+        @DisplayName("should throw ValidationException when requests list is null")
+        void whenRequestsIsNull_throwsValidationException() {
+            // When/Then
+            assertThatThrownBy(() -> pantryItemService.createMultiplePantryItems(null))
                     .isInstanceOf(ValidationException.class)
-                    .hasMessageContaining("Requests list cannot be null");
+                    .hasMessageContaining("Pantry item requests list cannot be null or empty");
 
-            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
-            verify(pantryItemRepository, never()).save(any(PantryItem.class));
+            verifyNoInteractions(securityService, pantryItemRepository);
         }
 
         @Test
-        @DisplayName("Should throw ValidationException when batch requests list is empty")
-        void shouldThrowValidationExceptionWhenBatchRequestsIsEmpty() {
-            assertThatThrownBy(() -> pantryItemService.createMultiplePantryItems(
-                    Collections.emptyList(), validToken))
+        @DisplayName("should throw ValidationException when requests list is empty")
+        void whenRequestsIsEmpty_throwsValidationException() {
+            // When/Then
+            assertThatThrownBy(() -> pantryItemService.createMultiplePantryItems(Collections.emptyList()))
                     .isInstanceOf(ValidationException.class)
-                    .hasMessageContaining("Requests list cannot be empty");
+                    .hasMessageContaining("Pantry item requests list cannot be null or empty");
 
-            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
-            verify(pantryItemRepository, never()).save(any(PantryItem.class));
+            verifyNoInteractions(securityService, pantryItemRepository);
         }
+    }
+
+    @Nested
+    @DisplayName("deleteMultiplePantryItems")
+    class DeleteMultiplePantryItemsTests {
 
         @Test
-        @DisplayName("Should delete multiple pantry items successfully")
-        void shouldDeleteMultiplePantryItemsSuccessfully() {
+        @DisplayName("should delete multiple pantry items successfully")
+        void whenValidIds_deletesMultiplePantryItems() {
             // Given
-            UUID itemId1 = UUID.randomUUID();
-            UUID itemId2 = UUID.randomUUID();
-            List<UUID> itemIds = List.of(itemId1, itemId2);
+            UUID id1 = UUID.randomUUID();
+            UUID id2 = UUID.randomUUID();
+            List<UUID> itemIds = Arrays.asList(id1, id2);
 
-            PantryItem item1 = PantryItem.builder()
-                    .id(itemId1)
-                    .product(testProduct)
-                    .location(testLocation)
-                    .quantity(1)
-                    .build();
-
-            PantryItem item2 = PantryItem.builder()
-                    .id(itemId2)
-                    .product(testProduct)
-                    .location(testLocation)
-                    .quantity(2)
-                    .build();
-
-            setupValidAuthentication();
-            setupHouseholdMembership();
-            when(pantryItemRepository.findById(eq(itemId1))).thenReturn(Optional.of(item1));
-            when(pantryItemRepository.findById(eq(itemId2))).thenReturn(Optional.of(item2));
+            when(securityService.canAccessPantryItem(eq(id1))).thenReturn(true);
+            when(securityService.canAccessPantryItem(eq(id2))).thenReturn(true);
+            when(pantryItemRepository.findById(eq(id1))).thenReturn(Optional.of(testPantryItem));
+            when(pantryItemRepository.findById(eq(id2))).thenReturn(Optional.of(testPantryItem));
+            doNothing().when(pantryItemRepository).delete(any(PantryItem.class));
 
             // When
-            int deletedCount = pantryItemService.deleteMultiplePantryItems(itemIds, validToken);
+            int deletedCount = pantryItemService.deleteMultiplePantryItems(itemIds);
 
             // Then
             assertThat(deletedCount).isEqualTo(2);
-            verify(pantryItemRepository).delete(eq(item1));
-            verify(pantryItemRepository).delete(eq(item2));
+            verify(pantryItemRepository, times(2)).delete(any(PantryItem.class));
         }
 
         @Test
-        @DisplayName("Should return partial success count when some items not found in batch delete")
-        void shouldReturnPartialSuccessCountWhenSomeItemsNotFoundInBatchDelete() {
+        @DisplayName("should skip items without access")
+        void whenNoAccessToSomeItems_skipsThoseItems() {
             // Given
-            UUID itemId1 = UUID.randomUUID();
-            UUID itemId2 = UUID.randomUUID();
-            List<UUID> itemIds = List.of(itemId1, itemId2);
+            UUID id1 = UUID.randomUUID();
+            UUID id2 = UUID.randomUUID();
+            List<UUID> itemIds = Arrays.asList(id1, id2);
 
-            PantryItem item1 = PantryItem.builder()
-                    .id(itemId1)
-                    .product(testProduct)
-                    .location(testLocation)
-                    .quantity(1)
-                    .build();
-
-            setupValidAuthentication();
-            setupHouseholdMembership();
-            when(pantryItemRepository.findById(eq(itemId1))).thenReturn(Optional.of(item1));
-            when(pantryItemRepository.findById(eq(itemId2))).thenReturn(Optional.empty());
+            when(securityService.canAccessPantryItem(eq(id1))).thenReturn(true);
+            when(securityService.canAccessPantryItem(eq(id2))).thenReturn(false);
+            when(pantryItemRepository.findById(eq(id1))).thenReturn(Optional.of(testPantryItem));
+            doNothing().when(pantryItemRepository).delete(any(PantryItem.class));
 
             // When
-            int deletedCount = pantryItemService.deleteMultiplePantryItems(itemIds, validToken);
+            int deletedCount = pantryItemService.deleteMultiplePantryItems(itemIds);
 
             // Then
             assertThat(deletedCount).isEqualTo(1);
-            verify(pantryItemRepository).delete(eq(item1));
             verify(pantryItemRepository, times(1)).delete(any(PantryItem.class));
         }
 
         @Test
-        @DisplayName("Should throw ValidationException when item IDs list is null for batch delete")
-        void shouldThrowValidationExceptionWhenItemIdsIsNullForBatchDelete() {
-            assertThatThrownBy(() -> pantryItemService.deleteMultiplePantryItems(null, validToken))
+        @DisplayName("should throw ValidationException when item IDs list is null")
+        void whenItemIdsIsNull_throwsValidationException() {
+            // When/Then
+            assertThatThrownBy(() -> pantryItemService.deleteMultiplePantryItems(null))
                     .isInstanceOf(ValidationException.class)
-                    .hasMessageContaining("Item IDs list cannot be null");
+                    .hasMessageContaining("Item IDs list cannot be null or empty");
 
-            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
-            verify(pantryItemRepository, never()).delete(any(PantryItem.class));
+            verifyNoInteractions(securityService, pantryItemRepository);
         }
 
         @Test
-        @DisplayName("Should throw ValidationException when item IDs list is empty for batch delete")
-        void shouldThrowValidationExceptionWhenItemIdsIsEmptyForBatchDelete() {
-            assertThatThrownBy(() -> pantryItemService.deleteMultiplePantryItems(
-                    Collections.emptyList(), validToken))
+        @DisplayName("should throw ValidationException when item IDs list is empty")
+        void whenItemIdsIsEmpty_throwsValidationException() {
+            // When/Then
+            assertThatThrownBy(() -> pantryItemService.deleteMultiplePantryItems(Collections.emptyList()))
                     .isInstanceOf(ValidationException.class)
-                    .hasMessageContaining("Item IDs list cannot be empty");
+                    .hasMessageContaining("Item IDs list cannot be null or empty");
 
-            verify(userService, never()).getCurrentUser(any(JwtAuthenticationToken.class));
-            verify(pantryItemRepository, never()).delete(any(PantryItem.class));
+            verifyNoInteractions(securityService, pantryItemRepository);
         }
     }
 }
