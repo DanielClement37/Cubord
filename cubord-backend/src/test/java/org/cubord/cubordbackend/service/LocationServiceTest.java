@@ -1,17 +1,21 @@
+
 package org.cubord.cubordbackend.service;
 
-import org.cubord.cubordbackend.domain.*;
+import org.cubord.cubordbackend.domain.Household;
+import org.cubord.cubordbackend.domain.HouseholdRole;
+import org.cubord.cubordbackend.domain.Location;
+import org.cubord.cubordbackend.domain.User;
+import org.cubord.cubordbackend.domain.UserRole;
 import org.cubord.cubordbackend.dto.location.LocationRequest;
 import org.cubord.cubordbackend.dto.location.LocationResponse;
 import org.cubord.cubordbackend.dto.location.LocationUpdateRequest;
 import org.cubord.cubordbackend.exception.ConflictException;
 import org.cubord.cubordbackend.exception.DataIntegrityException;
-import org.cubord.cubordbackend.exception.InsufficientPermissionException;
 import org.cubord.cubordbackend.exception.NotFoundException;
 import org.cubord.cubordbackend.exception.ValidationException;
-import org.cubord.cubordbackend.repository.HouseholdMemberRepository;
 import org.cubord.cubordbackend.repository.HouseholdRepository;
 import org.cubord.cubordbackend.repository.LocationRepository;
+import org.cubord.cubordbackend.security.SecurityService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -20,22 +24,36 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.Sort;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+/**
+ * Comprehensive test suite for LocationService following the modernized security architecture.
+ *
+ * <p>Test Structure:</p>
+ * <ul>
+ *   <li>No token validation tests (handled by Spring Security filters)</li>
+ *   <li>Authorization tested via SecurityService mocking</li>
+ *   <li>Focus on business logic and data validation</li>
+ *   <li>@PreAuthorize enforcement verified in integration tests</li>
+ * </ul>
+ *
+ * <h2>Coverage Areas</h2>
+ * <ul>
+ *   <li>Create operations with household access validation</li>
+ *   <li>Query operations with authorization checks</li>
+ *   <li>Update operations with conflict detection</li>
+ *   <li>Delete operations with constraint handling</li>
+ *   <li>Validation and error handling</li>
+ * </ul>
+ */
 @ExtendWith(MockitoExtension.class)
+@DisplayName("LocationService Tests")
 class LocationServiceTest {
 
     @Mock
@@ -45,633 +63,475 @@ class LocationServiceTest {
     private HouseholdRepository householdRepository;
 
     @Mock
-    private HouseholdMemberRepository householdMemberRepository;
-
-    @Mock
-    private UserService userService;
-
-    @Mock
-    private JwtAuthenticationToken token;
+    private SecurityService securityService;
 
     @InjectMocks
     private LocationService locationService;
 
+    // Test data
+    private UUID testUserId;
+    private UUID adminUserId;
+    private UUID householdId;
+    private UUID locationId;
     private User testUser;
+    private User adminUser;
     private Household testHousehold;
-    private HouseholdMember testMember;
     private Location testLocation;
     private LocationRequest locationRequest;
     private LocationUpdateRequest locationUpdateRequest;
-    private UUID userId;
-    private UUID householdId;
-    private UUID locationId;
+    private LocalDateTime fixedTime;
 
     @BeforeEach
     void setUp() {
-        reset(locationRepository, householdRepository, householdMemberRepository, userService, token);
-
-        userId = UUID.randomUUID();
+        testUserId = UUID.randomUUID();
+        adminUserId = UUID.randomUUID();
         householdId = UUID.randomUUID();
         locationId = UUID.randomUUID();
+        fixedTime = LocalDateTime.of(2024, 1, 1, 12, 0);
 
-        setupTestData();
-    }
+        testUser = User.builder()
+                .id(testUserId)
+                .username("testuser")
+                .email("test@example.com")
+                .displayName("Test User")
+                .role(UserRole.USER)
+                .createdAt(fixedTime)
+                .updatedAt(fixedTime)
+                .build();
 
-    private void setupTestData() {
-        testUser = new User();
-        testUser.setId(userId);
-        testUser.setUsername("testuser");
-        testUser.setEmail("test@example.com");
-        testUser.setDisplayName("Test User");
+        adminUser = User.builder()
+                .id(adminUserId)
+                .username("adminuser")
+                .email("admin@example.com")
+                .displayName("Admin User")
+                .role(UserRole.ADMIN)
+                .createdAt(fixedTime)
+                .updatedAt(fixedTime)
+                .build();
 
-        testHousehold = new Household();
-        testHousehold.setId(householdId);
-        testHousehold.setName("Test Household");
+        testHousehold = Household.builder()
+                .id(householdId)
+                .name("Test Household")
+                .createdAt(fixedTime)
+                .updatedAt(fixedTime)
+                .build();
 
-        testMember = new HouseholdMember();
-        testMember.setId(UUID.randomUUID());
-        testMember.setUser(testUser);
-        testMember.setHousehold(testHousehold);
-        testMember.setRole(HouseholdRole.MEMBER);
-
-        testLocation = new Location();
-        testLocation.setId(locationId);
-        testLocation.setName("Kitchen");
-        testLocation.setDescription("Main kitchen area");
-        testLocation.setHousehold(testHousehold);
-        testLocation.setCreatedAt(LocalDateTime.now());
-        testLocation.setUpdatedAt(LocalDateTime.now());
+        testLocation = Location.builder()
+                .id(locationId)
+                .household(testHousehold)
+                .name("Kitchen")
+                .description("Main kitchen pantry")
+                .createdAt(fixedTime)
+                .updatedAt(fixedTime)
+                .build();
 
         locationRequest = LocationRequest.builder()
-                .name("New Location")
-                .description("A new storage location")
                 .householdId(householdId)
+                .name("Kitchen")
+                .description("Main kitchen pantry")
                 .build();
 
         locationUpdateRequest = LocationUpdateRequest.builder()
-                .name("Updated Location")
+                .name("Updated Kitchen")
                 .description("Updated description")
                 .build();
     }
 
+    // ==================== Test Utilities ====================
+
+    private void mockAuthenticatedUser(UUID userId) {
+        when(securityService.getCurrentUserId()).thenReturn(userId);
+    }
+
+    private void mockHouseholdAdmin() {
+        mockAuthenticatedUser(adminUserId);
+        when(securityService.canModifyHousehold(householdId)).thenReturn(true);
+    }
+
+    private void mockHouseholdMember() {
+        mockAuthenticatedUser(testUserId);
+        when(securityService.canAccessHousehold(householdId)).thenReturn(true);
+        when(securityService.canModifyHousehold(householdId)).thenReturn(false);
+    }
+
+    // ==================== Create Operation Tests ====================
+
     @Nested
-    @DisplayName("Create Location Tests")
+    @DisplayName("createLocation")
     class CreateLocationTests {
 
         @Test
-        @DisplayName("should create location successfully when valid data provided")
-        void shouldCreateLocationWhenValidDataProvided() {
+        @DisplayName("should create location successfully when user is household admin")
+        void shouldCreateLocationSuccessfully() {
             // Given
-            when(locationRepository.existsByHouseholdIdAndName(householdId, locationRequest.getName()))
-                    .thenReturn(false);
+            
             when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
-            when(locationRepository.save(any(Location.class))).thenReturn(testLocation);
+            when(locationRepository.existsByHouseholdIdAndName(householdId, "Kitchen")).thenReturn(false);
+            when(locationRepository.save(any(Location.class))).thenAnswer(inv -> {
+                Location loc = inv.getArgument(0);
+                loc.setId(locationId);
+                loc.setCreatedAt(fixedTime);
+                loc.setUpdatedAt(fixedTime);
+                return loc;
+            });
 
             // When
-            LocationResponse result = locationService.createLocation(locationRequest, token);
+            LocationResponse response = locationService.createLocation(locationRequest);
 
             // Then
-            assertThat(result).isNotNull();
-            assertThat(result.getName()).isEqualTo(testLocation.getName());
-            verify(locationRepository).save(any(Location.class));
+            assertThat(response).isNotNull();
+            assertThat(response.getId()).isEqualTo(locationId);
+            assertThat(response.getHouseholdId()).isEqualTo(householdId);
+            assertThat(response.getName()).isEqualTo("Kitchen");
+            assertThat(response.getDescription()).isEqualTo("Main kitchen pantry");
+
+            verify(securityService).getCurrentUserId();
+            verify(householdRepository).findById(householdId);
+            verify(locationRepository).existsByHouseholdIdAndName(householdId, "Kitchen");
+            verify(locationRepository).save(argThat(location ->
+                    location.getHousehold().getId().equals(householdId) &&
+                            location.getName().equals("Kitchen") &&
+                            location.getDescription().equals("Main kitchen pantry")
+            ));
         }
 
         @Test
-        @DisplayName("should throw ConflictException when location name already exists")
-        void shouldThrowConflictExceptionWhenLocationNameExists() {
+        @DisplayName("should trim whitespace from location name and description")
+        void shouldTrimWhitespaceFromInputs() {
             // Given
-            when(locationRepository.existsByHouseholdIdAndName(householdId, locationRequest.getName()))
-                    .thenReturn(true);
+            LocationRequest requestWithWhitespace = LocationRequest.builder()
+                    .householdId(householdId)
+                    .name("  Kitchen  ")
+                    .description("  Main kitchen pantry  ")
+                    .build();
 
-            // When & Then
-            assertThatThrownBy(() -> locationService.createLocation(locationRequest, token))
-                    .isInstanceOf(ConflictException.class)
-                    .hasMessageContaining("Location with name '" + locationRequest.getName() + "' already exists");
+            
+            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
+            when(locationRepository.existsByHouseholdIdAndName(householdId, "Kitchen")).thenReturn(false);
+            when(locationRepository.save(any(Location.class))).thenAnswer(inv -> {
+                Location loc = inv.getArgument(0);
+                loc.setId(locationId);
+                return loc;
+            });
 
-            verify(locationRepository, never()).save(any(Location.class));
+            // When
+            LocationResponse response = locationService.createLocation(requestWithWhitespace);
+
+            // Then
+            assertThat(response.getName()).isEqualTo("Kitchen");
+            assertThat(response.getDescription()).isEqualTo("Main kitchen pantry");
+
+            verify(locationRepository).save(argThat(location ->
+                    location.getName().equals("Kitchen") &&
+                            location.getDescription().equals("Main kitchen pantry")
+            ));
         }
 
         @Test
-        @DisplayName("should throw NotFoundException when household not found")
-        void shouldThrowNotFoundExceptionWhenHouseholdNotFound() {
+        @DisplayName("should create location with null description")
+        void shouldCreateLocationWithNullDescription() {
             // Given
-            when(locationRepository.existsByHouseholdIdAndName(householdId, locationRequest.getName()))
-                    .thenReturn(false);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.empty());
+            LocationRequest requestWithoutDescription = LocationRequest.builder()
+                    .householdId(householdId)
+                    .name("Kitchen")
+                    .build();
 
-            // When & Then
-            assertThatThrownBy(() -> locationService.createLocation(locationRequest, token))
-                    .isInstanceOf(NotFoundException.class)
-                    .hasMessageContaining("Household");
+            
+            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
+            when(locationRepository.existsByHouseholdIdAndName(householdId, "Kitchen")).thenReturn(false);
+            when(locationRepository.save(any(Location.class))).thenAnswer(inv -> {
+                Location loc = inv.getArgument(0);
+                loc.setId(locationId);
+                return loc;
+            });
 
-            verify(locationRepository, never()).save(any(Location.class));
+            // When
+            LocationResponse response = locationService.createLocation(requestWithoutDescription);
+
+            // Then
+            assertThat(response.getDescription()).isNull();
+
+            verify(locationRepository).save(argThat(location ->
+                    location.getDescription() == null
+            ));
         }
 
         @Test
         @DisplayName("should throw ValidationException when request is null")
         void shouldThrowValidationExceptionWhenRequestIsNull() {
-            // When & Then
-            assertThatThrownBy(() -> locationService.createLocation(null, token))
+            // When/Then
+            assertThatThrownBy(() -> locationService.createLocation(null))
                     .isInstanceOf(ValidationException.class)
-                    .hasMessage("Location request cannot be null");
+                    .hasMessageContaining("Location request cannot be null");
 
-            verify(locationRepository, never()).save(any(Location.class));
-        }
-
-        @Test
-        @DisplayName("should throw ValidationException when token is null")
-        void shouldThrowValidationExceptionWhenTokenIsNull() {
-            // When & Then
-            assertThatThrownBy(() -> locationService.createLocation(locationRequest, null))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessage("Authentication token cannot be null");
-
-            verify(locationRepository, never()).save(any(Location.class));
-        }
-
-        @Test
-        @DisplayName("should throw DataIntegrityException when save operation fails")
-        void shouldThrowDataIntegrityExceptionWhenSaveOperationFails() {
-            // Given
-            when(locationRepository.existsByHouseholdIdAndName(householdId, locationRequest.getName()))
-                    .thenReturn(false);
-            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
-            when(locationRepository.save(any(Location.class)))
-                    .thenThrow(new RuntimeException("Database error"));
-
-            // When & Then
-            assertThatThrownBy(() -> locationService.createLocation(locationRequest, token))
-                    .isInstanceOf(DataIntegrityException.class)
-                    .hasMessageContaining("Failed to save location");
-
-            verify(locationRepository).save(any(Location.class));
-        }
-    }
-
-    @Nested
-    @DisplayName("Get Location Tests")
-    class GetLocationTests {
-
-        @Test
-        @DisplayName("should get location by ID when user has access")
-        void shouldGetLocationByIdWhenUserHasAccess() {
-            // Given
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            when(locationRepository.findById(locationId)).thenReturn(Optional.of(testLocation));
-            when(householdRepository.existsById(householdId)).thenReturn(true);
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                    .thenReturn(Optional.of(testMember));
-
-            // When
-            LocationResponse result = locationService.getLocationById(locationId, token);
-
-            // Then
-            assertThat(result).isNotNull();
-            assertThat(result.getId()).isEqualTo(locationId);
-            verify(locationRepository).findById(locationId);
-        }
-
-        @Test
-        @DisplayName("should throw NotFoundException when location not found")
-        void shouldThrowNotFoundExceptionWhenLocationNotFound() {
-            // Given
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            when(locationRepository.findById(locationId)).thenReturn(Optional.empty());
-
-            // When & Then
-            assertThatThrownBy(() -> locationService.getLocationById(locationId, token))
-                    .isInstanceOf(NotFoundException.class)
-                    .hasMessageContaining("Location");
-
-            verify(userService).getCurrentUser(token);
-            verify(locationRepository).findById(locationId);
-        }
-
-        @Test
-        @DisplayName("should throw ValidationException when location ID is null")
-        void shouldThrowValidationExceptionWhenLocationIdIsNull() {
-            // When & Then
-            assertThatThrownBy(() -> locationService.getLocationById(null, token))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessage("Location ID cannot be null");
-
-            verify(locationRepository, never()).findById(any());
-        }
-
-        @Test
-        @DisplayName("should throw ValidationException when token is null")
-        void shouldThrowValidationExceptionWhenTokenIsNull() {
-            // When & Then
-            assertThatThrownBy(() -> locationService.getLocationById(locationId, null))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessage("Authentication token cannot be null");
-
-            verify(locationRepository, never()).findById(any());
-        }
-
-        @Test
-        @DisplayName("should get locations by household when user has access")
-        void shouldGetLocationsByHouseholdWhenUserHasAccess() {
-            // Given
-            List<Location> locations = List.of(testLocation);
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            when(householdRepository.existsById(householdId)).thenReturn(true);
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                    .thenReturn(Optional.of(testMember));
-            when(locationRepository.findByHouseholdId(householdId, Sort.by("name")))
-                    .thenReturn(locations);
-
-            // When
-            List<LocationResponse> result = locationService.getLocationsByHousehold(householdId, token);
-
-            // Then
-            assertThat(result).hasSize(1);
-            assertThat(result.get(0).getId()).isEqualTo(locationId);
-            verify(locationRepository).findByHouseholdId(householdId, Sort.by("name"));
+            verify(securityService, never()).getCurrentUserId();
+            verify(locationRepository, never()).save(any());
         }
 
         @Test
         @DisplayName("should throw ValidationException when household ID is null")
         void shouldThrowValidationExceptionWhenHouseholdIdIsNull() {
-            // When & Then
-            assertThatThrownBy(() -> locationService.getLocationsByHousehold(null, token))
+            // Given
+            LocationRequest invalidRequest = LocationRequest.builder()
+                    .name("Kitchen")
+                    .build();
+
+            // When/Then
+            assertThatThrownBy(() -> locationService.createLocation(invalidRequest))
                     .isInstanceOf(ValidationException.class)
-                    .hasMessage("Household ID cannot be null");
+                    .hasMessageContaining("Household ID cannot be null");
 
-            verify(locationRepository, never()).findByHouseholdId(any(), any());
-        }
-    }
-
-    @Nested
-    @DisplayName("Update Location Tests")
-    class UpdateLocationTests {
-
-        @Test
-        @DisplayName("should update location when valid data provided")
-        void shouldUpdateLocationWhenValidDataProvided() {
-            // Given
-            when(locationRepository.findById(locationId)).thenReturn(Optional.of(testLocation));
-            when(locationRepository.existsByHouseholdIdAndName(householdId, locationUpdateRequest.getName()))
-                    .thenReturn(false);
-            when(locationRepository.save(any(Location.class))).thenReturn(testLocation);
-
-            // When
-            LocationResponse result = locationService.updateLocation(locationId, locationUpdateRequest, token);
-
-            // Then
-            assertThat(result).isNotNull();
-            verify(locationRepository).save(any(Location.class));
+            verify(locationRepository, never()).save(any());
         }
 
         @Test
-        @DisplayName("should throw NotFoundException when location not found")
-        void shouldThrowNotFoundExceptionWhenLocationNotFound() {
+        @DisplayName("should throw ValidationException when name is null")
+        void shouldThrowValidationExceptionWhenNameIsNull() {
             // Given
-            when(locationRepository.findById(locationId)).thenReturn(Optional.empty());
+            LocationRequest invalidRequest = LocationRequest.builder()
+                    .householdId(householdId)
+                    .build();
 
-            // When & Then
-            assertThatThrownBy(() -> locationService.updateLocation(locationId, locationUpdateRequest, token))
+            // When/Then
+            assertThatThrownBy(() -> locationService.createLocation(invalidRequest))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Location name cannot be null or empty");
+
+            verify(locationRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("should throw ValidationException when name is empty")
+        void shouldThrowValidationExceptionWhenNameIsEmpty() {
+            // Given
+            LocationRequest invalidRequest = LocationRequest.builder()
+                    .householdId(householdId)
+                    .name("   ")
+                    .build();
+
+            // When/Then
+            assertThatThrownBy(() -> locationService.createLocation(invalidRequest))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Location name cannot be null or empty");
+
+            verify(locationRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("should throw NotFoundException when household doesn't exist")
+        void shouldThrowNotFoundExceptionWhenHouseholdDoesntExist() {
+            // Given
+            
+            when(householdRepository.findById(householdId)).thenReturn(Optional.empty());
+
+            // When/Then
+            assertThatThrownBy(() -> locationService.createLocation(locationRequest))
                     .isInstanceOf(NotFoundException.class)
-                    .hasMessageContaining("Location");
+                    .hasMessageContaining("Household not found");
 
-            verify(locationRepository).findById(locationId);
-            verify(locationRepository, never()).save(any(Location.class));
+            verify(householdRepository).findById(householdId);
+            verify(locationRepository, never()).save(any());
         }
 
         @Test
-        @DisplayName("should throw ConflictException when new name already exists")
-        void shouldThrowConflictExceptionWhenNewNameExists() {
+        @DisplayName("should throw ConflictException when location name already exists in household")
+        void shouldThrowConflictExceptionWhenNameExists() {
             // Given
-            when(locationRepository.findById(locationId)).thenReturn(Optional.of(testLocation));
-            when(locationRepository.existsByHouseholdIdAndName(householdId, locationUpdateRequest.getName()))
-                    .thenReturn(true);
+            
+            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
+            when(locationRepository.existsByHouseholdIdAndName(householdId, "Kitchen")).thenReturn(true);
 
-            // When & Then
-            assertThatThrownBy(() -> locationService.updateLocation(locationId, locationUpdateRequest, token))
+            // When/Then
+            assertThatThrownBy(() -> locationService.createLocation(locationRequest))
                     .isInstanceOf(ConflictException.class)
-                    .hasMessageContaining("Location with name '" + locationUpdateRequest.getName() + "' already exists");
+                    .hasMessageContaining("Location with name 'Kitchen' already exists in this household");
 
-            verify(locationRepository, never()).save(any(Location.class));
+            verify(locationRepository).existsByHouseholdIdAndName(householdId, "Kitchen");
+            verify(locationRepository, never()).save(any());
         }
 
         @Test
-        @DisplayName("should throw ValidationException when location ID is null")
-        void shouldThrowValidationExceptionWhenLocationIdIsNull() {
-            // When & Then
-            assertThatThrownBy(() -> locationService.updateLocation(null, locationUpdateRequest, token))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessage("Location ID cannot be null");
-
-            verify(locationRepository, never()).findById(any());
-            verify(locationRepository, never()).save(any(Location.class));
-        }
-
-        @Test
-        @DisplayName("should throw ValidationException when request is null")
-        void shouldThrowValidationExceptionWhenRequestIsNull() {
-            // When & Then
-            assertThatThrownBy(() -> locationService.updateLocation(locationId, null, token))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessage("Update request cannot be null");
-
-            verify(locationRepository, never()).findById(any());
-            verify(locationRepository, never()).save(any(Location.class));
-        }
-
-        @Test
-        @DisplayName("should throw DataIntegrityException when save operation fails")
-        void shouldThrowDataIntegrityExceptionWhenSaveOperationFails() {
+        @DisplayName("should throw DataIntegrityException when save fails")
+        void shouldThrowDataIntegrityExceptionWhenSaveFails() {
             // Given
-            when(locationRepository.findById(locationId)).thenReturn(Optional.of(testLocation));
-            when(locationRepository.existsByHouseholdIdAndName(householdId, locationUpdateRequest.getName()))
-                    .thenReturn(false);
+            
+            when(householdRepository.findById(householdId)).thenReturn(Optional.of(testHousehold));
+            when(locationRepository.existsByHouseholdIdAndName(householdId, "Kitchen")).thenReturn(false);
             when(locationRepository.save(any(Location.class)))
                     .thenThrow(new RuntimeException("Database error"));
 
-            // When & Then
-            assertThatThrownBy(() -> locationService.updateLocation(locationId, locationUpdateRequest, token))
+            // When/Then
+            assertThatThrownBy(() -> locationService.createLocation(locationRequest))
                     .isInstanceOf(DataIntegrityException.class)
-                    .hasMessageContaining("Failed to update location");
+                    .hasMessageContaining("Failed to create location");
 
             verify(locationRepository).save(any(Location.class));
         }
     }
 
+    // ==================== Query Operation Tests ====================
+
     @Nested
-    @DisplayName("Patch Location Tests")
-    class PatchLocationTests {
+    @DisplayName("getLocationById")
+    class GetLocationByIdTests {
 
         @Test
-        @DisplayName("should patch location when valid data provided")
-        void shouldPatchLocationWhenValidDataProvided() {
+        @DisplayName("should retrieve location successfully when user has access")
+        void shouldGetLocationByIdSuccessfully() {
             // Given
-            Map<String, Object> patchData = Map.of("name", "Updated Kitchen");
+            mockAuthenticatedUser(testUserId);
             when(locationRepository.findById(locationId)).thenReturn(Optional.of(testLocation));
-            when(locationRepository.existsByHouseholdIdAndName(householdId, "Updated Kitchen"))
-                    .thenReturn(false);
-            when(locationRepository.save(any(Location.class))).thenReturn(testLocation);
 
             // When
-            LocationResponse result = locationService.patchLocation(locationId, patchData, token);
+            LocationResponse response = locationService.getLocationById(locationId);
 
             // Then
-            assertThat(result).isNotNull();
-            verify(locationRepository).save(any(Location.class));
-        }
+            assertThat(response).isNotNull();
+            assertThat(response.getId()).isEqualTo(locationId);
+            assertThat(response.getName()).isEqualTo("Kitchen");
+            assertThat(response.getDescription()).isEqualTo("Main kitchen pantry");
+            assertThat(response.getHouseholdId()).isEqualTo(householdId);
 
-        @Test
-        @DisplayName("should throw NotFoundException when location not found")
-        void shouldThrowNotFoundExceptionWhenLocationNotFound() {
-            // Given
-            Map<String, Object> patchData = Map.of("name", "Updated Kitchen");
-            when(locationRepository.findById(locationId)).thenReturn(Optional.empty());
-
-            // When & Then
-            assertThatThrownBy(() -> locationService.patchLocation(locationId, patchData, token))
-                    .isInstanceOf(NotFoundException.class)
-                    .hasMessageContaining("Location");
-
+            verify(securityService).getCurrentUserId();
             verify(locationRepository).findById(locationId);
-            verify(locationRepository, never()).save(any(Location.class));
         }
 
         @Test
         @DisplayName("should throw ValidationException when location ID is null")
         void shouldThrowValidationExceptionWhenLocationIdIsNull() {
-            // Given
-            Map<String, Object> patchData = Map.of("name", "Updated Kitchen");
-
-            // When & Then
-            assertThatThrownBy(() -> locationService.patchLocation(null, patchData, token))
+            // When/Then
+            assertThatThrownBy(() -> locationService.getLocationById(null))
                     .isInstanceOf(ValidationException.class)
-                    .hasMessage("Location ID cannot be null");
+                    .hasMessageContaining("Location ID cannot be null");
 
             verify(locationRepository, never()).findById(any());
-            verify(locationRepository, never()).save(any(Location.class));
         }
 
         @Test
-        @DisplayName("should throw ValidationException when patch data is null")
-        void shouldThrowValidationExceptionWhenPatchDataIsNull() {
-            // When & Then
-            assertThatThrownBy(() -> locationService.patchLocation(locationId, null, token))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessage("Patch data cannot be null");
-
-            verify(locationRepository, never()).findById(any());
-            verify(locationRepository, never()).save(any(Location.class));
-        }
-
-        @Test
-        @DisplayName("should throw ValidationException when patch data is empty")
-        void shouldThrowValidationExceptionWhenPatchDataIsEmpty() {
+        @DisplayName("should throw NotFoundException when location doesn't exist")
+        void shouldThrowNotFoundExceptionWhenLocationDoesntExist() {
             // Given
-            Map<String, Object> emptyPatchData = Map.of();
-
-            // When & Then
-            assertThatThrownBy(() -> locationService.patchLocation(locationId, emptyPatchData, token))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessage("Patch data cannot be empty");
-
-            verify(locationRepository, never()).findById(any());
-            verify(locationRepository, never()).save(any(Location.class));
-        }
-
-        @Test
-        @DisplayName("should ignore invalid fields in patch data")
-        void shouldIgnoreInvalidFieldsInPatchData() {
-            // Given
-            Map<String, Object> patchData = Map.of(
-                    "description", "Valid Description",
-                    "invalidField", "value"
-            );
-            when(locationRepository.findById(locationId)).thenReturn(Optional.of(testLocation));
-            when(locationRepository.save(any(Location.class))).thenReturn(testLocation);
-
-            // When
-            LocationResponse result = locationService.patchLocation(locationId, patchData, token);
-
-            // Then
-            assertThat(result).isNotNull();
-            verify(locationRepository).save(any(Location.class));
-        }
-
-        @Test
-        @DisplayName("should throw ValidationException when name is not a string")
-        void shouldThrowValidationExceptionWhenNameIsNotString() {
-            // Given
-            Map<String, Object> patchData = Map.of("name", 123);
-            when(locationRepository.findById(locationId)).thenReturn(Optional.of(testLocation));
-
-            // When & Then
-            assertThatThrownBy(() -> locationService.patchLocation(locationId, patchData, token))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessage("Name must be a string");
-
-            verify(locationRepository, never()).save(any(Location.class));
-        }
-
-        @Test
-        @DisplayName("should throw ValidationException when description is not a string")
-        void shouldThrowValidationExceptionWhenDescriptionIsNotString() {
-            // Given
-            Map<String, Object> patchData = Map.of("description", 123);
-            when(locationRepository.findById(locationId)).thenReturn(Optional.of(testLocation));
-
-            // When & Then
-            assertThatThrownBy(() -> locationService.patchLocation(locationId, patchData, token))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessage("Description must be a string");
-
-            verify(locationRepository, never()).save(any(Location.class));
-        }
-
-        @Test
-        @DisplayName("should throw ConflictException when new name already exists")
-        void shouldThrowConflictExceptionWhenNewNameExists() {
-            // Given
-            Map<String, Object> patchData = Map.of("name", "Existing Location");
-            when(locationRepository.findById(locationId)).thenReturn(Optional.of(testLocation));
-            when(locationRepository.existsByHouseholdIdAndName(householdId, "Existing Location"))
-                    .thenReturn(true);
-
-            // When & Then
-            assertThatThrownBy(() -> locationService.patchLocation(locationId, patchData, token))
-                    .isInstanceOf(ConflictException.class)
-                    .hasMessageContaining("Location with name 'Existing Location' already exists");
-
-            verify(locationRepository, never()).save(any(Location.class));
-        }
-
-        @Test
-        @DisplayName("should throw DataIntegrityException when save operation fails")
-        void shouldThrowDataIntegrityExceptionWhenSaveOperationFails() {
-            // Given
-            Map<String, Object> patchData = Map.of("name", "Updated Kitchen");
-            when(locationRepository.findById(locationId)).thenReturn(Optional.of(testLocation));
-            when(locationRepository.existsByHouseholdIdAndName(householdId, "Updated Kitchen"))
-                    .thenReturn(false);
-            when(locationRepository.save(any(Location.class)))
-                    .thenThrow(new RuntimeException("Database error"));
-
-            // When & Then
-            assertThatThrownBy(() -> locationService.patchLocation(locationId, patchData, token))
-                    .isInstanceOf(DataIntegrityException.class)
-                    .hasMessageContaining("Failed to update location");
-
-            verify(locationRepository).save(any(Location.class));
-        }
-    }
-
-    @Nested
-    @DisplayName("Delete Location Tests")
-    class DeleteLocationTests {
-
-        @Test
-        @DisplayName("should delete location when found")
-        void shouldDeleteLocationWhenFound() {
-            // Given
-            when(locationRepository.findById(locationId)).thenReturn(Optional.of(testLocation));
-            doNothing().when(locationRepository).delete(any(Location.class));
-
-            // When
-            locationService.deleteLocation(locationId, token);
-
-            // Then
-            verify(locationRepository).findById(locationId);
-            verify(locationRepository).delete(eq(testLocation));
-        }
-
-        @Test
-        @DisplayName("should throw NotFoundException when location not found")
-        void shouldThrowNotFoundExceptionWhenLocationNotFound() {
-            // Given
+            mockAuthenticatedUser(testUserId);
             when(locationRepository.findById(locationId)).thenReturn(Optional.empty());
 
-            // When & Then
-            assertThatThrownBy(() -> locationService.deleteLocation(locationId, token))
+            // When/Then
+            assertThatThrownBy(() -> locationService.getLocationById(locationId))
                     .isInstanceOf(NotFoundException.class)
-                    .hasMessageContaining("Location");
+                    .hasMessageContaining("Location not found");
 
             verify(locationRepository).findById(locationId);
-            verify(locationRepository, never()).delete(any(Location.class));
-        }
-
-        @Test
-        @DisplayName("should throw ValidationException when location ID is null")
-        void shouldThrowValidationExceptionWhenLocationIdIsNull() {
-            // When & Then
-            assertThatThrownBy(() -> locationService.deleteLocation(null, token))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessage("Location ID cannot be null");
-
-            verify(locationRepository, never()).findById(any());
-            verify(locationRepository, never()).delete(any(Location.class));
-        }
-
-        @Test
-        @DisplayName("should throw ValidationException when token is null")
-        void shouldThrowValidationExceptionWhenTokenIsNull() {
-            // When & Then
-            assertThatThrownBy(() -> locationService.deleteLocation(locationId, null))
-                    .isInstanceOf(ValidationException.class)
-                    .hasMessage("Authentication token cannot be null");
-
-            verify(locationRepository, never()).findById(any());
-            verify(locationRepository, never()).delete(any(Location.class));
-        }
-
-        @Test
-        @DisplayName("should throw DataIntegrityException when deletion fails")
-        void shouldThrowDataIntegrityExceptionWhenDeletionFails() {
-            // Given
-            when(locationRepository.findById(locationId)).thenReturn(Optional.of(testLocation));
-            doThrow(new RuntimeException("Foreign key constraint violation"))
-                    .when(locationRepository).delete(any(Location.class));
-
-            // When & Then
-            assertThatThrownBy(() -> locationService.deleteLocation(locationId, token))
-                    .isInstanceOf(DataIntegrityException.class)
-                    .hasMessageContaining("Failed to delete location");
-
-            verify(locationRepository).findById(locationId);
-            verify(locationRepository).delete(eq(testLocation));
         }
     }
 
     @Nested
-    @DisplayName("Search Location Tests")
-    class SearchLocationTests {
+    @DisplayName("getLocationsByHousehold")
+    class GetLocationsByHouseholdTests {
 
         @Test
-        @DisplayName("should search locations when user has access")
-        void shouldSearchLocationsWhenUserHasAccess() {
+        @DisplayName("should retrieve all locations for household")
+        void shouldGetLocationsByHouseholdSuccessfully() {
             // Given
-            String searchTerm = "kitchen";
-            List<Location> locations = List.of(testLocation);
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            when(householdRepository.existsById(householdId)).thenReturn(true);
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                    .thenReturn(Optional.of(testMember));
+
+            Location location2 = Location.builder()
+                    .id(UUID.randomUUID())
+                    .household(testHousehold)
+                    .name("Fridge")
+                    .description("Refrigerator")
+                    .createdAt(fixedTime)
+                    .updatedAt(fixedTime)
+                    .build();
+
+            List<Location> locations = Arrays.asList(testLocation, location2);
+            when(locationRepository.findByHouseholdId(householdId)).thenReturn(locations);
+
+            // When
+            List<LocationResponse> responses = locationService.getLocationsByHousehold(householdId);
+
+            // Then
+            assertThat(responses).hasSize(2);
+            assertThat(responses.get(0).getName()).isEqualTo("Kitchen");
+            assertThat(responses.get(1).getName()).isEqualTo("Fridge");
+
+            verify(securityService).getCurrentUserId();
+            verify(locationRepository).findByHouseholdId(householdId);
+        }
+
+        @Test
+        @DisplayName("should return empty list when household has no locations")
+        void shouldReturnEmptyListWhenNoLocations() {
+            // Given
+            when(locationRepository.findByHouseholdId(householdId)).thenReturn(Collections.emptyList());
+
+            // When
+            List<LocationResponse> responses = locationService.getLocationsByHousehold(householdId);
+
+            // Then
+            assertThat(responses).isEmpty();
+
+            verify(locationRepository).findByHouseholdId(householdId);
+        }
+
+        @Test
+        @DisplayName("should throw ValidationException when household ID is null")
+        void shouldThrowValidationExceptionWhenHouseholdIdIsNull() {
+            // When/Then
+            assertThatThrownBy(() -> locationService.getLocationsByHousehold(null))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Household ID cannot be null");
+
+            verify(locationRepository, never()).findByHouseholdId(any());
+        }
+    }
+
+    @Nested
+    @DisplayName("searchLocations")
+    class SearchLocationsTests {
+
+        @Test
+        @DisplayName("should search locations successfully")
+        void shouldSearchLocationsSuccessfully() {
+            // Given
+            String searchTerm = "kit";
+
             when(locationRepository.searchByNameOrDescription(householdId, searchTerm))
-                    .thenReturn(locations);
+                    .thenReturn(Collections.singletonList(testLocation));
 
             // When
-            List<LocationResponse> result = locationService.searchLocations(householdId, searchTerm, token);
+            List<LocationResponse> responses = locationService.searchLocations(householdId, searchTerm);
 
             // Then
-            assertThat(result).hasSize(1);
-            assertThat(result.get(0).getId()).isEqualTo(locationId);
+            assertThat(responses).hasSize(1);
+            assertThat(responses.get(0).getName()).isEqualTo("Kitchen");
+
+            verify(securityService).getCurrentUserId();
             verify(locationRepository).searchByNameOrDescription(householdId, searchTerm);
         }
 
         @Test
+        @DisplayName("should trim search term whitespace")
+        void shouldTrimSearchTermWhitespace() {
+            // Given
+            String searchTerm = "  kit  ";
+
+            when(locationRepository.searchByNameOrDescription(householdId, "kit"))
+                    .thenReturn(Collections.singletonList(testLocation));
+
+            // When
+            List<LocationResponse> responses = locationService.searchLocations(householdId, searchTerm);
+
+            // Then
+            assertThat(responses).hasSize(1);
+
+            verify(locationRepository).searchByNameOrDescription(householdId, "kit");
+        }
+
+        @Test
         @DisplayName("should throw ValidationException when household ID is null")
         void shouldThrowValidationExceptionWhenHouseholdIdIsNull() {
-            // When & Then
-            assertThatThrownBy(() -> locationService.searchLocations(null, "search", token))
+            // When/Then
+            assertThatThrownBy(() -> locationService.searchLocations(null, "search"))
                     .isInstanceOf(ValidationException.class)
-                    .hasMessage("Household ID cannot be null");
+                    .hasMessageContaining("Household ID cannot be null");
 
             verify(locationRepository, never()).searchByNameOrDescription(any(), any());
         }
@@ -679,10 +539,10 @@ class LocationServiceTest {
         @Test
         @DisplayName("should throw ValidationException when search term is null")
         void shouldThrowValidationExceptionWhenSearchTermIsNull() {
-            // When & Then
-            assertThatThrownBy(() -> locationService.searchLocations(householdId, null, token))
+            // When/Then
+            assertThatThrownBy(() -> locationService.searchLocations(householdId, null))
                     .isInstanceOf(ValidationException.class)
-                    .hasMessage("Search term cannot be null or empty");
+                    .hasMessageContaining("Search term cannot be null or empty");
 
             verify(locationRepository, never()).searchByNameOrDescription(any(), any());
         }
@@ -690,66 +550,74 @@ class LocationServiceTest {
         @Test
         @DisplayName("should throw ValidationException when search term is empty")
         void shouldThrowValidationExceptionWhenSearchTermIsEmpty() {
-            // When & Then
-            assertThatThrownBy(() -> locationService.searchLocations(householdId, "  ", token))
+            // When/Then
+            assertThatThrownBy(() -> locationService.searchLocations(householdId, "   "))
                     .isInstanceOf(ValidationException.class)
-                    .hasMessage("Search term cannot be null or empty");
+                    .hasMessageContaining("Search term cannot be null or empty");
 
             verify(locationRepository, never()).searchByNameOrDescription(any(), any());
         }
     }
 
     @Nested
-    @DisplayName("Name Availability Tests")
-    class NameAvailabilityTests {
+    @DisplayName("isLocationNameAvailable")
+    class IsLocationNameAvailableTests {
 
         @Test
         @DisplayName("should return true when name is available")
         void shouldReturnTrueWhenNameIsAvailable() {
             // Given
-            String locationName = "New Location";
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            when(householdRepository.existsById(householdId)).thenReturn(true);
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                    .thenReturn(Optional.of(testMember));
-            when(locationRepository.existsByHouseholdIdAndName(householdId, locationName))
-                    .thenReturn(false);
+            String name = "New Location";
+            when(locationRepository.existsByHouseholdIdAndName(householdId, name)).thenReturn(false);
 
             // When
-            boolean result = locationService.isLocationNameAvailable(householdId, locationName, token);
+            boolean result = locationService.isLocationNameAvailable(householdId, name);
 
             // Then
             assertThat(result).isTrue();
-            verify(locationRepository).existsByHouseholdIdAndName(householdId, locationName);
+
+            verify(locationRepository).existsByHouseholdIdAndName(householdId, name);
         }
 
         @Test
-        @DisplayName("should return false when name is not available")
-        void shouldReturnFalseWhenNameIsNotAvailable() {
+        @DisplayName("should return false when name already exists")
+        void shouldReturnFalseWhenNameExists() {
             // Given
-            String locationName = "Kitchen";
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            when(householdRepository.existsById(householdId)).thenReturn(true);
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                    .thenReturn(Optional.of(testMember));
-            when(locationRepository.existsByHouseholdIdAndName(householdId, locationName))
-                    .thenReturn(true);
+            String name = "Kitchen";
+            when(locationRepository.existsByHouseholdIdAndName(householdId, name)).thenReturn(true);
 
             // When
-            boolean result = locationService.isLocationNameAvailable(householdId, locationName, token);
+            boolean result = locationService.isLocationNameAvailable(householdId, name);
 
             // Then
             assertThat(result).isFalse();
-            verify(locationRepository).existsByHouseholdIdAndName(householdId, locationName);
+
+            verify(locationRepository).existsByHouseholdIdAndName(householdId, name);
+        }
+
+        @Test
+        @DisplayName("should trim name whitespace before checking")
+        void shouldTrimNameWhitespace() {
+            // Given
+            String name = "  Kitchen  ";
+            when(locationRepository.existsByHouseholdIdAndName(householdId, "Kitchen")).thenReturn(false);
+
+            // When
+            boolean result = locationService.isLocationNameAvailable(householdId, name);
+
+            // Then
+            assertThat(result).isTrue();
+
+            verify(locationRepository).existsByHouseholdIdAndName(householdId, "Kitchen");
         }
 
         @Test
         @DisplayName("should throw ValidationException when household ID is null")
         void shouldThrowValidationExceptionWhenHouseholdIdIsNull() {
-            // When & Then
-            assertThatThrownBy(() -> locationService.isLocationNameAvailable(null, "name", token))
+            // When/Then
+            assertThatThrownBy(() -> locationService.isLocationNameAvailable(null, "Kitchen"))
                     .isInstanceOf(ValidationException.class)
-                    .hasMessage("Household ID cannot be null");
+                    .hasMessageContaining("Household ID cannot be null");
 
             verify(locationRepository, never()).existsByHouseholdIdAndName(any(), any());
         }
@@ -757,10 +625,10 @@ class LocationServiceTest {
         @Test
         @DisplayName("should throw ValidationException when name is null")
         void shouldThrowValidationExceptionWhenNameIsNull() {
-            // When & Then
-            assertThatThrownBy(() -> locationService.isLocationNameAvailable(householdId, null, token))
+            // When/Then
+            assertThatThrownBy(() -> locationService.isLocationNameAvailable(householdId, null))
                     .isInstanceOf(ValidationException.class)
-                    .hasMessage("Location name cannot be null or empty");
+                    .hasMessageContaining("Location name cannot be null or empty");
 
             verify(locationRepository, never()).existsByHouseholdIdAndName(any(), any());
         }
@@ -768,50 +636,383 @@ class LocationServiceTest {
         @Test
         @DisplayName("should throw ValidationException when name is empty")
         void shouldThrowValidationExceptionWhenNameIsEmpty() {
-            // When & Then
-            assertThatThrownBy(() -> locationService.isLocationNameAvailable(householdId, "  ", token))
+            // When/Then
+            assertThatThrownBy(() -> locationService.isLocationNameAvailable(householdId, "   "))
                     .isInstanceOf(ValidationException.class)
-                    .hasMessage("Location name cannot be null or empty");
+                    .hasMessageContaining("Location name cannot be null or empty");
 
             verify(locationRepository, never()).existsByHouseholdIdAndName(any(), any());
         }
     }
 
+    // ==================== Update Operation Tests ====================
+
     @Nested
-    @DisplayName("Access Control Tests")
-    class AccessControlTests {
+    @DisplayName("updateLocation")
+    class UpdateLocationTests {
 
         @Test
-        @DisplayName("should throw InsufficientPermissionException when user is not household member")
-        void shouldThrowInsufficientPermissionExceptionWhenUserIsNotMember() {
+        @DisplayName("should update location name and description successfully")
+        void shouldUpdateLocationSuccessfully() {
             // Given
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            when(householdRepository.existsById(householdId)).thenReturn(true);
-            when(householdMemberRepository.findByHouseholdIdAndUserId(householdId, userId))
-                    .thenReturn(Optional.empty());
+            
+            when(locationRepository.findById(locationId)).thenReturn(Optional.of(testLocation));
+            when(locationRepository.existsByHouseholdIdAndName(householdId, "Updated Kitchen")).thenReturn(false);
+            when(locationRepository.save(any(Location.class))).thenAnswer(inv -> inv.getArgument(0));
 
-            // When & Then
-            assertThatThrownBy(() -> locationService.getLocationsByHousehold(householdId, token))
-                    .isInstanceOf(InsufficientPermissionException.class)
-                    .hasMessageContaining("Insufficient permission");
+            // When
+            LocationResponse response = locationService.updateLocation(locationId, locationUpdateRequest);
 
-            verify(householdMemberRepository).findByHouseholdIdAndUserId(householdId, userId);
+            // Then
+            assertThat(response.getName()).isEqualTo("Updated Kitchen");
+            assertThat(response.getDescription()).isEqualTo("Updated description");
+
+            verify(locationRepository).findById(locationId);
+            verify(locationRepository).existsByHouseholdIdAndName(householdId, "Updated Kitchen");
+            verify(locationRepository).save(argThat(location ->
+                    location.getName().equals("Updated Kitchen") &&
+                            location.getDescription().equals("Updated description")
+            ));
         }
 
         @Test
-        @DisplayName("should throw NotFoundException when household not found")
-        void shouldThrowNotFoundExceptionWhenHouseholdNotFound() {
+        @DisplayName("should update only description when name is same")
+        void shouldUpdateOnlyDescription() {
             // Given
-            when(userService.getCurrentUser(token)).thenReturn(testUser);
-            when(householdRepository.existsById(householdId)).thenReturn(false);
+            LocationUpdateRequest updateRequest = LocationUpdateRequest.builder()
+                    .name("Kitchen")  // Same as current
+                    .description("New description")
+                    .build();
 
-            // When & Then
-            assertThatThrownBy(() -> locationService.getLocationsByHousehold(householdId, token))
+            
+            when(locationRepository.findById(locationId)).thenReturn(Optional.of(testLocation));
+            when(locationRepository.save(any(Location.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            // When
+            LocationResponse response = locationService.updateLocation(locationId, updateRequest);
+
+            // Then
+            assertThat(response.getName()).isEqualTo("Kitchen");
+            assertThat(response.getDescription()).isEqualTo("New description");
+
+            // Should not check for name conflicts since name didn't change
+            verify(locationRepository, never()).existsByHouseholdIdAndName(any(), any());
+        }
+
+        @Test
+        @DisplayName("should trim whitespace from updated values")
+        void shouldTrimWhitespaceFromUpdates() {
+            // Given
+            LocationUpdateRequest updateRequest = LocationUpdateRequest.builder()
+                    .name("  Updated Kitchen  ")
+                    .description("  Updated description  ")
+                    .build();
+
+            
+            when(locationRepository.findById(locationId)).thenReturn(Optional.of(testLocation));
+            when(locationRepository.existsByHouseholdIdAndName(householdId, "Updated Kitchen")).thenReturn(false);
+            when(locationRepository.save(any(Location.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            // When
+            LocationResponse response = locationService.updateLocation(locationId, updateRequest);
+
+            // Then
+            verify(locationRepository).save(argThat(location ->
+                    location.getName().equals("Updated Kitchen") &&
+                            location.getDescription().equals("Updated description")
+            ));
+        }
+
+        @Test
+        @DisplayName("should throw ValidationException when location ID is null")
+        void shouldThrowValidationExceptionWhenLocationIdIsNull() {
+            // When/Then
+            assertThatThrownBy(() -> locationService.updateLocation(null, locationUpdateRequest))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Location ID cannot be null");
+
+            verify(locationRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("should throw ValidationException when update request is null")
+        void shouldThrowValidationExceptionWhenRequestIsNull() {
+            // When/Then
+            assertThatThrownBy(() -> locationService.updateLocation(locationId, null))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Update request cannot be null");
+
+            verify(locationRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("should throw NotFoundException when location doesn't exist")
+        void shouldThrowNotFoundExceptionWhenLocationDoesntExist() {
+            // Given
+            
+            when(locationRepository.findById(locationId)).thenReturn(Optional.empty());
+
+            // When/Then
+            assertThatThrownBy(() -> locationService.updateLocation(locationId, locationUpdateRequest))
                     .isInstanceOf(NotFoundException.class)
-                    .hasMessageContaining("Household");
+                    .hasMessageContaining("Location not found");
 
-            verify(householdRepository).existsById(householdId);
-            verify(householdMemberRepository, never()).findByHouseholdIdAndUserId(any(), any());
+            verify(locationRepository).findById(locationId);
+            verify(locationRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("should throw ConflictException when new name already exists")
+        void shouldThrowConflictExceptionWhenNewNameExists() {
+            // Given
+            
+            when(locationRepository.findById(locationId)).thenReturn(Optional.of(testLocation));
+            when(locationRepository.existsByHouseholdIdAndName(householdId, "Updated Kitchen")).thenReturn(true);
+
+            // When/Then
+            assertThatThrownBy(() -> locationService.updateLocation(locationId, locationUpdateRequest))
+                    .isInstanceOf(ConflictException.class)
+                    .hasMessageContaining("Location with name 'Updated Kitchen' already exists");
+
+            verify(locationRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("should throw DataIntegrityException when save fails")
+        void shouldThrowDataIntegrityExceptionWhenSaveFails() {
+            // Given
+            
+            when(locationRepository.findById(locationId)).thenReturn(Optional.of(testLocation));
+            when(locationRepository.existsByHouseholdIdAndName(householdId, "Updated Kitchen")).thenReturn(false);
+            when(locationRepository.save(any(Location.class)))
+                    .thenThrow(new RuntimeException("Database error"));
+
+            // When/Then
+            assertThatThrownBy(() -> locationService.updateLocation(locationId, locationUpdateRequest))
+                    .isInstanceOf(DataIntegrityException.class)
+                    .hasMessageContaining("Failed to update location");
+
+            verify(locationRepository).save(any());
+        }
+    }
+
+    @Nested
+    @DisplayName("patchLocation")
+    class PatchLocationTests {
+
+        @Test
+        @DisplayName("should patch location name successfully")
+        void shouldPatchNameSuccessfully() {
+            // Given
+            Map<String, Object> patchData = Map.of("name", "Patched Kitchen");
+
+            when(locationRepository.findById(locationId)).thenReturn(Optional.of(testLocation));
+            when(locationRepository.existsByHouseholdIdAndName(householdId, "Patched Kitchen")).thenReturn(false);
+            when(locationRepository.save(any(Location.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            // When
+            LocationResponse response = locationService.patchLocation(locationId, patchData);
+
+            // Then
+            assertThat(response.getName()).isEqualTo("Patched Kitchen");
+
+            verify(locationRepository).save(argThat(location ->
+                    location.getName().equals("Patched Kitchen")
+            ));
+        }
+
+        @Test
+        @DisplayName("should patch location description successfully")
+        void shouldPatchDescriptionSuccessfully() {
+            // Given
+            Map<String, Object> patchData = Map.of("description", "Patched description");
+
+            when(locationRepository.findById(locationId)).thenReturn(Optional.of(testLocation));
+            when(locationRepository.save(any(Location.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            // When
+            LocationResponse response = locationService.patchLocation(locationId, patchData);
+
+            // Then
+            assertThat(response.getDescription()).isEqualTo("Patched description");
+
+            verify(locationRepository).save(argThat(location ->
+                    location.getDescription().equals("Patched description")
+            ));
+        }
+
+        @Test
+        @DisplayName("should patch multiple fields successfully")
+        void shouldPatchMultipleFieldsSuccessfully() {
+            // Given
+            Map<String, Object> patchData = new HashMap<>();
+            patchData.put("name", "Patched Kitchen");
+            patchData.put("description", "Patched description");
+
+            when(locationRepository.findById(locationId)).thenReturn(Optional.of(testLocation));
+            when(locationRepository.existsByHouseholdIdAndName(householdId, "Patched Kitchen")).thenReturn(false);
+            when(locationRepository.save(any(Location.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            // When
+            LocationResponse response = locationService.patchLocation(locationId, patchData);
+
+            // Then
+            assertThat(response.getName()).isEqualTo("Patched Kitchen");
+            assertThat(response.getDescription()).isEqualTo("Patched description");
+        }
+
+        @Test
+        @DisplayName("should set description to null when patched with null value")
+        void shouldSetDescriptionToNull() {
+            // Given
+            Map<String, Object> patchData = new HashMap<>();
+            patchData.put("description", null);
+
+            when(locationRepository.findById(locationId)).thenReturn(Optional.of(testLocation));
+            when(locationRepository.save(any(Location.class))).thenAnswer(inv -> inv.getArgument(0));
+
+            // When
+            locationService.patchLocation(locationId, patchData);
+
+            // Then
+            verify(locationRepository).save(argThat(location ->
+                    location.getDescription() == null
+            ));
+        }
+
+        @Test
+        @DisplayName("should throw ValidationException when location ID is null")
+        void shouldThrowValidationExceptionWhenLocationIdIsNull() {
+            // Given
+            Map<String, Object> patchData = Map.of("name", "Patched");
+
+            // When/Then
+            assertThatThrownBy(() -> locationService.patchLocation(null, patchData))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Location ID cannot be null");
+
+            verify(locationRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("should throw ValidationException when patch data is null")
+        void shouldThrowValidationExceptionWhenPatchDataIsNull() {
+            // When/Then
+            assertThatThrownBy(() -> locationService.patchLocation(locationId, null))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Patch data cannot be null or empty");
+
+            verify(locationRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("should throw ValidationException when patch data is empty")
+        void shouldThrowValidationExceptionWhenPatchDataIsEmpty() {
+            // When/Then
+            assertThatThrownBy(() -> locationService.patchLocation(locationId, Collections.emptyMap()))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Patch data cannot be null or empty");
+
+            verify(locationRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("should throw ValidationException when unsupported field is patched")
+        void shouldThrowValidationExceptionForUnsupportedField() {
+            // Given
+            Map<String, Object> patchData = Map.of("unsupportedField", "value");
+
+            when(locationRepository.findById(locationId)).thenReturn(Optional.of(testLocation));
+
+            // When/Then
+            assertThatThrownBy(() -> locationService.patchLocation(locationId, patchData))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Unsupported field for patching: unsupportedField");
+
+            verify(locationRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("should throw ConflictException when patched name already exists")
+        void shouldThrowConflictExceptionWhenPatchedNameExists() {
+            // Given
+            Map<String, Object> patchData = Map.of("name", "Existing Location");
+
+            when(locationRepository.findById(locationId)).thenReturn(Optional.of(testLocation));
+            when(locationRepository.existsByHouseholdIdAndName(householdId, "Existing Location")).thenReturn(true);
+
+            // When/Then
+            assertThatThrownBy(() -> locationService.patchLocation(locationId, patchData))
+                    .isInstanceOf(ConflictException.class)
+                    .hasMessageContaining("Location with name 'Existing Location' already exists");
+
+            verify(locationRepository, never()).save(any());
+        }
+    }
+
+    // ==================== Delete Operation Tests ====================
+
+    @Nested
+    @DisplayName("deleteLocation")
+    class DeleteLocationTests {
+
+        @Test
+        @DisplayName("should delete location successfully")
+        void shouldDeleteLocationSuccessfully() {
+            // Given
+            when(locationRepository.findById(locationId)).thenReturn(Optional.of(testLocation));
+            doNothing().when(locationRepository).delete(testLocation);
+
+            // When
+            locationService.deleteLocation(locationId);
+
+            // Then
+            verify(securityService).getCurrentUserId();
+            verify(locationRepository).findById(locationId);
+            verify(locationRepository).delete(testLocation);
+        }
+
+        @Test
+        @DisplayName("should throw ValidationException when location ID is null")
+        void shouldThrowValidationExceptionWhenLocationIdIsNull() {
+            // When/Then
+            assertThatThrownBy(() -> locationService.deleteLocation(null))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Location ID cannot be null");
+
+            verify(locationRepository, never()).delete(any());
+        }
+
+        @Test
+        @DisplayName("should throw NotFoundException when location doesn't exist")
+        void shouldThrowNotFoundExceptionWhenLocationDoesntExist() {
+            // Given
+            when(locationRepository.findById(locationId)).thenReturn(Optional.empty());
+
+            // When/Then
+            assertThatThrownBy(() -> locationService.deleteLocation(locationId))
+                    .isInstanceOf(NotFoundException.class)
+                    .hasMessageContaining("Location not found");
+
+            verify(locationRepository).findById(locationId);
+            verify(locationRepository, never()).delete(any());
+        }
+
+        @Test
+        @DisplayName("should throw DataIntegrityException when deletion fails due to constraints")
+        void shouldThrowDataIntegrityExceptionWhenDeletionFails() {
+            // Given
+            when(locationRepository.findById(locationId)).thenReturn(Optional.of(testLocation));
+            doThrow(new RuntimeException("Constraint violation"))
+                    .when(locationRepository).delete(testLocation);
+
+            // When/Then
+            assertThatThrownBy(() -> locationService.deleteLocation(locationId))
+                    .isInstanceOf(DataIntegrityException.class)
+                    .hasMessageContaining("Failed to delete location")
+                    .hasMessageContaining("Location may have associated pantry items");
+
+            verify(locationRepository).delete(testLocation);
         }
     }
 }
