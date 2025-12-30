@@ -2,7 +2,6 @@
 package org.cubord.cubordbackend.service;
 
 import org.cubord.cubordbackend.domain.Household;
-import org.cubord.cubordbackend.domain.HouseholdRole;
 import org.cubord.cubordbackend.domain.Location;
 import org.cubord.cubordbackend.domain.User;
 import org.cubord.cubordbackend.domain.UserRole;
@@ -141,17 +140,6 @@ class LocationServiceTest {
 
     private void mockAuthenticatedUser(UUID userId) {
         when(securityService.getCurrentUserId()).thenReturn(userId);
-    }
-
-    private void mockHouseholdAdmin() {
-        mockAuthenticatedUser(adminUserId);
-        when(securityService.canModifyHousehold(householdId)).thenReturn(true);
-    }
-
-    private void mockHouseholdMember() {
-        mockAuthenticatedUser(testUserId);
-        when(securityService.canAccessHousehold(householdId)).thenReturn(true);
-        when(securityService.canModifyHousehold(householdId)).thenReturn(false);
     }
 
     // ==================== Create Operation Tests ====================
@@ -501,7 +489,7 @@ class LocationServiceTest {
 
             // Then
             assertThat(responses).hasSize(1);
-            assertThat(responses.get(0).getName()).isEqualTo("Kitchen");
+            assertThat(responses.getFirst().getName()).isEqualTo("Kitchen");
 
             verify(securityService).getCurrentUserId();
             verify(locationRepository).searchByNameOrDescription(householdId, searchTerm);

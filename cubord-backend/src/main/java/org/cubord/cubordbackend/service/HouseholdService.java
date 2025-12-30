@@ -1,29 +1,58 @@
-
 package org.cubord.cubordbackend.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.cubord.cubordbackend.domain.*;
+import org.cubord.cubordbackend.domain.Household;
+import org.cubord.cubordbackend.domain.HouseholdMember;
+import org.cubord.cubordbackend.domain.HouseholdRole;
+import org.cubord.cubordbackend.domain.User;
 import org.cubord.cubordbackend.dto.household.HouseholdRequest;
 import org.cubord.cubordbackend.dto.household.HouseholdResponse;
 import org.cubord.cubordbackend.exception.*;
 import org.cubord.cubordbackend.repository.HouseholdMemberRepository;
 import org.cubord.cubordbackend.repository.HouseholdRepository;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.cubord.cubordbackend.security.SecurityService;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 /**
  * Service class for managing households.
- * Provides operations for creating, retrieving, updating, and deleting households,
- * with proper authorization checks and exception handling.
+ *
+ * <p>This service follows the modernized security architecture where:</p>
+ * <ul>
+ *   <li>Authentication is handled by Spring Security filters</li>
+ *   <li>Authorization is declarative via @PreAuthorize annotations</li>
+ *   <li>SecurityService provides business-level security context access</li>
+ *   <li>No manual token validation or permission checks in business logic</li>
+ * </ul>
+ *
+ * <h2>Authorization Rules</h2>
+ * <ul>
+ *   <li><strong>Create:</strong> All authenticated users can create households (becoming OWNER)</li>
+ *   <li><strong>Read:</strong> Users can only view households where they are members</li>
+ *   <li><strong>Update:</strong> Requires an OWNER or ADMIN role in the household</li>
+ *   <li><strong>Delete:</strong> Requires an OWNER role in the household</li>
+ *   <li><strong>Leave:</strong> Any member can leave (except OWNER)</li>
+ *   <li><strong>Transfer Ownership:</strong> Only OWNER can transfer ownership</li>
+ *   <li><strong>Manage Roles:</strong> Requires OWNER or ADMIN role</li>
+ * </ul>
+ *
+ * <h2>Business Rules</h2>
+ * <ul>
+ *   <li>Household names must be unique per user</li>
+ *   <li>Each household must have exactly one OWNER</li>
+ *   <li>OWNER cannot leave without transferring ownership or deleting the household</li>
+ *   <li>Ownership can only be transferred to existing members</li>
+ * </ul>
+ *
+ * @see SecurityService
+ * @see org.cubord.cubordbackend.domain.Household
  */
 @Service
 @RequiredArgsConstructor
@@ -32,526 +61,702 @@ public class HouseholdService {
 
     private final HouseholdRepository householdRepository;
     private final HouseholdMemberRepository householdMemberRepository;
-    private final UserService userService;
+    private final SecurityService securityService;
 
-    /**
-     * Validates that both request and token are not null.
-     *
-     * @param request Request object to validate
-     * @param token Authentication token to validate
-     * @param operation Operation being attempted
-     * @throws ValidationException if request or token is null
-     */
-    private void validateInputs(Object request, JwtAuthenticationToken token, String operation) {
-        if (request == null) {
-            throw new ValidationException("request cannot be null for " + operation + " operation");
-        }
-        if (token == null) {
-            throw new ValidationException("token cannot be null for " + operation + " operation");
-        }
-    }
-
-
-    /**
-     * Validates that only the token is not null.
-     *
-     * @param token Authentication token to validate
-     * @param operation Operation being attempted
-     * @throws ValidationException if token is null
-     */
-    private void validateToken(JwtAuthenticationToken token, String operation) {
-        if (token == null) {
-            throw new ValidationException("token cannot be null for " + operation + " operation");
-        }
-    }
-
-    /**
-     * Validates household name is not null or empty.
-     *
-     * @param name Household name to validate
-     * @throws ValidationException if name is null or empty
-     */
-    private void validateHouseholdName(String name) {
-        if (name == null) {
-            throw new ValidationException("Household name cannot be null");
-        }
-        if (name.trim().isEmpty()) {
-            throw new ValidationException("Household name cannot be empty");
-        }
-    }
-
-    /**
-     * Validates that the user has admin or owner permissions.
-     *
-     * @param member HouseholdMember to validate
-     * @param operation Operation being attempted
-     * @throws InsufficientPermissionException if user lacks permission
-     */
-    private void validateAdminOrOwnerAccess(HouseholdMember member, String operation) {
-        if (member.getRole() != HouseholdRole.OWNER && member.getRole() != HouseholdRole.ADMIN) {
-            log.warn("User {} attempted {} operation without sufficient privileges",
-                    member.getUser().getId(), operation);
-            throw new InsufficientPermissionException("You don't have permission to " + operation);
-        }
-        log.debug("User {} authorized for {} operation with role {}",
-                member.getUser().getId(), operation, member.getRole());
-    }
-
-    /**
-     * Validates that the user is the household owner.
-     *
-     * @param member HouseholdMember to validate
-     * @param operation Operation being attempted
-     * @throws InsufficientPermissionException if user is not the owner
-     */
-    private void validateOwnerAccess(HouseholdMember member, String operation) {
-        if (member.getRole() != HouseholdRole.OWNER) {
-            log.warn("User {} attempted {} operation without owner privileges",
-                    member.getUser().getId(), operation);
-            throw new InsufficientPermissionException("Only the household owner can " + operation);
-        }
-        log.debug("Owner user {} authorized for {} operation", member.getUser().getId(), operation);
-    }
+    // ==================== Create Operations ====================
 
     /**
      * Creates a new household with the current user as the owner.
      *
+     * <p>Authorization: All authenticated users can create households.</p>
+     *
+     * <p>The creator automatically becomes the OWNER of the household with full permissions.
+     * A corresponding HouseholdMember record is created to establish the membership.</p>
+     *
      * @param request DTO containing household information
-     * @param token JWT authentication token of the current user
      * @return HouseholdResponse containing the created household's details
-     * @throws ValidationException if request or token is null, or name is invalid
-     * @throws ConflictException if a household with the same name already exists
+     * @throws ValidationException if the request is null or the household name is invalid
+     * @throws ConflictException if a household with the same name already exists for this user
+     * @throws DataIntegrityException if household creation fails
      */
     @Transactional
-    public HouseholdResponse createHousehold(HouseholdRequest request, JwtAuthenticationToken token) {
-        // Validate inputs
-        validateInputs(request, token, "create");
+    @PreAuthorize("isAuthenticated()")
+    public HouseholdResponse createHousehold(HouseholdRequest request) {
+        if (request == null) {
+            throw new ValidationException("Household request cannot be null");
+        }
+
         validateHouseholdName(request.getName());
 
-        // Get current user
-        User currentUser = userService.getCurrentUser(token);
-        log.debug("User {} creating household with name: {}", currentUser.getId(), request.getName());
+        User currentUser = securityService.getCurrentUser();
+        UUID currentUserId = currentUser.getId();
+        log.debug("User {} creating household with name: {}", currentUserId, request.getName());
 
-        // Check if a household with this name already exists
-        if (householdRepository.existsByName(request.getName())) {
+        // Check if a household name already exists for this user
+        if (householdRepository.existsByNameAndMembersUserId(request.getName(), currentUserId)) {
             throw new ConflictException("Household with name '" + request.getName() + "' already exists");
         }
 
-        // Create new household
+        // Create household
         Household household = Household.builder()
                 .name(request.getName())
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .build();
 
-        // Save household to get ID
-        household = householdRepository.save(household);
-        log.debug("Created household with ID: {}", household.getId());
+        try {
+            Household savedHousehold = householdRepository.save(household);
 
-        // Create household member with OWNER role for current user
-        HouseholdMember member = HouseholdMember.builder()
-                .household(household)
-                .user(currentUser)
-                .role(HouseholdRole.OWNER)
-                .createdAt(LocalDateTime.now())
-                .updatedAt(LocalDateTime.now())
-                .build();
+            // Create owner membership
+            HouseholdMember ownerMember = HouseholdMember.builder()
+                    .household(savedHousehold)
+                    .user(currentUser)
+                    .role(HouseholdRole.OWNER)
+                    .build();
 
-        householdMemberRepository.save(member);
-        log.info("User {} successfully created household '{}' with ID: {}",
-                currentUser.getId(), household.getName(), household.getId());
+            householdMemberRepository.save(ownerMember);
 
-        // Convert to response DTO
-        return mapToHouseholdResponse(household);
+            log.info("User {} successfully created household with ID: {}", currentUserId, savedHousehold.getId());
+            return mapToHouseholdResponse(savedHousehold);
+        } catch (Exception e) {
+            log.error("Failed to create household for user: {}", currentUserId, e);
+            throw new DataIntegrityException("Failed to create household: " + e.getMessage(), e);
+        }
     }
 
+    // ==================== Query Operations ====================
+
     /**
-     * Retrieves a household by its ID if the current user is a member.
+     * Retrieves a household by its ID.
+     *
+     * <p>Authorization: User must be a member of the household.</p>
      *
      * @param householdId UUID of the household to retrieve
-     * @param token JWT authentication token of the current user
      * @return HouseholdResponse containing the household's details
-     * @throws ValidationException if token is null
+     * @throws ValidationException if householdId is null
      * @throws NotFoundException if the household doesn't exist
-     * @throws InsufficientPermissionException if the current user is not a member of the household
+     * @throws InsufficientPermissionException if the user is not a member
      */
     @Transactional(readOnly = true)
-    public HouseholdResponse getHouseholdById(UUID householdId, JwtAuthenticationToken token) {
-        // Validate inputs
-        validateToken(token, "get household");
+    @PreAuthorize("@security.canAccessHousehold(#householdId)")
+    public HouseholdResponse getHouseholdById(UUID householdId) {
+        if (householdId == null) {
+            throw new ValidationException("Household ID cannot be null");
+        }
 
-        User currentUser = userService.getCurrentUser(token);
-        log.debug("User {} retrieving household with ID: {}", currentUser.getId(), householdId);
+        UUID currentUserId = securityService.getCurrentUserId();
+        log.debug("User {} retrieving household: {}", currentUserId, householdId);
 
-        // Find household
         Household household = householdRepository.findById(householdId)
-                .orElseThrow(() -> new NotFoundException("Household not found"));
+                .orElseThrow(() -> new NotFoundException("Household not found with ID: " + householdId));
 
-        // Check if user is a member
-        householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUser.getId())
-                .orElseThrow(() -> new InsufficientPermissionException(
-                        "You don't have access to this household"));
-
-        log.debug("User {} successfully retrieved household: {}", currentUser.getId(), householdId);
-
-        // Convert to response DTO
         return mapToHouseholdResponse(household);
     }
 
     /**
      * Retrieves all households where the current user is a member.
      *
-     * @param token JWT authentication token of the current user
+     * <p>Authorization: All authenticated users can list their own households.</p>
+     *
      * @return List of HouseholdResponse objects containing household details
-     * @throws ValidationException if token is null
      */
     @Transactional(readOnly = true)
-    public List<HouseholdResponse> getUserHouseholds(JwtAuthenticationToken token) {
-        // Validate inputs
-        validateToken(token, "get user households");
+    @PreAuthorize("isAuthenticated()")
+    public List<HouseholdResponse> getUserHouseholds() {
+        UUID currentUserId = securityService.getCurrentUserId();
+        log.debug("User {} retrieving their households", currentUserId);
 
-        User currentUser = userService.getCurrentUser(token);
-        log.debug("User {} retrieving all their households", currentUser.getId());
+        List<Household> households = householdRepository.findAllByMembersUserId(currentUserId);
 
-        // Find all households where user is a member
-        List<Household> households = householdRepository.findByMembersUserId(currentUser.getId());
-
-        log.debug("User {} has {} households", currentUser.getId(), households.size());
-
-        // Convert to response DTOs
         return households.stream()
                 .map(this::mapToHouseholdResponse)
-                .collect(Collectors.toList());
-    }
-
-    /**
-     * Updates a household's information if the current user has appropriate permissions.
-     *
-     * @param householdId UUID of the household to update
-     * @param request DTO containing updated household information
-     * @param token JWT authentication token of the current user
-     * @return HouseholdResponse containing the updated household's details
-     * @throws ValidationException if request or token is null, or name is invalid
-     * @throws NotFoundException if the household doesn't exist
-     * @throws InsufficientPermissionException if the current user lacks permission to update the household
-     * @throws ConflictException if the new name is already used by another household
-     */
-    @Transactional
-    public HouseholdResponse updateHousehold(UUID householdId, HouseholdRequest request, JwtAuthenticationToken token) {
-        // Validate inputs
-        validateInputs(request, token, "update");
-        validateHouseholdName(request.getName());
-
-        User currentUser = userService.getCurrentUser(token);
-        log.debug("User {} updating household {} with new name: {}",
-                currentUser.getId(), householdId, request.getName());
-
-        // Find household
-        Household household = householdRepository.findById(householdId)
-                .orElseThrow(() -> new NotFoundException("Household not found"));
-
-        // Check if user is a member with appropriate permissions
-        HouseholdMember member = householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUser.getId())
-                .orElseThrow(() -> new InsufficientPermissionException(
-                        "You don't have access to this household"));
-
-        // Validate user has admin or owner role
-        validateAdminOrOwnerAccess(member, "update this household");
-
-        // Check if name is already used by a different household
-        Optional<Household> existingHousehold = householdRepository.findByName(request.getName());
-        if (existingHousehold.isPresent() && !existingHousehold.get().getId().equals(householdId)) {
-            throw new ConflictException("Household with name '" + request.getName() + "' already exists");
-        }
-
-        // Update household
-        household.setName(request.getName());
-        household.setUpdatedAt(LocalDateTime.now());
-
-        household = householdRepository.save(household);
-        log.info("User {} successfully updated household {} to name: {}",
-                currentUser.getId(), householdId, request.getName());
-
-        // Convert to response DTO
-        return mapToHouseholdResponse(household);
-    }
-
-    /**
-     * Deletes a household if the current user is the owner.
-     *
-     * @param householdId UUID of the household to delete
-     * @param token JWT authentication token of the current user
-     * @throws ValidationException if token is null
-     * @throws NotFoundException if the household doesn't exist
-     * @throws InsufficientPermissionException if the current user is not the owner of the household
-     */
-    @Transactional
-    public void deleteHousehold(UUID householdId, JwtAuthenticationToken token) {
-        // Validate inputs
-        validateToken(token, "delete household");
-
-        User currentUser = userService.getCurrentUser(token);
-        log.debug("User {} attempting to delete household: {}", currentUser.getId(), householdId);
-
-        // Find household
-        Household household = householdRepository.findById(householdId)
-                .orElseThrow(() -> new NotFoundException("Household not found"));
-
-        // Check if user is the owner
-        HouseholdMember member = householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUser.getId())
-                .orElseThrow(() -> new InsufficientPermissionException(
-                        "You don't have access to this household"));
-
-        validateOwnerAccess(member, "delete a household");
-
-        // Delete household
-        householdRepository.delete(household);
-        log.info("User {} successfully deleted household: {}", currentUser.getId(), householdId);
-    }
-
-    /**
-     * Allows a user to leave a household unless they are the owner.
-     *
-     * @param householdId UUID of the household to leave
-     * @param token JWT authentication token of the current user
-     * @throws ValidationException if token is null
-     * @throws NotFoundException if the household doesn't exist
-     * @throws InsufficientPermissionException if the current user is not a member of the household
-     * @throws ResourceStateException if the current user is the owner of the household
-     */
-    @Transactional
-    public void leaveHousehold(UUID householdId, JwtAuthenticationToken token) {
-        // Validate inputs
-        validateToken(token, "leave household");
-
-        User currentUser = userService.getCurrentUser(token);
-        log.debug("User {} attempting to leave household: {}", currentUser.getId(), householdId);
-
-        // Verify household exists
-        Household household = householdRepository.findById(householdId)
-                .orElseThrow(() -> new NotFoundException("Household not found"));
-
-        // Check if user is a member
-        HouseholdMember member = householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUser.getId())
-                .orElseThrow(() -> new InsufficientPermissionException(
-                        "You are not a member of this household"));
-
-        // Owners cannot leave, they must transfer ownership first
-        if (member.getRole() == HouseholdRole.OWNER) {
-            throw new ResourceStateException("Owner cannot leave a household. Transfer ownership first.");
-        }
-
-        // Remove the member
-        householdMemberRepository.delete(member);
-        log.info("User {} successfully left household: {}", currentUser.getId(), householdId);
-    }
-
-    /**
-     * Transfers ownership of a household to another member.
-     *
-     * @param householdId UUID of the household
-     * @param newOwnerId UUID of the member to become the new owner
-     * @param token JWT authentication token of the current user
-     * @throws ValidationException if token or newOwnerId is null
-     * @throws NotFoundException if the household or new owner doesn't exist or is not a member
-     * @throws InsufficientPermissionException if the current user is not the owner of the household
-     */
-    @Transactional
-    public void transferOwnership(UUID householdId, UUID newOwnerId, JwtAuthenticationToken token) {
-        // Validate inputs
-        validateToken(token, "transfer ownership");
-        if (newOwnerId == null) {
-            throw new ValidationException("New owner ID cannot be null");
-        }
-
-        User currentUser = userService.getCurrentUser(token);
-        log.debug("User {} attempting to transfer ownership of household {} to user {}",
-                currentUser.getId(), householdId, newOwnerId);
-
-        // Verify household exists
-        Household household = householdRepository.findById(householdId)
-                .orElseThrow(() -> new NotFoundException("Household not found"));
-
-        // Check if current user is the owner
-        HouseholdMember currentMember = householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUser.getId())
-                .orElseThrow(() -> new InsufficientPermissionException(
-                        "You don't have access to this household"));
-
-        validateOwnerAccess(currentMember, "transfer ownership");
-
-        // Check if new owner is a member
-        HouseholdMember newOwnerMember = householdMemberRepository.findByHouseholdIdAndUserId(householdId, newOwnerId)
-                .orElseThrow(() -> new NotFoundException("New owner is not a member of this household"));
-
-        // Update roles
-        currentMember.setRole(HouseholdRole.ADMIN);
-        currentMember.setUpdatedAt(LocalDateTime.now());
-        newOwnerMember.setRole(HouseholdRole.OWNER);
-        newOwnerMember.setUpdatedAt(LocalDateTime.now());
-
-        // Save changes
-        householdMemberRepository.save(currentMember);
-        householdMemberRepository.save(newOwnerMember);
-
-        log.info("User {} successfully transferred ownership of household {} to user {}",
-                currentUser.getId(), householdId, newOwnerId);
+                .toList();
     }
 
     /**
      * Searches for households by name and returns only those the current user is a member of.
      *
+     * <p>Authorization: All authenticated users can search their own households.</p>
+     *
      * @param searchTerm Term to search for in household names
-     * @param token JWT authentication token of the current user
      * @return List of HouseholdResponse objects matching the search criteria
-     * @throws ValidationException if token or searchTerm is null
+     * @throws ValidationException if searchTerm is null or empty
      */
     @Transactional(readOnly = true)
-    public List<HouseholdResponse> searchHouseholds(String searchTerm, JwtAuthenticationToken token) {
-        // Validate inputs
-        validateToken(token, "search households");
-        if (searchTerm == null) {
-            throw new ValidationException("Search term cannot be null");
+    @PreAuthorize("isAuthenticated()")
+    public List<HouseholdResponse> searchHouseholds(String searchTerm) {
+        if (searchTerm == null || searchTerm.isBlank()) {
+            throw new ValidationException("Search term cannot be null or empty");
         }
 
-        User currentUser = userService.getCurrentUser(token);
-        log.debug("User {} searching households with term: {}", currentUser.getId(), searchTerm);
+        UUID currentUserId = securityService.getCurrentUserId();
+        log.debug("User {} searching households with term: {}", currentUserId, searchTerm);
 
-        // Find households matching search term
-        List<Household> households = householdRepository.findByNameContainingIgnoreCase(searchTerm);
+        List<Household> households = householdRepository
+                .findAllByNameContainingIgnoreCaseAndMembersUserId(searchTerm, currentUserId);
 
-        // Filter to only include households where user is a member
-        List<HouseholdResponse> results = households.stream()
-                .filter(household -> householdMemberRepository.findByHouseholdIdAndUserId(
-                        household.getId(), currentUser.getId()).isPresent())
+        return households.stream()
                 .map(this::mapToHouseholdResponse)
-                .collect(Collectors.toList());
+                .toList();
+    }
 
-        log.debug("User {} found {} households matching search term: {}",
-                currentUser.getId(), results.size(), searchTerm);
+    // ==================== Update Operations ====================
 
-        return results;
+    /**
+     * Updates a household's information.
+     *
+     * <p>Authorization: User must have an OWNER or ADMIN role in the household.</p>
+     *
+     * @param householdId UUID of the household to update
+     * @param request DTO containing updated household information
+     * @return HouseholdResponse containing the updated household's details
+     * @throws ValidationException if inputs are null or the household name is invalid
+     * @throws NotFoundException if the household doesn't exist
+     * @throws ConflictException if the new name is already used by another household
+     * @throws InsufficientPermissionException if a user lacks modify permission
+     * @throws DataIntegrityException if update fails
+     */
+    @Transactional
+    @PreAuthorize("@security.canModifyHousehold(#householdId)")
+    public HouseholdResponse updateHousehold(UUID householdId, HouseholdRequest request) {
+        if (householdId == null) {
+            throw new ValidationException("Household ID cannot be null");
+        }
+        if (request == null) {
+            throw new ValidationException("Update request cannot be null");
+        }
+
+        validateHouseholdName(request.getName());
+
+        UUID currentUserId = securityService.getCurrentUserId();
+        log.debug("User {} updating household: {}", currentUserId, householdId);
+
+        Household household = householdRepository.findById(householdId)
+                .orElseThrow(() -> new NotFoundException("Household not found with ID: " + householdId));
+
+        // Check for name conflicts (excluding the current household)
+        if (!household.getName().equals(request.getName()) &&
+                householdRepository.existsByNameAndMembersUserId(request.getName(), currentUserId)) {
+            throw new ConflictException("Household with name '" + request.getName() + "' already exists");
+        }
+
+        household.setName(request.getName());
+        household.setUpdatedAt(LocalDateTime.now());
+
+        try {
+            Household savedHousehold = householdRepository.save(household);
+            log.info("User {} successfully updated household: {}", currentUserId, householdId);
+            return mapToHouseholdResponse(savedHousehold);
+        } catch (Exception e) {
+            log.error("Failed to update household: {}", householdId, e);
+            throw new DataIntegrityException("Failed to update household: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Partially updates a household's information.
+     *
+     * <p>Authorization: User must have an OWNER or ADMIN role in the household.</p>
+     *
+     * <p>Supported fields: name</p>
+     *
+     * @param householdId UUID of the household to update
+     * @param patchData Map of field names to updated values
+     * @return HouseholdResponse containing the updated household's details
+     * @throws ValidationException if inputs are null/empty or field values are invalid
+     * @throws NotFoundException if the household doesn't exist
+     * @throws ConflictException if the new name is already used by another household
+     * @throws InsufficientPermissionException if a user lacks modify permission
+     * @throws DataIntegrityException if the patch fails
+     */
+    @Transactional
+    @PreAuthorize("@security.canModifyHousehold(#householdId)")
+    public HouseholdResponse patchHousehold(UUID householdId, Map<String, Object> patchData) {
+        if (householdId == null) {
+            throw new ValidationException("Household ID cannot be null");
+        }
+        if (patchData == null || patchData.isEmpty()) {
+            throw new ValidationException("Patch data cannot be null or empty");
+        }
+
+        UUID currentUserId = securityService.getCurrentUserId();
+        log.debug("User {} patching household: {} with fields: {}",
+                currentUserId, householdId, patchData.keySet());
+
+        Household household = householdRepository.findById(householdId)
+                .orElseThrow(() -> new NotFoundException("Household not found with ID: " + householdId));
+
+        patchData.forEach((field, value) -> {
+            if (field.equals("name")) {
+                if (value != null && !value.toString().isBlank()) {
+                    String newName = value.toString();
+                    validateHouseholdName(newName);
+
+                    // Check for name conflicts (excluding the current household)
+                    if (!household.getName().equals(newName) &&
+                            householdRepository.existsByNameAndMembersUserId(newName, currentUserId)) {
+                        throw new ConflictException("Household with name '" + newName + "' already exists");
+                    }
+
+                    household.setName(newName);
+                    log.debug("Patched name for household {}", householdId);
+                }
+            } else {
+                log.warn("Attempted to patch unsupported field: {}", field);
+                throw new ValidationException("Unsupported field for patching: " + field);
+            }
+        });
+
+        household.setUpdatedAt(LocalDateTime.now());
+
+        try {
+            Household savedHousehold = householdRepository.save(household);
+            log.info("User {} successfully patched household: {}", currentUserId, householdId);
+            return mapToHouseholdResponse(savedHousehold);
+        } catch (ConflictException | ValidationException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Failed to patch household: {}", householdId, e);
+            throw new DataIntegrityException("Failed to patch household: " + e.getMessage(), e);
+        }
+    }
+
+    // ==================== Delete Operations ====================
+
+    /**
+     * Deletes a household.
+     *
+     * <p>Authorization: Only the OWNER can delete the household.</p>
+     *
+     * <p>Deleting a household will cascade delete all associated members, locations, and pantry items.
+     * This operation is irreversible.</p>
+     *
+     * @param householdId UUID of the household to delete
+     * @throws ValidationException if householdId is null
+     * @throws NotFoundException if the household doesn't exist
+     * @throws InsufficientPermissionException if the user is not the owner
+     * @throws DataIntegrityException if deletion fails
+     */
+    @Transactional
+    @PreAuthorize("@security.isHouseholdOwner(#householdId)")
+    public void deleteHousehold(UUID householdId) {
+        if (householdId == null) {
+            throw new ValidationException("Household ID cannot be null");
+        }
+
+        UUID currentUserId = securityService.getCurrentUserId();
+        log.debug("User {} deleting household: {}", currentUserId, householdId);
+
+        Household household = householdRepository.findById(householdId)
+                .orElseThrow(() -> new NotFoundException("Household not found with ID: " + householdId));
+
+        try {
+            householdRepository.delete(household);
+            log.info("User {} successfully deleted household: {}", currentUserId, householdId);
+        } catch (Exception e) {
+            log.error("Failed to delete household: {}", householdId, e);
+            throw new DataIntegrityException("Failed to delete household: " + e.getMessage(), e);
+        }
+    }
+
+    // ==================== Member Operations ====================
+
+    /**
+     * Allows a user to leave a household.
+     *
+     * <p>Authorization: User must be a member of the household.</p>
+     *
+     * <p>The OWNER cannot leave the household. They must either transfer ownership first
+     * or delete the household entirely.</p>
+     *
+     * @param householdId UUID of the household to leave
+     * @throws ValidationException if householdId is null
+     * @throws NotFoundException if the household doesn't exist or the user is not a member
+     * @throws ResourceStateException if the current user is the owner
+     * @throws DataIntegrityException if the leave operation fails
+     */
+    @Transactional
+    @PreAuthorize("@security.canAccessHousehold(#householdId)")
+    public void leaveHousehold(UUID householdId) {
+        if (householdId == null) {
+            throw new ValidationException("Household ID cannot be null");
+        }
+
+        UUID currentUserId = securityService.getCurrentUserId();
+        log.debug("User {} attempting to leave household: {}", currentUserId, householdId);
+
+        HouseholdMember member = householdMemberRepository
+                .findByHouseholdIdAndUserId(householdId, currentUserId)
+                .orElseThrow(() -> new NotFoundException("User is not a member of this household"));
+
+        if (member.getRole() == HouseholdRole.OWNER) {
+            throw new ResourceStateException("Owner cannot leave the household. Transfer ownership or delete the household first.");
+        }
+
+        try {
+            householdMemberRepository.delete(member);
+            log.info("User {} successfully left household: {}", currentUserId, householdId);
+        } catch (Exception e) {
+            log.error("Failed to remove user {} from household: {}", currentUserId, householdId, e);
+            throw new DataIntegrityException("Failed to leave household: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Transfers ownership of a household to another member.
+     *
+     * <p>Authorization: Only the current OWNER can transfer ownership.</p>
+     *
+     * <p>The new owner must be an existing member of the household. The current owner
+     * will be demoted to an ADMIN role.</p>
+     *
+     * @param householdId UUID of the household
+     * @param newOwnerId UUID of the member to become the new owner
+     * @throws ValidationException if householdId or newOwnerId is null
+     * @throws NotFoundException if the household or new owner doesn't exist or is not a member
+     * @throws InsufficientPermissionException if the current user is not the owner
+     * @throws DataIntegrityException if transfer fails
+     */
+    @Transactional
+    @PreAuthorize("@security.isHouseholdOwner(#householdId)")
+    public void transferOwnership(UUID householdId, UUID newOwnerId) {
+        if (householdId == null) {
+            throw new ValidationException("Household ID cannot be null");
+        }
+        if (newOwnerId == null) {
+            throw new ValidationException("New owner ID cannot be null");
+        }
+
+        UUID currentUserId = securityService.getCurrentUserId();
+        log.debug("User {} transferring ownership of household {} to user {}",
+                currentUserId, householdId, newOwnerId);
+
+        // Get current owner membership
+        HouseholdMember currentOwner = householdMemberRepository
+                .findByHouseholdIdAndUserId(householdId, currentUserId)
+                .orElseThrow(() -> new NotFoundException("Current user is not a member of this household"));
+
+        // Get new owner membership
+        HouseholdMember newOwner = householdMemberRepository
+                .findByHouseholdIdAndUserId(householdId, newOwnerId)
+                .orElseThrow(() -> new NotFoundException("New owner is not a member of this household"));
+
+        try {
+            // Demote the current owner to admin
+            currentOwner.setRole(HouseholdRole.ADMIN);
+            householdMemberRepository.save(currentOwner);
+
+            // Promote a new owner
+            newOwner.setRole(HouseholdRole.OWNER);
+            householdMemberRepository.save(newOwner);
+
+            log.info("User {} successfully transferred ownership of household {} to user {}",
+                    currentUserId, householdId, newOwnerId);
+        } catch (Exception e) {
+            log.error("Failed to transfer ownership of household: {}", householdId, e);
+            throw new DataIntegrityException("Failed to transfer ownership: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Changes a member's role within a household.
+     *
+     * <p>Authorization: User must have an OWNER or ADMIN role in the household.</p>
+     *
+     * <p>Role change rules:</p>
+     * <ul>
+     *   <li>Cannot change a role to OWNER (use transferOwnership instead)</li>
+     *   <li>ADMIN can change MEMBER roles but not other ADMIN roles</li>
+     *   <li>OWNER can change any role except their own</li>
+     * </ul>
+     *
+     * @param householdId UUID of the household
+     * @param memberId UUID of the member whose role is to be changed
+     * @param newRole New role to assign to the member
+     * @throws ValidationException if inputs are null or attempting to set a role to OWNER
+     * @throws NotFoundException if the household or member doesn't exist
+     * @throws InsufficientPermissionException if a user lacks permission to change roles
+     * @throws DataIntegrityException if role change fails
+     */
+    @Transactional
+    @PreAuthorize("@security.canManageHouseholdMembers(#householdId)")
+    public void changeMemberRole(UUID householdId, UUID memberId, HouseholdRole newRole) {
+        if (householdId == null) {
+            throw new ValidationException("Household ID cannot be null");
+        }
+        if (memberId == null) {
+            throw new ValidationException("Member ID cannot be null");
+        }
+        if (newRole == null) {
+            throw new ValidationException("New role cannot be null");
+        }
+        if (newRole == HouseholdRole.OWNER) {
+            throw new ValidationException("Cannot set role to OWNER. Use transferOwnership instead.");
+        }
+
+        UUID currentUserId = securityService.getCurrentUserId();
+        log.debug("User {} changing role for member {} in household {} to {}",
+                currentUserId, memberId, householdId, newRole);
+
+        // Get current user's membership
+        HouseholdMember currentUserMember = householdMemberRepository
+                .findByHouseholdIdAndUserId(householdId, currentUserId)
+                .orElseThrow(() -> new NotFoundException("Current user is not a member of this household"));
+
+        // Get a target member
+        HouseholdMember targetMember = householdMemberRepository
+                .findByHouseholdIdAndUserId(householdId, memberId)
+                .orElseThrow(() -> new NotFoundException("Target user is not a member of this household"));
+
+        // Additional authorization checks
+        if (currentUserMember.getRole() == HouseholdRole.ADMIN) {
+            // Admins cannot modify other admins or the owner
+            if (targetMember.getRole() == HouseholdRole.ADMIN || targetMember.getRole() == HouseholdRole.OWNER) {
+                throw new InsufficientPermissionException("Admin cannot modify other admin or owner roles");
+            }
+        }
+
+        // Cannot change the owner's role through this method
+        if (targetMember.getRole() == HouseholdRole.OWNER) {
+            throw new ValidationException("Cannot change owner's role. Use transferOwnership instead.");
+        }
+
+        try {
+            targetMember.setRole(newRole);
+            householdMemberRepository.save(targetMember);
+            log.info("User {} successfully changed role for member {} in household {} to {}",
+                    currentUserId, memberId, householdId, newRole);
+        } catch (Exception e) {
+            log.error("Failed to change member role in household: {}", householdId, e);
+            throw new DataIntegrityException("Failed to change member role: " + e.getMessage(), e);
+        }
+    }
+
+    // ==================== Deprecated Methods (Backward Compatibility) ====================
+
+    /**
+     * Creates a new household with the current user as the owner.
+     *
+     * @deprecated Use {@link #createHousehold(HouseholdRequest)} instead.
+     *             This method is maintained for backward compatibility with controllers
+     *             that haven't been migrated to the new security architecture.
+     *             Token-based authentication is now handled by Spring Security filters,
+     *             and authorization should be done through SecurityService without explicit tokens.
+     *
+     * @param request DTO containing household information
+     * @param token JWT authentication token (ignored in favor of SecurityContext)
+     * @return HouseholdResponse containing the created household's details
+     */
+    @Deprecated(since = "2.0", forRemoval = true)
+    @Transactional
+    public HouseholdResponse createHousehold(HouseholdRequest request, org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken token) {
+        log.warn("DEPRECATED: createHousehold(HouseholdRequest, JwtAuthenticationToken) called. " +
+                "Migrate to createHousehold(HouseholdRequest) for improved security architecture. " +
+                "The token parameter is ignored - using SecurityContext instead.");
+        return createHousehold(request);
+    }
+
+    /**
+     * Retrieves a household by its ID if the current user is a member.
+     *
+     * @deprecated Use {@link #getHouseholdById(UUID)} instead.
+     *             This method is maintained for backward compatibility with controllers
+     *             that haven't been migrated to the new security architecture.
+     *             Token-based authentication is now handled by Spring Security filters.
+     *
+     * @param householdId UUID of the household to retrieve
+     * @param token JWT authentication token (ignored in favor of SecurityContext)
+     * @return HouseholdResponse containing the household's details
+     */
+    @Deprecated(since = "2.0", forRemoval = true)
+    @Transactional(readOnly = true)
+    public HouseholdResponse getHouseholdById(UUID householdId, org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken token) {
+        log.warn("DEPRECATED: getHouseholdById(UUID, JwtAuthenticationToken) called. " +
+                "Migrate to getHouseholdById(UUID) for improved security architecture. " +
+                "The token parameter is ignored - using SecurityContext instead.");
+        return getHouseholdById(householdId);
+    }
+
+    /**
+     * Retrieves all households where the current user is a member.
+     *
+     * @deprecated Use {@link #getUserHouseholds()} instead.
+     *             This method is maintained for backward compatibility with controllers
+     *             that haven't been migrated to the new security architecture.
+     *             Token-based authentication is now handled by Spring Security filters.
+     *
+     * @param token JWT authentication token (ignored in favor of SecurityContext)
+     * @return List of HouseholdResponse objects containing household details
+     */
+    @Deprecated(since = "2.0", forRemoval = true)
+    @Transactional(readOnly = true)
+    public List<HouseholdResponse> getUserHouseholds(org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken token) {
+        log.warn("DEPRECATED: getUserHouseholds(JwtAuthenticationToken) called. " +
+                "Migrate to getUserHouseholds() for improved security architecture. " +
+                "The token parameter is ignored - using SecurityContext instead.");
+        return getUserHouseholds();
+    }
+
+    /**
+     * Updates a household's information if the current user has appropriate permissions.
+     *
+     * @deprecated Use {@link #updateHousehold(UUID, HouseholdRequest)} instead.
+     *             This method is maintained for backward compatibility with controllers
+     *             that haven't been migrated to the new security architecture.
+     *             Token-based authentication is now handled by Spring Security filters.
+     *
+     * @param householdId UUID of the household to update
+     * @param request DTO containing updated household information
+     * @param token JWT authentication token (ignored in favor of SecurityContext)
+     * @return HouseholdResponse containing the updated household's details
+     */
+    @Deprecated(since = "2.0", forRemoval = true)
+    @Transactional
+    public HouseholdResponse updateHousehold(UUID householdId, HouseholdRequest request, org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken token) {
+        log.warn("DEPRECATED: updateHousehold(UUID, HouseholdRequest, JwtAuthenticationToken) called. " +
+                "Migrate to updateHousehold(UUID, HouseholdRequest) for improved security architecture. " +
+                "The token parameter is ignored - using SecurityContext instead.");
+        return updateHousehold(householdId, request);
+    }
+
+    /**
+     * Deletes a household if the current user is the owner.
+     *
+     * @deprecated Use {@link #deleteHousehold(UUID)} instead.
+     *             This method is maintained for backward compatibility with controllers
+     *             that haven't been migrated to the new security architecture.
+     *             Token-based authentication is now handled by Spring Security filters.
+     *
+     * @param householdId UUID of the household to delete
+     * @param token JWT authentication token (ignored in favor of SecurityContext)
+     */
+    @Deprecated(since = "2.0", forRemoval = true)
+    @Transactional
+    public void deleteHousehold(UUID householdId, org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken token) {
+        log.warn("DEPRECATED: deleteHousehold(UUID, JwtAuthenticationToken) called. " +
+                "Migrate to deleteHousehold(UUID) for improved security architecture. " +
+                "The token parameter is ignored - using SecurityContext instead.");
+        deleteHousehold(householdId);
+    }
+
+    /**
+     * Allows a user to leave a household unless they are the owner.
+     *
+     * @deprecated Use {@link #leaveHousehold(UUID)} instead.
+     *             This method is maintained for backward compatibility with controllers
+     *             that haven't been migrated to the new security architecture.
+     *             Token-based authentication is now handled by Spring Security filters.
+     *
+     * @param householdId UUID of the household to leave
+     * @param token JWT authentication token (ignored in favor of SecurityContext)
+     */
+    @Deprecated(since = "2.0", forRemoval = true)
+    @Transactional
+    public void leaveHousehold(UUID householdId, org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken token) {
+        log.warn("DEPRECATED: leaveHousehold(UUID, JwtAuthenticationToken) called. " +
+                "Migrate to leaveHousehold(UUID) for improved security architecture. " +
+                "The token parameter is ignored - using SecurityContext instead.");
+        leaveHousehold(householdId);
+    }
+
+    /**
+     * Transfers ownership of a household to another member.
+     *
+     * @deprecated Use {@link #transferOwnership(UUID, UUID)} instead.
+     *             This method is maintained for backward compatibility with controllers
+     *             that haven't been migrated to the new security architecture.
+     *             Token-based authentication is now handled by Spring Security filters.
+     *
+     * @param householdId UUID of the household
+     * @param newOwnerId UUID of the member to become the new owner
+     * @param token JWT authentication token (ignored in favor of SecurityContext)
+     */
+    @Deprecated(since = "2.0", forRemoval = true)
+    @Transactional
+    public void transferOwnership(UUID householdId, UUID newOwnerId, org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken token) {
+        log.warn("DEPRECATED: transferOwnership(UUID, UUID, JwtAuthenticationToken) called. " +
+                "Migrate to transferOwnership(UUID, UUID) for improved security architecture. " +
+                "The token parameter is ignored - using SecurityContext instead.");
+        transferOwnership(householdId, newOwnerId);
+    }
+
+    /**
+     * Searches for households by name and returns only those the current user is a member of.
+     *
+     * @deprecated Use {@link #searchHouseholds(String)} instead.
+     *             This method is maintained for backward compatibility with controllers
+     *             that haven't been migrated to the new security architecture.
+     *             Token-based authentication is now handled by Spring Security filters.
+     *
+     * @param searchTerm Term to search for in household names
+     * @param token JWT authentication token (ignored in favor of SecurityContext)
+     * @return List of HouseholdResponse objects matching the search criteria
+     */
+    @Deprecated(since = "2.0", forRemoval = true)
+    @Transactional(readOnly = true)
+    public List<HouseholdResponse> searchHouseholds(String searchTerm, org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken token) {
+        log.warn("DEPRECATED: searchHouseholds(String, JwtAuthenticationToken) called. " +
+                "Migrate to searchHouseholds(String) for improved security architecture. " +
+                "The token parameter is ignored - using SecurityContext instead.");
+        return searchHouseholds(searchTerm);
     }
 
     /**
      * Changes a member's role within a household if the current user has appropriate permissions.
      *
+     * @deprecated Use {@link #changeMemberRole(UUID, UUID, HouseholdRole)} instead.
+     *             This method is maintained for backward compatibility with controllers
+     *             that haven't been migrated to the new security architecture.
+     *             Token-based authentication is now handled by Spring Security filters.
+     *
      * @param householdId UUID of the household
      * @param memberId UUID of the member whose role is to be changed
      * @param role New role to assign to the member
-     * @param token JWT authentication token of the current user
-     * @throws ValidationException if token is null or attempting to set role to OWNER
-     * @throws NotFoundException if the household or member doesn't exist
-     * @throws InsufficientPermissionException if the current user lacks permission to change roles
+     * @param token JWT authentication token (ignored in favor of SecurityContext)
      */
+    @Deprecated(since = "2.0", forRemoval = true)
     @Transactional
-    public void changeMemberRole(UUID householdId, UUID memberId, HouseholdRole role, JwtAuthenticationToken token) {
-        // Validate inputs
-        validateToken(token, "change member role");
-        if (role == HouseholdRole.OWNER) {
-            throw new ValidationException("Cannot set role to OWNER. Use transferOwnership method instead.");
-        }
-
-        User currentUser = userService.getCurrentUser(token);
-        log.debug("User {} attempting to change role of member {} in household {} to {}",
-                currentUser.getId(), memberId, householdId, role);
-
-        // Verify household exists
-        Household household = householdRepository.findById(householdId)
-                .orElseThrow(() -> new NotFoundException("Household not found"));
-
-        // Check if current user is a member with appropriate permissions
-        HouseholdMember currentMember = householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUser.getId())
-                .orElseThrow(() -> new InsufficientPermissionException(
-                        "You don't have access to this household"));
-
-        validateAdminOrOwnerAccess(currentMember, "change member roles");
-
-        // Find target member
-        HouseholdMember targetMember = householdMemberRepository.findById(memberId)
-                .orElseThrow(() -> new NotFoundException("Member not found"));
-
-        // Verify member belongs to the household
-        if (!targetMember.getHousehold().getId().equals(householdId)) {
-            throw new NotFoundException("Member not found in this household");
-        }
-
-        // Admin cannot change owner's role
-        if (currentMember.getRole() == HouseholdRole.ADMIN && targetMember.getRole() == HouseholdRole.OWNER) {
-            throw new InsufficientPermissionException("Admin cannot change owner's role");
-        }
-
-        // Update role
-        targetMember.setRole(role);
-        targetMember.setUpdatedAt(LocalDateTime.now());
-
-        householdMemberRepository.save(targetMember);
-        log.info("User {} successfully changed role of member {} in household {} to {}",
-                currentUser.getId(), memberId, householdId, role);
+    public void changeMemberRole(UUID householdId, UUID memberId, HouseholdRole role, org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken token) {
+        log.warn("DEPRECATED: changeMemberRole(UUID, UUID, HouseholdRole, JwtAuthenticationToken) called. " +
+                "Migrate to changeMemberRole(UUID, UUID, HouseholdRole) for improved security architecture. " +
+                "The token parameter is ignored - using SecurityContext instead.");
+        changeMemberRole(householdId, memberId, role);
     }
 
     /**
      * Partially updates a household's information if the current user has appropriate permissions.
      *
+     * @deprecated Use {@link #patchHousehold(UUID, Map)} instead.
+     *             This method is maintained for backward compatibility with controllers
+     *             that haven't been migrated to the new security architecture.
+     *             Token-based authentication is now handled by Spring Security filters.
+     *
      * @param householdId UUID of the household to update
-     * @param fields Map of field names to updated values
-     * @param token JWT authentication token of the current user
+     * @param patchData Map of field names to updated values
+     * @param token JWT authentication token (ignored in favor of SecurityContext)
      * @return HouseholdResponse containing the updated household's details
-     * @throws ValidationException if token or fields is null/empty
-     * @throws NotFoundException if the household doesn't exist
-     * @throws InsufficientPermissionException if the current user lacks permission to update the household
-     * @throws ConflictException if the new name is already used by another household
      */
+    @Deprecated(since = "2.0", forRemoval = true)
     @Transactional
-    public HouseholdResponse patchHousehold(UUID householdId, Map<String, Object> fields, JwtAuthenticationToken token) {
-        // Validate inputs
-        validateToken(token, "patch household");
-        if (fields == null) {
-            throw new ValidationException("Update fields cannot be null");
+    public HouseholdResponse patchHousehold(UUID householdId, Map<String, Object> patchData, org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken token) {
+        log.warn("DEPRECATED: patchHousehold(UUID, Map, JwtAuthenticationToken) called. " +
+                "Migrate to patchHousehold(UUID, Map) for improved security architecture. " +
+                "The token parameter is ignored - using SecurityContext instead.");
+        return patchHousehold(householdId, patchData);
+    }
+
+    // ==================== Helper Methods ====================
+
+    /**
+     * Validates household name is not null or empty.
+     *
+     * @param name Household name to validate
+     * @throws ValidationException if the name is null or empty
+     */
+    private void validateHouseholdName(String name) {
+        if (name == null || name.isBlank()) {
+            throw new ValidationException("Household name cannot be null or empty");
         }
-        if (fields.isEmpty()) {
-            throw new ValidationException("Update fields cannot be empty");
-        }
-
-        User currentUser = userService.getCurrentUser(token);
-        log.debug("User {} patching household {} with fields: {}", currentUser.getId(), householdId, fields.keySet());
-
-        // Find household
-        Household household = householdRepository.findById(householdId)
-                .orElseThrow(() -> new NotFoundException("Household not found"));
-
-        // Check if user is a member with appropriate permissions
-        HouseholdMember member = householdMemberRepository.findByHouseholdIdAndUserId(householdId, currentUser.getId())
-                .orElseThrow(() -> new InsufficientPermissionException(
-                        "You don't have access to this household"));
-
-        validateAdminOrOwnerAccess(member, "update this household");
-
-        for (Map.Entry<String, Object> entry : fields.entrySet()) {
-            String key = entry.getKey();
-            Object value = entry.getValue();
-
-            if (key.equals("name")) {
-                String newName = (String) value;
-                validateHouseholdName(newName);
-
-                // Check if name is already used by a different household
-                Optional<Household> existingHousehold = householdRepository.findByName(newName);
-                if (existingHousehold.isPresent() && !existingHousehold.get().getId().equals(householdId)) {
-                    throw new ConflictException("Household with name '" + newName + "' already exists");
-                }
-
-                household.setName(newName);
-            } else {
-                log.debug("Ignoring unknown field: {}", key);
-            }
-        }
-
-        household.setUpdatedAt(LocalDateTime.now());
-        household = householdRepository.save(household);
-
-        log.info("User {} successfully patched household {}", currentUser.getId(), householdId);
-
-        return mapToHouseholdResponse(household);
     }
 
     /**

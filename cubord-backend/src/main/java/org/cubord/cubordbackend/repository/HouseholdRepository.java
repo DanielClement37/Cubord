@@ -13,4 +13,8 @@ public interface HouseholdRepository extends JpaRepository<Household, UUID> {
     List<Household> findByNameContainingIgnoreCase(String namePattern);
     List<Household> findByMembersUserId(UUID userId);
     boolean existsByName(String name);
+
+    boolean existsByNameAndMembersUserId(String name, UUID userId);
+    List<Household> findAllByMembersUserId(UUID userId);
+    List<Household> findAllByNameContainingIgnoreCaseAndMembersUserId(String namePattern, UUID userId);
 }
