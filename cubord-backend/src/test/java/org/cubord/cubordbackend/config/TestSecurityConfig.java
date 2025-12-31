@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.OAuth2TokenValidator;
@@ -25,11 +26,12 @@ import java.util.Collections;
 
 
 /**
- * Test security configuration that enables JWT authentication for tests
+ * Test security configuration that enables JWT authentication and method security for tests
  * but does not enforce token validation.
  */
 @TestConfiguration
 @EnableWebSecurity
+@EnableMethodSecurity(prePostEnabled = true)  // CRITICAL: Enable @PreAuthorize support
 public class TestSecurityConfig {
     private static final Logger logger = LoggerFactory.getLogger(TestSecurityConfig.class);
 
