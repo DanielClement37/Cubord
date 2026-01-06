@@ -445,6 +445,32 @@ public class RestExceptionHandler {
     }
 
     /**
+     * Handles URL validation exceptions.
+     *
+     * <p>Returns 400 Bad Request when a URL fails security validation (SSRF protection).</p>
+     *
+     * @param ex The URL validation exception
+     * @param request The current HTTP request
+     * @return ErrorResponse with 400 status
+     */
+    @ExceptionHandler(UrlValidationException.class)
+    public ResponseEntity<ErrorResponse> handleUrlValidationException(
+            UrlValidationException ex, HttpServletRequest request) {
+
+        String correlationId = getSafeCorrelationId(request);
+
+        log.warn("SECURITY: URL validation failed: {} [correlation_id={}]", ex.getMessage(), correlationId);
+
+        ErrorResponse error = ErrorResponse.of(
+                "URL_VALIDATION_FAILED",
+                "Invalid or potentially dangerous URL: " + MessageSanitizer.sanitizeMessage(ex.getMessage()),
+                correlationId
+        );
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+    }
+
+    /**
      * Extracts and sanitizes correlation ID from request headers.
      * This method ensures the correlation ID is always safe for use in responses.
      */

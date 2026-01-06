@@ -5,7 +5,6 @@ import org.cubord.cubordbackend.domain.Location;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.mockito.MockedStatic;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
@@ -21,7 +20,6 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.mockStatic;
 
 @DataJpaTest
 @ActiveProfiles("test")
@@ -46,7 +44,7 @@ class LocationRepositoryTest {
                 .id(UUID.randomUUID())
                 .name("Test Household 1")
                 .build();
-        
+
         testHousehold2 = Household.builder()
                 .id(UUID.randomUUID())
                 .name("Test Household 2")
@@ -82,7 +80,7 @@ class LocationRepositoryTest {
         testLocation1 = entityManager.persistAndFlush(testLocation1);
         testLocation2 = entityManager.persistAndFlush(testLocation2);
         testLocation3 = entityManager.persistAndFlush(testLocation3);
-        
+
         entityManager.clear();
     }
 
@@ -211,7 +209,7 @@ class LocationRepositoryTest {
         // Then
         Optional<Location> deletedLocation = locationRepository.findById(locationId);
         assertThat(deletedLocation).isEmpty();
-        
+
         // Verify other locations still exist
         List<Location> remainingLocations = locationRepository.findAll();
         assertThat(remainingLocations).hasSize(2);
@@ -229,7 +227,7 @@ class LocationRepositoryTest {
         // Then
         Optional<Location> deletedLocation = locationRepository.findById(testLocation2.getId());
         assertThat(deletedLocation).isEmpty();
-        
+
         // Verify other locations still exist
         List<Location> remainingLocations = locationRepository.findAll();
         assertThat(remainingLocations).hasSize(2);
@@ -270,7 +268,7 @@ class LocationRepositoryTest {
         // Then
         assertThat(savedLocation).isNotNull();
         assertThat(savedLocation.getId()).isEqualTo(newLocation.getId());
-        
+
         // Verify it's immediately available in the database
         Optional<Location> foundLocation = locationRepository.findById(savedLocation.getId());
         assertThat(foundLocation).isPresent();
@@ -303,7 +301,7 @@ class LocationRepositoryTest {
         assertThat(savedLocations).hasSize(2);
         assertThat(savedLocations).extracting(Location::getName)
                 .containsExactly("Closet", "Shed");
-        
+
         // Verify total count
         long totalCount = locationRepository.count();
         assertThat(totalCount).isEqualTo(5); // 3 original + 2 new
@@ -360,7 +358,7 @@ class LocationRepositoryTest {
         // Then
         long count = locationRepository.count();
         assertThat(count).isEqualTo(1); // Only testLocation3 should remain
-        
+
         Optional<Location> remainingLocation = locationRepository.findById(testLocation3.getId());
         assertThat(remainingLocation).isPresent();
         assertThat(remainingLocation.get().getName()).isEqualTo("Garage");
@@ -378,7 +376,7 @@ class LocationRepositoryTest {
         // Then
         long count = locationRepository.count();
         assertThat(count).isEqualTo(1); // Only testLocation3 should remain
-        
+
         Optional<Location> remainingLocation = locationRepository.findById(testLocation3.getId());
         assertThat(remainingLocation).isPresent();
         assertThat(remainingLocation.get().getName()).isEqualTo("Garage");
@@ -409,39 +407,44 @@ class LocationRepositoryTest {
     @Test
     @DisplayName("Test location lifecycle callbacks")
     void testLocationLifecycleCallbacks() {
-        LocalDateTime initialTime = LocalDateTime.of(2025, 1, 1, 12, 0);
-        LocalDateTime updateTime = LocalDateTime.of(2025, 1, 1, 12, 30);
-        
-        try (MockedStatic<LocalDateTime> mockedStatic = mockStatic(LocalDateTime.class)) {
-            // Given
-            Location newLocation = Location.builder()
-                    .id(UUID.randomUUID())
-                    .name("Callback Test")
-                    .description("Testing lifecycle callbacks")
-                    .household(testHousehold1)
-                    .build();
+        // Given
+        LocalDateTime beforeCreate = LocalDateTime.now();
 
-            // Mock the initial time for @PrePersist
-            mockedStatic.when(LocalDateTime::now).thenReturn(initialTime);
+        Location newLocation = Location.builder()
+                .id(UUID.randomUUID())
+                .name("Callback Test")
+                .description("Testing lifecycle callbacks")
+                .household(testHousehold1)
+                .build();
 
-            // When - Save (triggers @PrePersist)
-            Location savedLocation = locationRepository.saveAndFlush(newLocation);
+        // When - Save (triggers @PrePersist)
+        Location savedLocation = locationRepository.saveAndFlush(newLocation);
+        LocalDateTime afterCreate = LocalDateTime.now();
 
-            // Then
-            assertThat(savedLocation.getCreatedAt()).isEqualTo(initialTime);
-            assertThat(savedLocation.getUpdatedAt()).isEqualTo(initialTime);
+        // Then - createdAt and updatedAt should be set and within bounds
+        assertThat(savedLocation.getCreatedAt()).isNotNull();
+        assertThat(savedLocation.getUpdatedAt()).isNotNull();
+        assertThat(savedLocation.getCreatedAt()).isBetween(beforeCreate, afterCreate);
+        assertThat(savedLocation.getUpdatedAt()).isBetween(beforeCreate, afterCreate);
+        assertThat(savedLocation.getCreatedAt()).isEqualTo(savedLocation.getUpdatedAt());
 
-            // Mock the update time for @PreUpdate
-            mockedStatic.when(LocalDateTime::now).thenReturn(updateTime);
+        // Clear the persistence context to ensure fresh read
+        entityManager.clear();
 
-            // When - Update (triggers @PreUpdate)
-            savedLocation.setName("Updated Name");
-            Location updatedLocation = locationRepository.saveAndFlush(savedLocation);
+        // When - Update (triggers @PreUpdate)
+        LocalDateTime beforeUpdate = LocalDateTime.now();
+        Location locationToUpdate = locationRepository.findById(savedLocation.getId()).orElseThrow();
+        LocalDateTime originalCreatedAt = locationToUpdate.getCreatedAt();
 
-            // Then
-            assertThat(updatedLocation.getCreatedAt()).isEqualTo(initialTime); // Should not change
-            assertThat(updatedLocation.getUpdatedAt()).isEqualTo(updateTime); // Should be updated
-        }
+        locationToUpdate.setName("Updated Name");
+        Location updatedLocation = locationRepository.saveAndFlush(locationToUpdate);
+        LocalDateTime afterUpdate = LocalDateTime.now();
+
+        // Then - createdAt should not change, updatedAt should be updated
+        assertThat(updatedLocation.getCreatedAt()).isEqualTo(originalCreatedAt);
+        assertThat(updatedLocation.getUpdatedAt()).isBetween(beforeUpdate, afterUpdate);
+        assertThat(updatedLocation.getUpdatedAt()).isAfterOrEqualTo(updatedLocation.getCreatedAt());
+
     }
 
     @Test

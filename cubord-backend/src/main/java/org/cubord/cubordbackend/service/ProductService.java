@@ -388,6 +388,183 @@ public class ProductService {
         return successCount;
     }
 
+    /**
+     * Processes batch retry for products requiring API enrichment.
+     *
+     * <p>Authorization: Only administrators can process batch retries.</p>
+     *
+     * @param maxRetryAttempts Maximum number of retry attempts
+     * @return Number of products successfully enriched
+     */
+    @Transactional
+    @PreAuthorize("@security.isAdmin()")
+    public int processBatchRetry(int maxRetryAttempts) {
+        if (maxRetryAttempts <= 0) {
+            throw new ValidationException("Max retry attempts must be positive");
+        }
+
+        UUID currentUserId = securityService.getCurrentUserId();
+        log.info("Admin user {} processing batch retry with maxRetryAttempts: {}",
+                currentUserId, maxRetryAttempts);
+
+        List<Product> productsToRetry = productRepository.findByRequiresApiRetryTrueAndRetryAttemptsLessThan(
+                maxRetryAttempts);
+
+        int processedCount = 0;
+        for (Product product : productsToRetry) {
+            try {
+                ProductResponse apiData = upcApiService.fetchProductData(product.getUpc());
+                enrichProductWithApiData(product, apiData);
+                product.setRequiresApiRetry(false);
+                product.setDataSource(ProductDataSource.OPEN_FOOD_FACTS);
+                productRepository.save(product);
+                processedCount++;
+                log.info("Successfully enriched product {} (attempt {})",
+                        product.getId(), product.getRetryAttempts() + 1);
+            } catch (NotFoundException e) {
+                product.setRetryAttempts(product.getRetryAttempts() + 1);
+                product.setLastRetryAttempt(LocalDateTime.now());
+                if (product.getRetryAttempts() >= maxRetryAttempts) {
+                    product.setRequiresApiRetry(false);
+                    log.warn("Product {} exceeded max retry attempts ({})",
+                            product.getId(), maxRetryAttempts);
+                }
+                productRepository.save(product);
+            } catch (Exception e) {
+                log.error("Error processing retry for product {}: {}", product.getId(), e.getMessage());
+                product.setRetryAttempts(product.getRetryAttempts() + 1);
+                product.setLastRetryAttempt(LocalDateTime.now());
+                if (product.getRetryAttempts() >= maxRetryAttempts) {
+                    product.setRequiresApiRetry(false);
+                }
+                productRepository.save(product);
+            }
+        }
+
+        log.info("Admin user {} processed {} of {} products requiring retry",
+                currentUserId, processedCount, productsToRetry.size());
+        return processedCount;
+    }
+
+    /**
+     * Bulk imports multiple products.
+     *
+     * <p>Authorization: Only administrators can bulk import products.</p>
+     *
+     * @param requests List of product requests to import
+     * @return List of created ProductResponse objects
+     */
+    @Transactional
+    @PreAuthorize("@security.isAdmin()")
+    public List<ProductResponse> bulkImportProducts(List<ProductRequest> requests) {
+        if (requests == null || requests.isEmpty()) {
+            throw new ValidationException("Product requests cannot be null or empty");
+        }
+
+        UUID currentUserId = securityService.getCurrentUserId();
+        log.info("Admin user {} bulk importing {} products", currentUserId, requests.size());
+
+        List<ProductResponse> results = new ArrayList<>();
+        for (ProductRequest request : requests) {
+            try {
+                ProductResponse response = createProduct(request);
+                results.add(response);
+            } catch (Exception e) {
+                log.warn("Failed to import product with UPC {}: {}", request.getUpc(), e.getMessage());
+                // Continue with other products
+            }
+        }
+
+        log.info("Admin user {} successfully imported {} of {} products",
+                currentUserId, results.size(), requests.size());
+        return results;
+    }
+
+    /**
+     * Bulk deletes products.
+     *
+     * <p>Authorization: Only administrators can bulk delete products.</p>
+     *
+     * @param productIds List of product UUIDs to delete
+     * @return Number of products successfully deleted
+     */
+    @Transactional
+    @PreAuthorize("@security.isAdmin()")
+    public int bulkDeleteProducts(List<UUID> productIds) {
+        if (productIds == null || productIds.isEmpty()) {
+            throw new ValidationException("Product IDs cannot be null or empty");
+        }
+
+        UUID currentUserId = securityService.getCurrentUserId();
+        log.info("Admin user {} deleting {} products", currentUserId, productIds.size());
+
+        int deletedCount = 0;
+        for (UUID productId : productIds) {
+            try {
+                deleteProduct(productId);
+                deletedCount++;
+            } catch (Exception e) {
+                log.warn("Failed to delete product {}: {}", productId, e.getMessage());
+                // Continue with other products
+            }
+        }
+
+        log.info("Admin user {} successfully deleted {} of {} products",
+                currentUserId, deletedCount, productIds.size());
+        return deletedCount;
+    }
+
+    /**
+     * Retries API enrichment for a specific product.
+     *
+     * <p>Authorization: Only administrators can retry API enrichment.</p>
+     *
+     * @param productId UUID of the product to retry
+     * @return ProductResponse containing the updated product's details
+     */
+    @Transactional
+    @PreAuthorize("@security.isAdmin()")
+    public ProductResponse retryApiEnrichment(UUID productId) {
+        if (productId == null) {
+            throw new ValidationException("Product ID cannot be null");
+        }
+
+        UUID currentUserId = securityService.getCurrentUserId();
+        log.info("Admin user {} retrying API enrichment for product: {}", currentUserId, productId);
+
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new NotFoundException("Product not found with ID: " + productId));
+
+        try {
+            ProductResponse apiData = upcApiService.fetchProductData(product.getUpc());
+            enrichProductWithApiData(product, apiData);
+            product.setRequiresApiRetry(false);
+            product.setDataSource(ProductDataSource.OPEN_FOOD_FACTS);
+            product = productRepository.save(product);
+            log.info("Successfully enriched product {} on manual retry", productId);
+        } catch (NotFoundException e) {
+            product.setRetryAttempts(product.getRetryAttempts() + 1);
+            product.setLastRetryAttempt(LocalDateTime.now());
+            if (product.getRetryAttempts() >= MAX_RETRY_ATTEMPTS) {
+                product.setRequiresApiRetry(false);
+                log.warn("Product {} exceeded max retry attempts on manual retry", productId);
+            }
+            product = productRepository.save(product);
+            throw new DataIntegrityException("API enrichment failed - no data available for UPC: " + product.getUpc());
+        } catch (Exception e) {
+            log.error("Error during manual API enrichment for product {}: {}", productId, e.getMessage());
+            product.setRetryAttempts(product.getRetryAttempts() + 1);
+            product.setLastRetryAttempt(LocalDateTime.now());
+            if (product.getRetryAttempts() >= MAX_RETRY_ATTEMPTS) {
+                product.setRequiresApiRetry(false);
+            }
+            productRepository.save(product);
+            throw new DataIntegrityException("Failed to retry API enrichment: " + e.getMessage());
+        }
+
+        return mapToResponse(product);
+    }
+
     // ==================== Helper Methods ====================
 
     /**
@@ -849,7 +1026,7 @@ public class ProductService {
      * @deprecated This functionality should be part of the create/update validation
      *             rather than a separate endpoint.
      *
-     * @param upc UPC code to check
+     * @param upc UPC to check
      * @param token JWT authentication token (ignored in favor of SecurityContext)
      * @return true if UPC is available, false otherwise
      */
@@ -873,7 +1050,7 @@ public class ProductService {
     /**
      * Retrieves products requiring API retry using JWT token.
      *
-     * @deprecated Use admin dashboard or scheduled jobs for retry management.
+     * @deprecated Use the admin dashboard or scheduled jobs for retry management.
      *             This method may be restricted to admins in future versions.
      *
      * @param token JWT authentication token (ignored in favor of SecurityContext)

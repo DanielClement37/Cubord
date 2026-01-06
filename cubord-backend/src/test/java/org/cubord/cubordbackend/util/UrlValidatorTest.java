@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
  *   <li>Malformed URLs are rejected</li>
  * </ul>
  */
+@SuppressWarnings("HttpUrlsUsage")
 class UrlValidatorTest {
 
     // ==================== Valid URL Tests ====================
