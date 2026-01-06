@@ -308,6 +308,39 @@ public class PantryItemService {
     }
 
     /**
+     * Retrieves expiring items for a household within a date range.
+     * 
+     * <p>Authorization: User must have access to the household.</p>
+     *
+     * @param householdId UUID of the household
+     * @param startDate Start date for expiration check
+     * @param endDate End date for expiration check
+     * @return List of expiring pantry items
+     * @throws ValidationException if householdId, startDate, or endDate is null
+     * @throws InsufficientPermissionException if user cannot access the household
+     */
+    @Transactional(readOnly = true)
+    @PreAuthorize("@security.canAccessHousehold(#householdId)")
+    public List<PantryItemResponse> getExpiringItems(UUID householdId, LocalDate startDate, LocalDate endDate) {
+        if (householdId == null) {
+            throw new ValidationException("Household ID cannot be null");
+        }
+        if (startDate == null || endDate == null) {
+            throw new ValidationException("Start date and end date cannot be null");
+        }
+
+        UUID currentUserId = securityService.getCurrentUserId();
+        log.debug("User {} retrieving expiring items for household {} between {} and {}",
+                currentUserId, householdId, startDate, endDate);
+
+        List<PantryItem> items = pantryItemRepository.findExpiringItemsInHouseholdBetweenDates(
+                householdId, startDate, endDate);
+        return items.stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
+    }
+
+    /**
      * Searches pantry items in a household by search term.
      *
      * @param householdId UUID of the household
@@ -334,6 +367,52 @@ public class PantryItemService {
         return items.stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
+    }
+
+    /**
+     * Gets pantry statistics for a household.
+     * 
+     * <p>Authorization: User must have access to the household.</p>
+     *
+     * @param householdId UUID of the household
+     * @return Map containing pantry statistics (totalItems, distinctProducts, lowStockCount, expiringCount, noExpirationDateCount)
+     * @throws ValidationException if householdId is null
+     * @throws InsufficientPermissionException if user cannot access the household
+     */
+    @Transactional(readOnly = true)
+    @PreAuthorize("@security.canAccessHousehold(#householdId)")
+    public Map<String, Object> getPantryStatistics(UUID householdId) {
+        if (householdId == null) {
+            throw new ValidationException("Household ID cannot be null");
+        }
+
+        UUID currentUserId = securityService.getCurrentUserId();
+        log.debug("User {} retrieving pantry statistics for household: {}", currentUserId, householdId);
+
+        Map<String, Object> statistics = new HashMap<>();
+        
+        // Total items count
+        long totalItems = pantryItemRepository.countByLocation_HouseholdId(householdId);
+        statistics.put("totalItems", totalItems);
+        
+        // Distinct products count
+        long distinctProducts = pantryItemRepository.countDistinctProductsByHouseholdId(householdId);
+        statistics.put("distinctProducts", distinctProducts);
+        
+        // Low stock items (threshold of 5)
+        List<PantryItem> lowStockItems = pantryItemRepository.findLowStockItemsInHousehold(householdId, 5);
+        statistics.put("lowStockCount", lowStockItems.size());
+        
+        // Expiring items (within 7 days)
+        LocalDate sevenDaysFromNow = LocalDate.now().plusDays(7);
+        long expiringCount = pantryItemRepository.countExpiringItemsByHouseholdIdAndDate(householdId, sevenDaysFromNow);
+        statistics.put("expiringCount", expiringCount);
+        
+        // Items without expiration date
+        List<PantryItem> noExpirationItems = pantryItemRepository.findByExpirationDateIsNullAndLocation_HouseholdId(householdId);
+        statistics.put("noExpirationDateCount", noExpirationItems.size());
+        
+        return statistics;
     }
 
     // ==================== Update Operations ====================
