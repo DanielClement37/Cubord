@@ -158,34 +158,7 @@ public class HouseholdInvitationService {
         }
     }
 
-    /**
-     * Sends an invitation to join a household.
-     *
-     * @deprecated Use {@link #sendInvitation(UUID, HouseholdInvitationRequest)} instead.
-     *             This method is maintained for backward compatibility with controllers
-     *             that haven't been migrated to the new security architecture.
-     *             Token-based authentication is now handled by Spring Security filters.
-     *
-     * @param householdId UUID of the household to send invitation for
-     * @param request DTO containing invitation details
-     * @param token JWT authentication token (ignored in favor of SecurityContext)
-     * @return HouseholdInvitationResponse containing the created invitation's details
-     * @throws ValidationException if request validation fails
-     * @throws NotFoundException if household or user isn't found
-     * @throws InsufficientPermissionException if a user lacks permission
-     * @throws BusinessRuleViolationException if business rules are violated
-     * @throws ConflictException if user already has pending invitation or is already a member
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    @Transactional
-    public HouseholdInvitationResponse sendInvitation(UUID householdId, HouseholdInvitationRequest request,
-                                                      JwtAuthenticationToken token) {
-        log.warn("DEPRECATED: sendInvitation(householdId, request, token) called. " +
-                "Migrate to sendInvitation(householdId, request) for improved security architecture. " +
-                "The token parameter is ignored - using SecurityContext instead.");
 
-        return sendInvitation(householdId, request);
-    }
 
     // ==================== Query Operations ====================
 
@@ -214,30 +187,6 @@ public class HouseholdInvitationService {
         return invitations.stream()
                 .map(this::mapToResponse)
                 .toList();
-    }
-
-    /**
-     * Retrieves all invitations for a household.
-     *
-     * @deprecated Use {@link #getHouseholdInvitations(UUID)} instead.
-     *             This method is maintained for backward compatibility with controllers
-     *             that haven't been migrated to the new security architecture.
-     *             Token-based authentication is now handled by Spring Security filters.
-     *
-     * @param householdId UUID of the household
-     * @param token JWT authentication token (ignored in favor of SecurityContext)
-     * @return List of HouseholdInvitationResponse objects
-     * @throws ValidationException if householdId is null
-     * @throws InsufficientPermissionException if a user doesn't have access
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    @Transactional(readOnly = true)
-    public List<HouseholdInvitationResponse> getHouseholdInvitations(UUID householdId, JwtAuthenticationToken token) {
-        log.warn("DEPRECATED: getHouseholdInvitations(householdId, token) called. " +
-                "Migrate to getHouseholdInvitations(householdId) for improved security architecture. " +
-                "The token parameter is ignored - using SecurityContext instead.");
-
-        return getHouseholdInvitations(householdId);
     }
 
     /**
@@ -270,33 +219,6 @@ public class HouseholdInvitationService {
         return invitations.stream()
                 .map(this::mapToResponse)
                 .toList();
-    }
-
-    /**
-     * Retrieves household invitations filtered by status.
-     *
-     * @deprecated Use {@link #getHouseholdInvitationsByStatus(UUID, InvitationStatus)} instead.
-     *             This method is maintained for backward compatibility with controllers
-     *             that haven't been migrated to the new security architecture.
-     *             Token-based authentication is now handled by Spring Security filters.
-     *
-     * @param householdId UUID of the household
-     * @param status Status to filter by
-     * @param token JWT authentication token (ignored in favor of SecurityContext)
-     * @return List of HouseholdInvitationResponse objects matching the status
-     * @throws ValidationException if householdId or status is null
-     * @throws InsufficientPermissionException if a user doesn't have access
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    @Transactional(readOnly = true)
-    public List<HouseholdInvitationResponse> getHouseholdInvitationsByStatus(UUID householdId,
-                                                                             InvitationStatus status,
-                                                                             JwtAuthenticationToken token) {
-        log.warn("DEPRECATED: getHouseholdInvitationsByStatus(householdId, status, token) called. " +
-                "Migrate to getHouseholdInvitationsByStatus(householdId, status) for improved security architecture. " +
-                "The token parameter is ignored - using SecurityContext instead.");
-
-        return getHouseholdInvitationsByStatus(householdId, status);
     }
 
     /**
@@ -336,33 +258,6 @@ public class HouseholdInvitationService {
     }
 
     /**
-     * Retrieves a specific invitation by ID.
-     *
-     * @deprecated Use {@link #getInvitationById(UUID, UUID)} instead.
-     *             This method is maintained for backward compatibility with controllers
-     *             that haven't been migrated to the new security architecture.
-     *             Token-based authentication is now handled by Spring Security filters.
-     *
-     * @param householdId UUID of the household
-     * @param invitationId UUID of the invitation
-     * @param token JWT authentication token (ignored in favor of SecurityContext)
-     * @return HouseholdInvitationResponse containing the invitation's details
-     * @throws ValidationException if householdId or invitationId is null
-     * @throws NotFoundException if household or invitation not found
-     * @throws InsufficientPermissionException if a user doesn't have access
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    @Transactional(readOnly = true)
-    public HouseholdInvitationResponse getInvitationById(UUID householdId, UUID invitationId,
-                                                         JwtAuthenticationToken token) {
-        log.warn("DEPRECATED: getInvitationById(householdId, invitationId, token) called. " +
-                "Migrate to getInvitationById(householdId, invitationId) for improved security architecture. " +
-                "The token parameter is ignored - using SecurityContext instead.");
-
-        return getInvitationById(householdId, invitationId);
-    }
-
-    /**
      * Retrieves current user's pending invitations.
      *
      * <p>Authorization: All authenticated users can view their own invitations.</p>
@@ -381,27 +276,6 @@ public class HouseholdInvitationService {
         return invitations.stream()
                 .map(this::mapToResponse)
                 .toList();
-    }
-
-    /**
-     * Retrieves current user's pending invitations.
-     *
-     * @deprecated Use {@link #getMyInvitations()} instead.
-     *             This method is maintained for backward compatibility with controllers
-     *             that haven't been migrated to the new security architecture.
-     *             Token-based authentication is now handled by Spring Security filters.
-     *
-     * @param token JWT authentication token (ignored in favor of SecurityContext)
-     * @return List of HouseholdInvitationResponse objects for pending invitations
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    @Transactional(readOnly = true)
-    public List<HouseholdInvitationResponse> getMyInvitations(JwtAuthenticationToken token) {
-        log.warn("DEPRECATED: getMyInvitations(token) called. " +
-                "Migrate to getMyInvitations() for improved security architecture. " +
-                "The token parameter is ignored - using SecurityContext instead.");
-
-        return getMyInvitations();
     }
 
     /**
@@ -429,30 +303,6 @@ public class HouseholdInvitationService {
         return invitations.stream()
                 .map(this::mapToResponse)
                 .toList();
-    }
-
-    /**
-     * Retrieves current user's invitations filtered by status.
-     *
-     * @deprecated Use {@link #getMyInvitationsByStatus(InvitationStatus)} instead.
-     *             This method is maintained for backward compatibility with controllers
-     *             that haven't been migrated to the new security architecture.
-     *             Token-based authentication is now handled by Spring Security filters.
-     *
-     * @param status Status to filter by
-     * @param token JWT authentication token (ignored in favor of SecurityContext)
-     * @return List of HouseholdInvitationResponse objects matching the status
-     * @throws ValidationException if status is null
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    @Transactional(readOnly = true)
-    public List<HouseholdInvitationResponse> getMyInvitationsByStatus(InvitationStatus status,
-                                                                      JwtAuthenticationToken token) {
-        log.warn("DEPRECATED: getMyInvitationsByStatus(status, token) called. " +
-                "Migrate to getMyInvitationsByStatus(status) for improved security architecture. " +
-                "The token parameter is ignored - using SecurityContext instead.");
-
-        return getMyInvitationsByStatus(status);
     }
 
     // ==================== Update Operations ====================
@@ -521,33 +371,6 @@ public class HouseholdInvitationService {
     }
 
     /**
-     * Accepts a household invitation.
-     *
-     * @deprecated Use {@link #acceptInvitation(UUID)} instead.
-     *             This method is maintained for backward compatibility with controllers
-     *             that haven't been migrated to the new security architecture.
-     *             Token-based authentication is now handled by Spring Security filters.
-     *
-     * @param invitationId UUID of the invitation to accept
-     * @param token JWT authentication token (ignored in favor of SecurityContext)
-     * @return HouseholdInvitationResponse containing the updated invitation's details
-     * @throws ValidationException if invitationId is null
-     * @throws NotFoundException if invitation not found
-     * @throws InsufficientPermissionException if the user is not the invited user
-     * @throws ResourceStateException if the invitation is not in valid state
-     * @throws ConflictException if a user is already a member
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    @Transactional
-    public HouseholdInvitationResponse acceptInvitation(UUID invitationId, JwtAuthenticationToken token) {
-        log.warn("DEPRECATED: acceptInvitation(invitationId, token) called. " +
-                "Migrate to acceptInvitation(invitationId) for improved security architecture. " +
-                "The token parameter is ignored - using SecurityContext instead.");
-
-        return acceptInvitation(invitationId);
-    }
-
-    /**
      * Declines a household invitation.
      *
      * <p>Authorization: Only the invited user can decline their invitation.
@@ -581,32 +404,6 @@ public class HouseholdInvitationService {
                 currentUser.getEmail(), invitation.getHousehold().getName());
 
         return mapToResponse(invitation);
-    }
-
-    /**
-     * Declines a household invitation.
-     *
-     * @deprecated Use {@link #declineInvitation(UUID)} instead.
-     *             This method is maintained for backward compatibility with controllers
-     *             that haven't been migrated to the new security architecture.
-     *             Token-based authentication is now handled by Spring Security filters.
-     *
-     * @param invitationId UUID of the invitation to decline
-     * @param token JWT authentication token (ignored in favor of SecurityContext)
-     * @return HouseholdInvitationResponse containing the updated invitation's details
-     * @throws ValidationException if invitationId is null
-     * @throws NotFoundException if invitation not found
-     * @throws InsufficientPermissionException if the user is not the invited user
-     * @throws ResourceStateException if the invitation is not in valid state
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    @Transactional
-    public HouseholdInvitationResponse declineInvitation(UUID invitationId, JwtAuthenticationToken token) {
-        log.warn("DEPRECATED: declineInvitation(invitationId, token) called. " +
-                "Migrate to declineInvitation(invitationId) for improved security architecture. " +
-                "The token parameter is ignored - using SecurityContext instead.");
-
-        return declineInvitation(invitationId);
     }
 
     /**
@@ -656,32 +453,6 @@ public class HouseholdInvitationService {
 
         log.info("User {} cancelled invitation to {} for household {}",
                 currentUserId, invitation.getInvitedUser().getEmail(), invitation.getHousehold().getName());
-    }
-
-    /**
-     * Cancels a household invitation.
-     *
-     * @deprecated Use {@link #cancelInvitation(UUID, UUID)} instead.
-     *             This method is maintained for backward compatibility with controllers
-     *             that haven't been migrated to the new security architecture.
-     *             Token-based authentication is now handled by Spring Security filters.
-     *
-     * @param householdId UUID of the household
-     * @param invitationId UUID of the invitation to cancel
-     * @param token JWT authentication token (ignored in favor of SecurityContext)
-     * @throws ValidationException if householdId or invitationId is null
-     * @throws NotFoundException if household or invitation not found
-     * @throws InsufficientPermissionException if a user doesn't have admin/owner permission
-     * @throws ResourceStateException if the invitation is not in valid state
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    @Transactional
-    public void cancelInvitation(UUID householdId, UUID invitationId, JwtAuthenticationToken token) {
-        log.warn("DEPRECATED: cancelInvitation(householdId, invitationId, token) called. " +
-                "Migrate to cancelInvitation(householdId, invitationId) for improved security architecture. " +
-                "The token parameter is ignored - using SecurityContext instead.");
-
-        cancelInvitation(householdId, invitationId);
     }
 
     /**
@@ -756,36 +527,6 @@ public class HouseholdInvitationService {
     }
 
     /**
-     * Updates an existing invitation.
-     *
-     * @deprecated Use {@link #updateInvitation(UUID, UUID, HouseholdInvitationUpdateRequest)} instead.
-     *             This method is maintained for backward compatibility with controllers
-     *             that haven't been migrated to the new security architecture.
-     *             Token-based authentication is now handled by Spring Security filters.
-     *
-     * @param householdId UUID of the household
-     * @param invitationId UUID of the invitation to update
-     * @param request DTO containing the updated invitation information
-     * @param token JWT authentication token (ignored in favor of SecurityContext)
-     * @return HouseholdInvitationResponse containing the updated invitation's details
-     * @throws ValidationException if request validation fails
-     * @throws NotFoundException if household or invitation not found
-     * @throws InsufficientPermissionException if a user doesn't have admin/owner permission
-     * @throws ResourceStateException if the invitation is not in valid state
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    @Transactional
-    public HouseholdInvitationResponse updateInvitation(UUID householdId, UUID invitationId,
-                                                        HouseholdInvitationUpdateRequest request,
-                                                        JwtAuthenticationToken token) {
-        log.warn("DEPRECATED: updateInvitation(householdId, invitationId, request, token) called. " +
-                "Migrate to updateInvitation(householdId, invitationId, request) for improved security architecture. " +
-                "The token parameter is ignored - using SecurityContext instead.");
-
-        return updateInvitation(householdId, invitationId, request);
-    }
-
-    /**
      * Resends an invitation with updated expiry.
      *
      * <p>Authorization: User must have an OWNER or ADMIN role in the household.</p>
@@ -841,36 +582,6 @@ public class HouseholdInvitationService {
                 currentUserId, invitation.getInvitedUser().getEmail(), invitation.getHousehold().getName());
 
         return mapToResponse(invitation);
-    }
-
-    /**
-     * Resends an invitation with updated expiry.
-     *
-     * @deprecated Use {@link #resendInvitation(UUID, UUID, ResendInvitationRequest)} instead.
-     *             This method is maintained for backward compatibility with controllers
-     *             that haven't been migrated to the new security architecture.
-     *             Token-based authentication is now handled by Spring Security filters.
-     *
-     * @param householdId UUID of the household
-     * @param invitationId UUID of the invitation to resend
-     * @param request DTO containing the resend request information
-     * @param token JWT authentication token (ignored in favor of SecurityContext)
-     * @return HouseholdInvitationResponse containing the updated invitation's details
-     * @throws ValidationException if householdId or invitationId is null
-     * @throws NotFoundException if household or invitation not found
-     * @throws InsufficientPermissionException if a user doesn't have admin/owner permission
-     * @throws ResourceStateException if the invitation is not in valid state
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    @Transactional
-    public HouseholdInvitationResponse resendInvitation(UUID householdId, UUID invitationId,
-                                                        ResendInvitationRequest request,
-                                                        JwtAuthenticationToken token) {
-        log.warn("DEPRECATED: resendInvitation(householdId, invitationId, request, token) called. " +
-                "Migrate to resendInvitation(householdId, invitationId, request) for improved security architecture. " +
-                "The token parameter is ignored - using SecurityContext instead.");
-
-        return resendInvitation(householdId, invitationId, request);
     }
 
     // ==================== Scheduled Operations ====================

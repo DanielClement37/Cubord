@@ -127,34 +127,6 @@ public class HouseholdMemberService {
         return mapToResponse(member);
     }
 
-    /**
-     * Adds a new member to a household.
-     *
-     * @deprecated Use {@link #addMemberToHousehold(UUID, HouseholdMemberRequest)} instead.
-     *             This method is maintained for backward compatibility with controllers
-     *             that haven't been migrated to the new security architecture.
-     *             Token-based authentication is now handled by Spring Security filters.
-     *
-     * @param householdId ID of the household to add member to
-     * @param request Details of the member to add
-     * @param token JWT token of the user performing the action (ignored in favor of SecurityContext)
-     * @return HouseholdMemberResponse containing details of the added member
-     * @throws ValidationException if request or householdId is null, or a role is OWNER
-     * @throws NotFoundException if the household or user is not found
-     * @throws ConflictException if the user is already a member
-     * @throws InsufficientPermissionException if the current user lacks permission
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    @Transactional
-    public HouseholdMemberResponse addMemberToHousehold(UUID householdId, HouseholdMemberRequest request,
-                                                        JwtAuthenticationToken token) {
-        log.warn("DEPRECATED: addMemberToHousehold(UUID, HouseholdMemberRequest, JwtAuthenticationToken) called. " +
-                "Migrate to addMemberToHousehold(UUID, HouseholdMemberRequest) for improved security architecture. " +
-                "The token parameter is ignored - using SecurityContext instead.");
-
-        // Delegate to the modern method
-        return addMemberToHousehold(householdId, request);
-    }
 
     // ==================== Query Operations ====================
 
@@ -183,31 +155,6 @@ public class HouseholdMemberService {
         return members.stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
-    }
-
-    /**
-     * Retrieves all members of a household.
-     *
-     * @deprecated Use {@link #getHouseholdMembers(UUID)} instead.
-     *             This method is maintained for backward compatibility with controllers
-     *             that haven't been migrated to the new security architecture.
-     *             Token-based authentication is now handled by Spring Security filters.
-     *
-     * @param householdId ID of the household to get members for
-     * @param token JWT token of the user performing the action (ignored in favor of SecurityContext)
-     * @return List of HouseholdMemberResponse objects representing household members
-     * @throws ValidationException if householdId is null
-     * @throws InsufficientPermissionException if the user is not a member
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    @Transactional(readOnly = true)
-    public List<HouseholdMemberResponse> getHouseholdMembers(UUID householdId, JwtAuthenticationToken token) {
-        log.warn("DEPRECATED: getHouseholdMembers(UUID, JwtAuthenticationToken) called. " +
-                "Migrate to getHouseholdMembers(UUID) for improved security architecture. " +
-                "The token parameter is ignored - using SecurityContext instead.");
-
-        // Delegate to the modern method
-        return getHouseholdMembers(householdId);
     }
 
     /**
@@ -244,33 +191,6 @@ public class HouseholdMemberService {
         }
 
         return mapToResponse(member);
-    }
-
-    /**
-     * Retrieves a specific member of a household by ID.
-     *
-     * @deprecated Use {@link #getMemberById(UUID, UUID)} instead.
-     *             This method is maintained for backward compatibility with controllers
-     *             that haven't been migrated to the new security architecture.
-     *             Token-based authentication is now handled by Spring Security filters.
-     *
-     * @param householdId ID of the household
-     * @param memberId ID of the member to retrieve
-     * @param token JWT token of the user performing the action (ignored in favor of SecurityContext)
-     * @return HouseholdMemberResponse containing member details
-     * @throws ValidationException if householdId or memberId is null
-     * @throws NotFoundException if the member is not found or not from the specified household
-     * @throws InsufficientPermissionException if the user is not a member
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    @Transactional(readOnly = true)
-    public HouseholdMemberResponse getMemberById(UUID householdId, UUID memberId, JwtAuthenticationToken token) {
-        log.warn("DEPRECATED: getMemberById(UUID, UUID, JwtAuthenticationToken) called. " +
-                "Migrate to getMemberById(UUID, UUID) for improved security architecture. " +
-                "The token parameter is ignored - using SecurityContext instead.");
-
-        // Delegate to the modern method
-        return getMemberById(householdId, memberId);
     }
 
     // ==================== Delete Operations ====================
@@ -335,33 +255,6 @@ public class HouseholdMemberService {
         householdMemberRepository.delete(memberToRemove);
         log.info("User {} successfully removed member {} from household {}",
                 currentUserId, memberId, householdId);
-    }
-
-    /**
-     * Removes a member from a household.
-     *
-     * @deprecated Use {@link #removeMember(UUID, UUID)} instead.
-     *             This method is maintained for backward compatibility with controllers
-     *             that haven't been migrated to the new security architecture.
-     *             Token-based authentication is now handled by Spring Security filters.
-     *
-     * @param householdId ID of the household
-     * @param memberId ID of the member to remove
-     * @param token JWT token of the user performing the action (ignored in favor of SecurityContext)
-     * @throws ValidationException if householdId or memberId is null
-     * @throws NotFoundException if the member is not found or not from the specified household
-     * @throws InsufficientPermissionException if the current user lacks permission
-     * @throws ResourceStateException if attempting to remove the owner
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    @Transactional
-    public void removeMember(UUID householdId, UUID memberId, JwtAuthenticationToken token) {
-        log.warn("DEPRECATED: removeMember(UUID, UUID, JwtAuthenticationToken) called. " +
-                "Migrate to removeMember(UUID, UUID) for improved security architecture. " +
-                "The token parameter is ignored - using SecurityContext instead.");
-
-        // Delegate to the modern method
-        removeMember(householdId, memberId);
     }
 
     // ==================== Update Operations ====================
@@ -433,35 +326,6 @@ public class HouseholdMemberService {
                 currentUserId, memberId, role, householdId);
 
         return mapToResponse(memberToUpdate);
-    }
-
-    /**
-     * Updates a member's role within a household.
-     *
-     * @deprecated Use {@link #updateMemberRole(UUID, UUID, HouseholdRole)} instead.
-     *             This method is maintained for backward compatibility with controllers
-     *             that haven't been migrated to the new security architecture.
-     *             Token-based authentication is now handled by Spring Security filters.
-     *
-     * @param householdId ID of the household
-     * @param memberId ID of the member whose role is to be updated
-     * @param role New role to assign to the member
-     * @param token JWT token of the user performing the action (ignored in favor of SecurityContext)
-     * @return HouseholdMemberResponse containing updated member details
-     * @throws ValidationException if householdId, memberId, or role is null, or a role is OWNER
-     * @throws NotFoundException if the member is not found or not from the specified household
-     * @throws InsufficientPermissionException if the current user lacks permission
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    @Transactional
-    public HouseholdMemberResponse updateMemberRole(UUID householdId, UUID memberId, HouseholdRole role,
-                                                    JwtAuthenticationToken token) {
-        log.warn("DEPRECATED: updateMemberRole(UUID, UUID, HouseholdRole, JwtAuthenticationToken) called. " +
-                "Migrate to updateMemberRole(UUID, UUID, HouseholdRole) for improved security architecture. " +
-                "The token parameter is ignored - using SecurityContext instead.");
-
-        // Delegate to the modern method
-        return updateMemberRole(householdId, memberId, role);
     }
 
     // ==================== Mapping Methods ====================

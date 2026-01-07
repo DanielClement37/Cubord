@@ -420,33 +420,4 @@ public class UpcApiService {
             return null;
         }
     }
-
-
-    // ==================== Deprecated Methods ====================
-
-    /**
-     * Fetches product data from the external UPC database using JWT token.
-     *
-     * @param upc   UPC/EAN code of the product to fetch
-     * @param token JWT authentication token (ignored in favor of SecurityContext)
-     * @return ProductResponse containing the product data from the external API
-     * @throws ValidationException      if the UPC is null or empty
-     * @throws NotFoundException        if the product is not found in the external database
-     * @throws ExternalServiceException if the external API call fails
-     * @deprecated Use {@link #fetchProductData(String)} instead.
-     * This method is maintained for backward compatibility with services
-     * that haven't been migrated to the new security architecture.
-     * Token-based authentication is now handled by Spring Security filters,
-     * and authorization is managed through @PreAuthorize annotations.
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    @PreAuthorize("isAuthenticated()")
-    public ProductResponse fetchProductData(String upc, org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken token) {
-        log.warn("DEPRECATED: fetchProductData(String, JwtAuthenticationToken) called. " +
-                "Migrate to fetchProductData(String) for improved security architecture. " +
-                "The token parameter is ignored - using SecurityContext instead.");
-
-        // Delegate to the modern method which uses SecurityService
-        return fetchProductData(upc);
-    }
 }

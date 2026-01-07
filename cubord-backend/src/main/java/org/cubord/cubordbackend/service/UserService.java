@@ -65,54 +65,6 @@ public class UserService {
     }
 
     /**
-     * Retrieves the current authenticated user's details from JWT token.
-     * 
-     * @deprecated Use {@link #getCurrentUserDetails()} instead.
-     *             This method is maintained for backward compatibility with controllers
-     *             and services that haven't been migrated to the new security architecture.
-     *             Token-based authentication is now handled by Spring Security filters,
-     *             and user resolution should be done through SecurityService without explicit tokens.
-     * 
-     * @param token JWT authentication token containing user information (ignored in favor of SecurityContext)
-     * @return UserResponse containing the authenticated user's details
-     * @throws AuthenticationRequiredException if no authenticated user exists
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    @Transactional(readOnly = true)
-    public UserResponse getCurrentUserDetails(org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken token) {
-        log.warn("DEPRECATED: getCurrentUserDetails(JwtAuthenticationToken) called. " +
-                "Migrate to getCurrentUserDetails() for improved security architecture. " +
-                "The token parameter is ignored - using SecurityContext instead.");
-        
-        // Delegate to the modern method which uses SecurityService
-        return getCurrentUserDetails();
-    }
-
-    /**
-     * Retrieves the current authenticated user from the JWT token.
-     * 
-     * @deprecated Use {@link SecurityService#getCurrentUser()} instead.
-     *             This method is maintained for backward compatibility with services
-     *             that haven't been migrated to the new security architecture.
-     *             Token-based authentication is now handled by Spring Security filters,
-     *             and user resolution should be done through SecurityService.
-     * 
-     * @param token JWT authentication token containing user information (ignored in favor of SecurityContext)
-     * @return User entity corresponding to the authenticated user
-     * @throws AuthenticationRequiredException if the JWT token is invalid or missing
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    @Transactional(readOnly = true)
-    public User getCurrentUser(org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken token) {
-        log.warn("DEPRECATED: getCurrentUser(JwtAuthenticationToken) called. " +
-                "Migrate to SecurityService.getCurrentUser() for improved security architecture. " +
-                "The token parameter is ignored - using SecurityContext instead.");
-        
-        // Delegate to SecurityService which handles the same logic
-        return securityService.getCurrentUser();
-    }
-
-    /**
      * Retrieves a user by their ID.
      * 
      * <p>Authorization: User must be able to access the target user's profile

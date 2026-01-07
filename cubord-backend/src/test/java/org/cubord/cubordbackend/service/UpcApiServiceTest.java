@@ -359,32 +359,4 @@ class UpcApiServiceTest {
             }
     }
 
-    // ==================== Deprecated Method Tests ====================
-
-    @Nested
-    @DisplayName("Deprecated fetchProductData(String, JwtAuthenticationToken)")
-    class DeprecatedFetchProductDataTests {
-
-        @Test
-        @DisplayName("should delegate to modern method and log deprecation warning")
-        void whenCallingDeprecatedMethod_delegatesToModernMethod() {
-            // Given
-            String expectedUrl = "https://world.openfoodfacts.org/api/v2/product/" + VALID_UPC + ".json";
-            when(restTemplate.getForObject(eq(expectedUrl), eq(String.class)))
-                    .thenReturn(VALID_API_RESPONSE);
-
-            // Note: We can't easily verify log output in unit tests, but we can verify behavior
-            // When
-            ProductResponse response = upcApiService.fetchProductData(VALID_UPC, null);
-
-            // Then
-            assertThat(response).isNotNull();
-            assertThat(response.getUpc()).isEqualTo(VALID_UPC);
-            assertThat(response.getName()).isEqualTo("Nutella");
-
-            // Verify that the modern path is used (no token validation)
-            verify(restTemplate).getForObject(eq(expectedUrl), eq(String.class));
-            verify(securityService).getCurrentUserId();
-        }
-    }
 }

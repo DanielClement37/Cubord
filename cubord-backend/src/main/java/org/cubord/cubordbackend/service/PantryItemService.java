@@ -1,29 +1,36 @@
-
 package org.cubord.cubordbackend.service;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.transaction.annotation.Transactional;
-import org.cubord.cubordbackend.domain.*;
+import org.cubord.cubordbackend.domain.Location;
+import org.cubord.cubordbackend.domain.PantryItem;
+import org.cubord.cubordbackend.domain.Product;
 import org.cubord.cubordbackend.dto.location.LocationResponse;
 import org.cubord.cubordbackend.dto.pantryItem.CreatePantryItemRequest;
 import org.cubord.cubordbackend.dto.pantryItem.PantryItemResponse;
 import org.cubord.cubordbackend.dto.pantryItem.UpdatePantryItemRequest;
 import org.cubord.cubordbackend.dto.product.ProductResponse;
-import org.cubord.cubordbackend.exception.*;
-import org.cubord.cubordbackend.repository.*;
+import org.cubord.cubordbackend.exception.DataIntegrityException;
+import org.cubord.cubordbackend.exception.InsufficientPermissionException;
+import org.cubord.cubordbackend.exception.NotFoundException;
+import org.cubord.cubordbackend.exception.ValidationException;
+import org.cubord.cubordbackend.repository.LocationRepository;
+import org.cubord.cubordbackend.repository.PantryItemRepository;
+import org.cubord.cubordbackend.repository.ProductRepository;
 import org.cubord.cubordbackend.security.SecurityService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
 
 /**
  * Service class for managing pantry items.
- * 
+ *
  * <p>This service follows the modernized security architecture where:</p>
  * <ul>
  *   <li>Authentication is handled by Spring Security filters</li>
@@ -31,7 +38,7 @@ import java.util.stream.Collectors;
  *   <li>SecurityService provides business-level security context access</li>
  *   <li>No manual token validation or permission checks in business logic</li>
  * </ul>
- * 
+ *
  * <h2>Authorization Rules</h2>
  * <ul>
  *   <li><strong>Create:</strong> User must have access to the household containing the location</li>
@@ -39,7 +46,7 @@ import java.util.stream.Collectors;
  *   <li><strong>Update:</strong> User must have access to the household containing the pantry item</li>
  *   <li><strong>Delete:</strong> User must have access to the household containing the pantry item</li>
  * </ul>
- * 
+ *
  * <h2>Business Logic</h2>
  * <p>Pantry items with identical product, location, and expiration date are automatically consolidated.
  * This prevents duplicate entries and simplifies inventory management.</p>
@@ -69,10 +76,10 @@ public class PantryItemService {
      *
      * @param request DTO containing pantry item information
      * @return PantryItemResponse containing the created or updated pantry item's details
-     * @throws ValidationException             if request is invalid
+     * @throws ValidationException             if the request is invalid
      * @throws NotFoundException               if location or product not found
-     * @throws InsufficientPermissionException if user cannot access the household
-     * @throws DataIntegrityException if save operation fails
+     * @throws InsufficientPermissionException if a user cannot access the household
+     * @throws DataIntegrityException          if save operation fails
      */
     @Transactional
     @PreAuthorize("@security.canAccessLocationForPantryItem(#request.locationId)")
@@ -95,7 +102,7 @@ public class PantryItemService {
         Product product = productRepository.findById(request.getProductId())
                 .orElseThrow(() -> new NotFoundException("Product not found with ID: " + request.getProductId()));
 
-        // Check for existing item to consolidate (using correct method name from repository)
+        // Check for existing item to consolidate (using the correct method name from repository)
         Optional<PantryItem> existingItem = pantryItemRepository.findByLocationIdAndProductIdAndExpirationDate(
                 request.getLocationId(),
                 request.getProductId(),
@@ -115,7 +122,7 @@ public class PantryItemService {
             return mapToResponse(saved);
         }
 
-        // Create new pantry item
+        // Create a new pantry item
         PantryItem pantryItem = PantryItem.builder()
                 .product(product)
                 .location(location)
@@ -169,7 +176,7 @@ public class PantryItemService {
      * @return PantryItemResponse containing the pantry item's details
      * @throws ValidationException             if id is null
      * @throws NotFoundException               if pantry item not found
-     * @throws InsufficientPermissionException if user cannot access the household
+     * @throws InsufficientPermissionException if a user cannot access the household
      */
     @Transactional(readOnly = true)
     @PreAuthorize("@security.canAccessPantryItem(#id)")
@@ -189,13 +196,13 @@ public class PantryItemService {
 
     /**
      * Retrieves all pantry items in a specific location.
-     * 
+     *
      * <p>Authorization: User must have access to the household containing the location.</p>
      *
      * @param locationId UUID of the location
      * @return List of pantry items in the location
-     * @throws ValidationException if locationId is null
-     * @throws InsufficientPermissionException if user cannot access the household
+     * @throws ValidationException             if locationId is null
+     * @throws InsufficientPermissionException if a user cannot access the household
      */
     @Transactional(readOnly = true)
     @PreAuthorize("@security.canAccessLocationForPantryItem(#locationId)")
@@ -215,14 +222,14 @@ public class PantryItemService {
 
     /**
      * Retrieves paginated pantry items for a household.
-     * 
+     *
      * <p>Authorization: User must have access to the household.</p>
      *
      * @param householdId UUID of the household
-     * @param pageable Pagination information
+     * @param pageable    Pagination information
      * @return Page of pantry items in the household
-     * @throws ValidationException if householdId is null
-     * @throws InsufficientPermissionException if user cannot access the household
+     * @throws ValidationException             if householdId is null
+     * @throws InsufficientPermissionException if a user cannot access the household
      */
     @Transactional(readOnly = true)
     @PreAuthorize("@security.canAccessHousehold(#householdId)")
@@ -241,14 +248,14 @@ public class PantryItemService {
 
     /**
      * Retrieves low stock items for a household.
-     * 
+     *
      * <p>Authorization: User must have access to the household.</p>
      *
      * @param householdId UUID of the household
-     * @param threshold Stock threshold (items with quantity <= threshold)
-     * @return List of low stock pantry items
-     * @throws ValidationException if householdId is null or threshold is negative
-     * @throws InsufficientPermissionException if user cannot access the household
+     * @param threshold   Stock threshold (items with quantity <= threshold)
+     * @return List of low-stock pantry items
+     * @throws ValidationException             if householdId is null or a threshold is negative
+     * @throws InsufficientPermissionException if a user cannot access the household
      */
     @Transactional(readOnly = true)
     @PreAuthorize("@security.canAccessHousehold(#householdId)")
@@ -273,14 +280,14 @@ public class PantryItemService {
 
     /**
      * Retrieves expiring items for a household within the specified number of days.
-     * 
+     *
      * <p>Authorization: User must have access to the household.</p>
      *
-     * @param householdId UUID of the household
+     * @param householdId         UUID of the household
      * @param daysUntilExpiration Number of days to look ahead
      * @return List of expiring pantry items
-     * @throws ValidationException if householdId is null or daysUntilExpiration is negative
-     * @throws InsufficientPermissionException if user cannot access the household
+     * @throws ValidationException             if householdId is null or daysUntilExpiration is negative
+     * @throws InsufficientPermissionException if a user cannot access the household
      */
     @Transactional(readOnly = true)
     @PreAuthorize("@security.canAccessHousehold(#householdId)")
@@ -298,7 +305,7 @@ public class PantryItemService {
 
         LocalDate startDate = LocalDate.now();
         LocalDate endDate = LocalDate.now().plusDays(daysUntilExpiration);
-        
+
         // Use correct method name from repository
         List<PantryItem> items = pantryItemRepository.findExpiringItemsInHouseholdBetweenDates(
                 householdId, startDate, endDate);
@@ -309,15 +316,15 @@ public class PantryItemService {
 
     /**
      * Retrieves expiring items for a household within a date range.
-     * 
+     *
      * <p>Authorization: User must have access to the household.</p>
      *
      * @param householdId UUID of the household
-     * @param startDate Start date for expiration check
-     * @param endDate End date for expiration check
+     * @param startDate   Start date for expiration check
+     * @param endDate     End date for expiration check
      * @return List of expiring pantry items
-     * @throws ValidationException if householdId, startDate, or endDate is null
-     * @throws InsufficientPermissionException if user cannot access the household
+     * @throws ValidationException             if householdId, startDate, or endDate is null
+     * @throws InsufficientPermissionException if a user cannot access the household
      */
     @Transactional(readOnly = true)
     @PreAuthorize("@security.canAccessHousehold(#householdId)")
@@ -344,10 +351,10 @@ public class PantryItemService {
      * Searches pantry items in a household by search term.
      *
      * @param householdId UUID of the household
-     * @param searchTerm Term to search for in product names, brands, and notes
+     * @param searchTerm  Term to search for in product names, brands, and notes
      * @return List of PantryItemResponse objects matching the search
-     * @throws ValidationException if search term is null or empty
-     * @throws InsufficientPermissionException if user is not a member of the household
+     * @throws ValidationException             if a search term is null or empty
+     * @throws InsufficientPermissionException if a user is not a member of the household
      */
     @Transactional(readOnly = true)
     @PreAuthorize("@security.canAccessHousehold(#householdId)")
@@ -371,13 +378,13 @@ public class PantryItemService {
 
     /**
      * Gets pantry statistics for a household.
-     * 
+     *
      * <p>Authorization: User must have access to the household.</p>
      *
      * @param householdId UUID of the household
      * @return Map containing pantry statistics (totalItems, distinctProducts, lowStockCount, expiringCount, noExpirationDateCount)
-     * @throws ValidationException if householdId is null
-     * @throws InsufficientPermissionException if user cannot access the household
+     * @throws ValidationException             if householdId is null
+     * @throws InsufficientPermissionException if a user cannot access the household
      */
     @Transactional(readOnly = true)
     @PreAuthorize("@security.canAccessHousehold(#householdId)")
@@ -390,28 +397,28 @@ public class PantryItemService {
         log.debug("User {} retrieving pantry statistics for household: {}", currentUserId, householdId);
 
         Map<String, Object> statistics = new HashMap<>();
-        
+
         // Total items count
         long totalItems = pantryItemRepository.countByLocation_HouseholdId(householdId);
         statistics.put("totalItems", totalItems);
-        
+
         // Distinct products count
         long distinctProducts = pantryItemRepository.countDistinctProductsByHouseholdId(householdId);
         statistics.put("distinctProducts", distinctProducts);
-        
+
         // Low stock items (threshold of 5)
         List<PantryItem> lowStockItems = pantryItemRepository.findLowStockItemsInHousehold(householdId, 5);
         statistics.put("lowStockCount", lowStockItems.size());
-        
+
         // Expiring items (within 7 days)
         LocalDate sevenDaysFromNow = LocalDate.now().plusDays(7);
         long expiringCount = pantryItemRepository.countExpiringItemsByHouseholdIdAndDate(householdId, sevenDaysFromNow);
         statistics.put("expiringCount", expiringCount);
-        
+
         // Items without expiration date
         List<PantryItem> noExpirationItems = pantryItemRepository.findByExpirationDateIsNullAndLocation_HouseholdId(householdId);
         statistics.put("noExpirationDateCount", noExpirationItems.size());
-        
+
         return statistics;
     }
 
@@ -427,7 +434,7 @@ public class PantryItemService {
      * @return PantryItemResponse containing the updated pantry item's details
      * @throws ValidationException             if id or request is null
      * @throws NotFoundException               if pantry item or location not found
-     * @throws InsufficientPermissionException if user cannot access the household
+     * @throws InsufficientPermissionException if a user cannot access the household
      */
     @Transactional
     @PreAuthorize("@security.canAccessPantryItem(#id)")
@@ -480,7 +487,7 @@ public class PantryItemService {
      * @return PantryItemResponse containing the updated pantry item's details
      * @throws ValidationException             if id or patchData is null
      * @throws NotFoundException               if pantry item not found
-     * @throws InsufficientPermissionException if user cannot access the household
+     * @throws InsufficientPermissionException if a user cannot access the household
      */
     @Transactional
     @PreAuthorize("@security.canAccessPantryItem(#id)")
@@ -516,7 +523,7 @@ public class PantryItemService {
      * @param id UUID of the pantry item to delete
      * @throws ValidationException             if id is null
      * @throws NotFoundException               if pantry item not found
-     * @throws InsufficientPermissionException if user cannot access the household
+     * @throws InsufficientPermissionException if a user cannot access the household
      */
     @Transactional
     @PreAuthorize("@security.canAccessPantryItem(#id)")
@@ -679,290 +686,4 @@ public class PantryItemService {
                 .updatedAt(pantryItem.getUpdatedAt())
                 .build();
     }
-
-    /**
-     * Retrieves a pantry item using JWT token for authentication.
-     *
-     * @deprecated Use {@link #getPantryItemById(UUID)} instead.
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    @Transactional
-    public PantryItemResponse getPantryItemById(UUID id,
-                                                org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken token) {
-        log.warn("DEPRECATED: getPantryItemById(UUID, JwtAuthenticationToken) called. " +
-                "Migrate to getPantryItemById(UUID) for improved security architecture. " +
-                "The token parameter is ignored - using SecurityContext instead.");
-        return getPantryItemById(id);
-    }
-
-    /**
-     * Updates a pantry item using JWT token for authentication.
-     *
-     * @deprecated Use {@link #updatePantryItem(UUID, UpdatePantryItemRequest)} instead.
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    @Transactional
-    public PantryItemResponse updatePantryItem(UUID id, UpdatePantryItemRequest request,
-                                               org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken token) {
-        log.warn("DEPRECATED: updatePantryItem(UUID, UpdatePantryItemRequest, JwtAuthenticationToken) called. " +
-                "Migrate to updatePantryItem(UUID, UpdatePantryItemRequest) for improved security architecture. " +
-                "The token parameter is ignored - using SecurityContext instead.");
-        return updatePantryItem(id, request);
-    }
-
-    /**
-     * Patches a pantry item using JWT token for authentication.
-     *
-     * @deprecated Use {@link #patchPantryItem(UUID, Map)} instead.
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    @Transactional
-    public PantryItemResponse patchPantryItem(UUID id, Map<String, Object> patchData,
-                                              org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken token) {
-        log.warn("DEPRECATED: patchPantryItem(UUID, Map, JwtAuthenticationToken) called. " +
-                "Migrate to patchPantryItem(UUID, Map) for improved security architecture. " +
-                "The token parameter is ignored - using SecurityContext instead.");
-        return patchPantryItem(id, patchData);
-    }
-
-    /**
-     * Deletes a pantry item using JWT token for authentication.
-     *
-     * @deprecated Use {@link #deletePantryItem(UUID)} instead.
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    @Transactional
-    public void deletePantryItem(UUID id,
-                                 org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken token) {
-        log.warn("DEPRECATED: deletePantryItem(UUID, JwtAuthenticationToken) called. " +
-                "Migrate to deletePantryItem(UUID) for improved security architecture. " +
-                "The token parameter is ignored - using SecurityContext instead.");
-        deletePantryItem(id);
-    }
-
-    /**
-     * Creates multiple pantry items using JWT token for authentication.
-     *
-     * @deprecated Use {@link #createMultiplePantryItems(List)} instead.
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    @Transactional
-    public List<PantryItemResponse> createMultiplePantryItems(List<CreatePantryItemRequest> requests,
-                                                              org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken token) {
-        log.warn("DEPRECATED: createMultiplePantryItems(List, JwtAuthenticationToken) called. " +
-                "Migrate to createMultiplePantryItems(List) for improved security architecture. " +
-                "The token parameter is ignored - using SecurityContext instead.");
-        return createMultiplePantryItems(requests);
-    }
-
-    /**
-     * Deletes multiple pantry items using JWT token for authentication.
-     *
-     * @deprecated Use {@link #deleteMultiplePantryItems(List)} instead.
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    @Transactional
-    public int deleteMultiplePantryItems(List<UUID> itemIds,
-                                         org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken token) {
-        log.warn("DEPRECATED: deleteMultiplePantryItems(List, JwtAuthenticationToken) called. " +
-                "Migrate to deleteMultiplePantryItems(List) for improved security architecture. " +
-                "The token parameter is ignored - using SecurityContext instead.");
-        return deleteMultiplePantryItems(itemIds);
-    }
-
-    /**
-     * Retrieves pantry items by location using JWT token for authentication.
-     *
-     * @deprecated Use {@link #getPantryItemsByLocation(UUID)} instead.
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    @Transactional
-    public List<PantryItemResponse> getPantryItemsByLocation(UUID locationId,
-                                                             org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken token) {
-        log.warn("DEPRECATED: getPantryItemsByLocation(UUID, JwtAuthenticationToken) called. " +
-                "Migrate to getPantryItemsByLocation(UUID) for improved security architecture. " +
-                "The token parameter is ignored - using SecurityContext instead.");
-        return getPantryItemsByLocation(locationId);
-    }
-
-    /**
-     * Retrieves pantry items by household using JWT token for authentication.
-     *
-     * @deprecated Use {@link #getPantryItemsByHousehold(UUID, Pageable)} instead.
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    @Transactional
-    public Page<PantryItemResponse> getPantryItemsByHousehold(UUID householdId, Pageable pageable,
-                                                              org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken token) {
-        log.warn("DEPRECATED: getPantryItemsByHousehold(UUID, Pageable, JwtAuthenticationToken) called. " +
-                "Migrate to getPantryItemsByHousehold(UUID, Pageable) for improved security architecture. " +
-                "The token parameter is ignored - using SecurityContext instead.");
-        return getPantryItemsByHousehold(householdId, pageable);
-    }
-
-    /**
-     * Retrieves low stock items using JWT token for authentication.
-     *
-     * @deprecated Use {@link #getLowStockItems(UUID, int)} instead.
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    @Transactional
-    public List<PantryItemResponse> getLowStockItems(UUID householdId, int threshold,
-                                                     org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken token) {
-        log.warn("DEPRECATED: getLowStockItems(UUID, int, JwtAuthenticationToken) called. " +
-                "Migrate to getLowStockItems(UUID, int) for improved security architecture. " +
-                "The token parameter is ignored - using SecurityContext instead.");
-        return getLowStockItems(householdId, threshold);
-    }
-
-    /**
-     * Retrieves expiring items using JWT token for authentication.
-     *
-     * @deprecated Use {@link #getExpiringItems(UUID, int)} instead.
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    @Transactional
-    public List<PantryItemResponse> getExpiringItems(UUID householdId, int daysUntilExpiration,
-                                                     org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken token) {
-        log.warn("DEPRECATED: getExpiringItems(UUID, int, JwtAuthenticationToken) called. " +
-                "Migrate to getExpiringItems(UUID, int) for improved security architecture. " +
-                "The token parameter is ignored - using SecurityContext instead.");
-        return getExpiringItems(householdId, daysUntilExpiration);
-    }
-
-    /**
-     * Searches pantry items using JWT token for authentication.
-     *
-     * @deprecated Use {@link #searchPantryItems(UUID, String)} instead.
-     */
-    @Deprecated(since = "2.0", forRemoval = true)
-    @Transactional
-    public List<PantryItemResponse> searchPantryItems(UUID householdId, String searchTerm,
-                                                          org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken token) {
-        log.warn("DEPRECATED: searchPantryItems(UUID, String, JwtAuthenticationToken) called. " +
-                "Migrate to searchPantryItems(UUID, String) for improved security architecture. " +
-                "The token parameter is ignored - using SecurityContext instead.");
-        return searchPantryItems(householdId, searchTerm);
-    }
-
-        /**
-         * Creates a pantry item using JWT token for authentication.
-         * 
-         * @deprecated Use {@link #createPantryItem(CreatePantryItemRequest)} instead.
-         *             This method is maintained for backward compatibility with controllers
-         *             that haven't been migrated to the new security architecture.
-         *             Token-based authentication is now handled by Spring Security filters.
-         * 
-         * @param request DTO containing pantry item information
-         * @param token JWT authentication token (ignored in favor of SecurityContext)
-         * @return PantryItemResponse containing the created pantry item's details
-         */
-        @Deprecated(since = "2.0", forRemoval = true)
-        @Transactional
-        public PantryItemResponse createPantryItem(CreatePantryItemRequest request,
-                                                   org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken token) {
-            log.warn("DEPRECATED: createPantryItem(CreatePantryItemRequest, JwtAuthenticationToken) called. " +
-                    "Migrate to createPantryItem(CreatePantryItemRequest) for improved security architecture. " +
-                    "The token parameter is ignored - using SecurityContext instead.");
-            return createPantryItem(request);
-        }
-
-        /**
-         * Retrieves expiring items within a date range using JWT token for authentication.
-         *
-         * @param householdId UUID of the household
-         * @param startDate Start date for expiration check
-         * @param endDate End date for expiration check
-         * @param token JWT authentication token (ignored in favor of SecurityContext)
-         * @return List of expiring pantry items
-         * @deprecated Use {@link #getExpiringItems(UUID, int)} instead, or call the repository method directly
-         *             if you need specific date range support.
-         */
-        @Deprecated(since = "2.0", forRemoval = true)
-        @Transactional(readOnly = true)
-        public List<PantryItemResponse> getExpiringItems(UUID householdId, LocalDate startDate, LocalDate endDate,
-                                                         org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken token) {
-            log.warn("DEPRECATED: getExpiringItems(UUID, LocalDate, LocalDate, JwtAuthenticationToken) called. " +
-                    "Migrate to getExpiringItems(UUID, int) for improved security architecture. " +
-                    "The token parameter is ignored - using SecurityContext instead.");
-            
-            if (householdId == null) {
-                throw new ValidationException("Household ID cannot be null");
-            }
-            if (startDate == null || endDate == null) {
-                throw new ValidationException("Start date and end date cannot be null");
-            }
-
-            UUID currentUserId = securityService.getCurrentUserId();
-            
-            // Authorization check
-            if (!securityService.canAccessHousehold(householdId)) {
-                throw new InsufficientPermissionException("You do not have access to this household");
-            }
-            
-            log.debug("User {} retrieving expiring items for household {} between {} and {}",
-                    currentUserId, householdId, startDate, endDate);
-
-            List<PantryItem> items = pantryItemRepository.findExpiringItemsInHouseholdBetweenDates(
-                    householdId, startDate, endDate);
-            return items.stream()
-                    .map(this::mapToResponse)
-                    .collect(Collectors.toList());
-        }
-
-        /**
-         * Gets pantry statistics for a household using JWT token for authentication.
-         *
-         * @param householdId UUID of the household
-         * @param token JWT authentication token (ignored in favor of SecurityContext)
-         * @return Map containing pantry statistics
-         * @deprecated This method will be replaced with a more comprehensive statistics API.
-         *             Token-based authentication is now handled by Spring Security filters.
-         */
-        @Deprecated(since = "2.0", forRemoval = true)
-        @Transactional(readOnly = true)
-        public Map<String, Object> getPantryStatistics(UUID householdId,
-                                                       org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken token) {
-            log.warn("DEPRECATED: getPantryStatistics(UUID, JwtAuthenticationToken) called. " +
-                    "This method will be replaced with a more comprehensive statistics API. " +
-                    "The token parameter is ignored - using SecurityContext instead.");
-            
-            if (householdId == null) {
-                throw new ValidationException("Household ID cannot be null");
-            }
-
-            UUID currentUserId = securityService.getCurrentUserId();
-            
-            // Authorization check
-            if (!securityService.canAccessHousehold(householdId)) {
-                throw new InsufficientPermissionException("You do not have access to this household");
-            }
-            
-            log.debug("User {} retrieving pantry statistics for household {}", currentUserId, householdId);
-
-            Map<String, Object> statistics = new HashMap<>();
-            
-            // Total items count
-            long totalItems = pantryItemRepository.countByLocation_HouseholdId(householdId);
-            statistics.put("totalItems", totalItems);
-            
-            // Distinct products count
-            long distinctProducts = pantryItemRepository.countDistinctProductsByHouseholdId(householdId);
-            statistics.put("distinctProducts", distinctProducts);
-            
-            // Low stock items (threshold of 5)
-            List<PantryItem> lowStockItems = pantryItemRepository.findLowStockItemsInHousehold(householdId, 5);
-            statistics.put("lowStockCount", lowStockItems.size());
-            
-            // Expiring items (within 7 days)
-            LocalDate sevenDaysFromNow = LocalDate.now().plusDays(7);
-            long expiringCount = pantryItemRepository.countExpiringItemsByHouseholdIdAndDate(householdId, sevenDaysFromNow);
-            statistics.put("expiringCount", expiringCount);
-            
-            // Items without expiration date
-            List<PantryItem> noExpirationItems = pantryItemRepository.findByExpirationDateIsNullAndLocation_HouseholdId(householdId);
-            statistics.put("noExpirationDateCount", noExpirationItems.size());
-            
-            return statistics;
-        }
-    }
+}
