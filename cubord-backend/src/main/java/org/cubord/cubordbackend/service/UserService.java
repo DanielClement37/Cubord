@@ -293,24 +293,6 @@ public class UserService {
     // ==================== Helper Methods ====================
 
     /**
-     * Extracts a username from an email address by taking the part before the @ symbol.
-     *
-     * @param email Email address to extract username from
-     * @return Username extracted from email, or null if email is null
-     * @throws ValidationException if an email format is invalid
-     */
-    private String extractUsernameFromEmail(String email) {
-        if (email == null) {
-            return null;
-        }
-        
-        validateEmail(email);
-        
-        int atIndex = email.indexOf('@');
-        return email.substring(0, atIndex);
-    }
-
-    /**
      * Maps a User entity to a UserResponse DTO.
      *
      * @param user User entity to map

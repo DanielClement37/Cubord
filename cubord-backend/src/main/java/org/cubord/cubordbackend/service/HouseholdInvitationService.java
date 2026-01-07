@@ -15,7 +15,6 @@ import org.cubord.cubordbackend.repository.HouseholdRepository;
 import org.cubord.cubordbackend.repository.UserRepository;
 import org.cubord.cubordbackend.security.SecurityService;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
