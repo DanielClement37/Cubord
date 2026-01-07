@@ -7,13 +7,13 @@ import org.springframework.http.HttpStatus;
  */
 public class ResourceStateException extends CubordException {
     public ResourceStateException(String resource, String currentState, String operation) {
-        super("INVALID_RESOURCE_STATE", 
+        super("RESOURCE_STATE_CONFLICT", 
               String.format("%s is in state '%s' and cannot perform operation '%s'", 
                           resource, currentState, operation), 
               HttpStatus.CONFLICT);
     }
-    
+
     public ResourceStateException(String message) {
-        super("INVALID_RESOURCE_STATE", message, HttpStatus.CONFLICT);
+        super("RESOURCE_STATE_CONFLICT", message, HttpStatus.CONFLICT);
     }
 }
