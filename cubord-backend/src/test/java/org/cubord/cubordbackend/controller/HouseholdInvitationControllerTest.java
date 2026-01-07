@@ -744,7 +744,7 @@ class HouseholdInvitationControllerTest {
             mockMvc.perform(post("/api/invitations/{invitationId}/accept", invitationId)
                             .with(jwt().jwt(jwt)))
                     .andExpect(status().isConflict())
-                    .andExpect(jsonPath("$.error_code").value("INVALID_RESOURCE_STATE"));
+                    .andExpect(jsonPath("$.error_code").value("RESOURCE_STATE_CONFLICT"));
 
             verify(householdInvitationService).acceptInvitation(invitationId);
         }
@@ -758,7 +758,7 @@ class HouseholdInvitationControllerTest {
             mockMvc.perform(post("/api/invitations/{invitationId}/accept", invitationId)
                             .with(jwt().jwt(jwt)))
                     .andExpect(status().isConflict())
-                    .andExpect(jsonPath("$.error_code").value("INVALID_RESOURCE_STATE"));
+                    .andExpect(jsonPath("$.error_code").value("RESOURCE_STATE_CONFLICT"));
 
             verify(householdInvitationService).acceptInvitation(invitationId);
         }
@@ -858,7 +858,7 @@ class HouseholdInvitationControllerTest {
             mockMvc.perform(post("/api/invitations/{invitationId}/decline", invitationId)
                             .with(jwt().jwt(jwt)))
                     .andExpect(status().isConflict())
-                    .andExpect(jsonPath("$.error_code").value("INVALID_RESOURCE_STATE"));
+                    .andExpect(jsonPath("$.error_code").value("RESOURCE_STATE_CONFLICT"));
 
             verify(householdInvitationService).declineInvitation(invitationId);
         }
@@ -936,7 +936,7 @@ class HouseholdInvitationControllerTest {
             mockMvc.perform(delete("/api/households/{householdId}/invitations/{invitationId}", householdId, invitationId)
                             .with(jwt().jwt(jwt)))
                     .andExpect(status().isConflict())
-                    .andExpect(jsonPath("$.error_code").value("INVALID_RESOURCE_STATE"));
+                    .andExpect(jsonPath("$.error_code").value("RESOURCE_STATE_CONFLICT"));
 
             verify(householdInvitationService).cancelInvitation(householdId, invitationId);
         }
@@ -1129,7 +1129,7 @@ class HouseholdInvitationControllerTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(request)))
                     .andExpect(status().isConflict())
-                    .andExpect(jsonPath("$.error_code").value("INVALID_RESOURCE_STATE"));
+                    .andExpect(jsonPath("$.error_code").value("RESOURCE_STATE_CONFLICT"));
 
             verify(householdInvitationService).resendInvitation(eq(householdId), eq(invitationId), any(ResendInvitationRequest.class));
         }

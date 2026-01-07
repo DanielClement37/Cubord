@@ -556,7 +556,7 @@ class HouseholdMemberControllerTest {
             mockMvc.perform(delete("/api/households/{householdId}/members/{memberId}", householdId, memberId)
                             .with(SecurityMockMvcRequestPostProcessors.jwt().jwt(jwt)))
                     .andExpect(status().isConflict())
-                    .andExpect(jsonPath("$.error_code").value("INVALID_RESOURCE_STATE"))
+                    .andExpect(jsonPath("$.error_code").value("RESOURCE_STATE_CONFLICT"))
                     .andExpect(jsonPath("$.message").value("Cannot remove the owner from the household"));
         }
 
