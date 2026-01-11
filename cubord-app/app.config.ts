@@ -49,7 +49,7 @@ export default ({ config }: { config: ExpoConfig }): ExpoConfig => ({
         eas: { projectId: "9fda511a-fe0f-41ce-a2bb-c6c7ab725e9a" },
 
         SUPABASE_URL: process.env.SUPABASE_URL,
-        SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
+        SUPABASE_PUBLISHABLE_KEY: process.env.SUPABASE_PUBLISHABLE_KEY,
 
         GOOGLE_ANDROID_CLIENT_ID: process.env.GOOGLE_ANDROID_CLIENT_ID,
         GOOGLE_WEB_CLIENT_ID: process.env.GOOGLE_WEB_CLIENT_ID
