@@ -143,6 +143,7 @@ class HouseholdInvitationServiceTest {
                 .id(invitationId)
                 .household(testHousehold)
                 .invitedUser(invitedUser)
+                .invitedEmail(null)  // Explicitly set - user-linked invitation
                 .invitedBy(currentUser)
                 .proposedRole(HouseholdRole.MEMBER)
                 .status(InvitationStatus.PENDING)
@@ -278,23 +279,6 @@ class HouseholdInvitationServiceTest {
                     householdId, testInvitationRequest))
                     .isInstanceOf(NotFoundException.class)
                     .hasMessageContaining("Household not found");
-
-            verify(householdInvitationRepository, never()).save(any());
-        }
-
-        @Test
-        @DisplayName("should throw NotFoundException when invited user by email not found")
-        void shouldThrowNotFoundExceptionWhenInvitedUserByEmailNotFound() {
-            // Given
-            stubCurrentUserId(currentUserId);
-            when(householdRepository.findById(eq(householdId))).thenReturn(Optional.of(testHousehold));
-            when(userRepository.findByEmail(eq("invited@example.com"))).thenReturn(Optional.empty());
-
-            // When/Then
-            assertThatThrownBy(() -> householdInvitationService.sendInvitation(
-                    householdId, testInvitationRequest))
-                    .isInstanceOf(NotFoundException.class)
-                    .hasMessageContaining("User not found");
 
             verify(householdInvitationRepository, never()).save(any());
         }
@@ -650,7 +634,10 @@ class HouseholdInvitationServiceTest {
         @DisplayName("should retrieve current user's invitations successfully")
         void shouldGetMyInvitationsSuccessfully() {
             // Given
-            stubCurrentUserId(currentUserId);
+            stubCurrentUser(currentUser);
+            when(householdInvitationRepository.linkEmailInvitationsToUser(
+                    eq(currentUser), eq(currentUser.getEmail()), eq(InvitationStatus.PENDING), any(LocalDateTime.class)))
+                    .thenReturn(0);
             when(householdInvitationRepository.findByInvitedUserIdAndStatus(
                     eq(currentUserId), eq(InvitationStatus.PENDING)))
                     .thenReturn(List.of(testInvitation));
@@ -661,7 +648,9 @@ class HouseholdInvitationServiceTest {
             // Then
             assertThat(responses).hasSize(1);
 
-            verify(securityService).getCurrentUserId();
+            verify(securityService).getCurrentUser();
+            verify(householdInvitationRepository).linkEmailInvitationsToUser(
+                    eq(currentUser), eq(currentUser.getEmail()), eq(InvitationStatus.PENDING), any(LocalDateTime.class));
             verify(householdInvitationRepository).findByInvitedUserIdAndStatus(
                     eq(currentUserId), eq(InvitationStatus.PENDING));
         }
@@ -670,7 +659,10 @@ class HouseholdInvitationServiceTest {
         @DisplayName("should return empty list when user has no invitations")
         void shouldReturnEmptyListWhenNoInvitations() {
             // Given
-            stubCurrentUserId(currentUserId);
+            stubCurrentUser(currentUser);
+            when(householdInvitationRepository.linkEmailInvitationsToUser(
+                    eq(currentUser), eq(currentUser.getEmail()), eq(InvitationStatus.PENDING), any(LocalDateTime.class)))
+                    .thenReturn(0);
             when(householdInvitationRepository.findByInvitedUserIdAndStatus(
                     eq(currentUserId), eq(InvitationStatus.PENDING)))
                     .thenReturn(List.of());
@@ -690,8 +682,8 @@ class HouseholdInvitationServiceTest {
         @Test
         @DisplayName("should retrieve current user's invitations by status successfully")
         void shouldGetMyInvitationsByStatusSuccessfully() {
-            // Given
-            stubCurrentUserId(currentUserId);
+            // Given - Using ACCEPTED status to avoid email linking logic
+            stubCurrentUser(currentUser);
             when(householdInvitationRepository.findByInvitedUserIdAndStatus(
                     eq(currentUserId), eq(InvitationStatus.ACCEPTED)))
                     .thenReturn(List.of(testInvitation));
@@ -702,6 +694,33 @@ class HouseholdInvitationServiceTest {
 
             // Then
             assertThat(responses).hasSize(1);
+            
+            verify(securityService).getCurrentUser();
+            // Should NOT call linkEmailInvitationsToUser for non-PENDING status
+            verify(householdInvitationRepository, never()).linkEmailInvitationsToUser(any(), any(), any(), any());
+        }
+
+        @Test
+        @DisplayName("should link email invitations when status is PENDING")
+        void shouldLinkEmailInvitationsWhenStatusIsPending() {
+            // Given
+            stubCurrentUser(currentUser);
+            when(householdInvitationRepository.linkEmailInvitationsToUser(
+                    eq(currentUser), eq(currentUser.getEmail()), eq(InvitationStatus.PENDING), any(LocalDateTime.class)))
+                    .thenReturn(0);
+            when(householdInvitationRepository.findByInvitedUserIdAndStatus(
+                    eq(currentUserId), eq(InvitationStatus.PENDING)))
+                    .thenReturn(List.of(testInvitation));
+
+            // When
+            List<HouseholdInvitationResponse> responses = householdInvitationService
+                    .getMyInvitationsByStatus(InvitationStatus.PENDING);
+
+            // Then
+            assertThat(responses).hasSize(1);
+            
+            verify(householdInvitationRepository).linkEmailInvitationsToUser(
+                    eq(currentUser), eq(currentUser.getEmail()), eq(InvitationStatus.PENDING), any(LocalDateTime.class));
         }
 
         @Test

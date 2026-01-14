@@ -1,3 +1,4 @@
+
 package org.cubord.cubordbackend.domain;
 
 import jakarta.persistence.*;
@@ -19,9 +20,22 @@ public class HouseholdInvitation {
     @Id
     private UUID id;
 
+    /**
+     * The user being invited. This is nullable for invitations sent to email addresses
+     * where the user hasn't created an account yet. When the user signs up with that email,
+     * this field gets populated and invitedEmail is cleared.
+     */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "invited_user_id")
     private User invitedUser;
+
+    /**
+     * Email address for the invitation when the user doesn't have an account yet.
+     * This is mutually exclusive with invitedUser - when a user signs up with this email,
+     * invitedUser gets set and this field is cleared.
+     */
+    @Column(name = "invited_email")
+    private String invitedEmail;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "household_id")
@@ -53,5 +67,23 @@ public class HouseholdInvitation {
     @PreUpdate
     public void onUpdate() {
         this.updatedAt = LocalDateTime.now();
+    }
+
+    /**
+     * Returns the effective email for this invitation.
+     * Either from the linked user or from the invitedEmail field.
+     */
+    public String getEffectiveEmail() {
+        if (invitedUser != null) {
+            return invitedUser.getEmail();
+        }
+        return invitedEmail;
+    }
+
+    /**
+     * Returns whether this invitation is for an email-only recipient (no user account yet).
+     */
+    public boolean isEmailOnlyInvitation() {
+        return invitedUser == null && invitedEmail != null;
     }
 }

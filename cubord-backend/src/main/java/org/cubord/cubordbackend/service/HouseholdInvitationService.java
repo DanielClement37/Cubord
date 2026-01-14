@@ -1,4 +1,3 @@
-
 package org.cubord.cubordbackend.service;
 
 import lombok.RequiredArgsConstructor;
@@ -41,6 +40,8 @@ import java.util.UUID;
  *   <li>Users cannot have multiple pending invitations to the same household</li>
  *   <li>Invitations expire after a configurable period (default: 7 days)</li>
  *   <li>Only PENDING invitations can be accepted, declined, updated, or canceled</li>
+ *   <li><strong>New:</strong> Invitations can be sent to email addresses without existing accounts</li>
+ *   <li><strong>New:</strong> Email-based invitations are automatically linked when users sign up</li>
  * </ul>
  *
  * @see SecurityService
@@ -69,11 +70,15 @@ public class HouseholdInvitationService {
      * <p>The invitation creates a pending request for a user to join the household
      * with the specified role. Either invitedUserId or invitedUserEmail must be provided.</p>
      *
+     * <p><strong>New behavior:</strong> If inviting by email and no user account exists,
+     * the invitation is created with just the email address. When a user signs up with
+     * that email, the invitation will be automatically linked to their account.</p>
+     *
      * @param householdId UUID of the household to send invitation for
      * @param request DTO containing invitation details (user identifier and proposed role)
      * @return HouseholdInvitationResponse containing the created invitation's details
      * @throws ValidationException if request validation fails (null request, invalid role, etc.)
-     * @throws NotFoundException if household or user isn't found
+     * @throws NotFoundException if a household isn't found, or if inviting by userId and user isn't found
      * @throws InsufficientPermissionException if a user lacks permission (via @PreAuthorize)
      * @throws BusinessRuleViolationException if business rules are violated (e.g., inviting self)
      * @throws ConflictException if user already has pending invitation or is already a member
@@ -95,13 +100,8 @@ public class HouseholdInvitationService {
         Household household = householdRepository.findById(householdId)
                 .orElseThrow(() -> new NotFoundException("Household not found with ID: " + householdId));
 
-        // Find an invited user - either userId or email must be provided
-        User invitedUser = resolveInvitedUser(request);
-
-        // Validate invited user is not the current user
-        if (invitedUser.getId().equals(currentUserId)) {
-            throw new BusinessRuleViolationException("Cannot invite yourself");
-        }
+        // Resolve invited user - may return null for email-only invitations
+        InvitationTarget target = resolveInvitationTarget(request, currentUserId);
 
         // Validate role
         if (request.getProposedRole() == null) {
@@ -121,23 +121,16 @@ public class HouseholdInvitationService {
             throw new ValidationException("Expiry date cannot be in the past");
         }
 
-        // Check if a user is already a member
-        if (householdMemberRepository.existsByHouseholdIdAndUserId(householdId, invitedUser.getId())) {
-            throw new ConflictException("User is already a member of this household");
-        }
-
-        // Check if user already has pending invitation
-        if (householdInvitationRepository.existsByHouseholdIdAndInvitedUserIdAndStatus(
-                householdId, invitedUser.getId(), InvitationStatus.PENDING)) {
-            throw new ConflictException("User already has a pending invitation to this household");
-        }
+        // Check for conflicts based on whether we have a user or just an email
+        checkForInvitationConflicts(householdId, target);
 
         // Create invitation
         User currentUser = securityService.getCurrentUser();
         HouseholdInvitation invitation = HouseholdInvitation.builder()
                 .id(UUID.randomUUID())
                 .household(household)
-                .invitedUser(invitedUser)
+                .invitedUser(target.user())
+                .invitedEmail(target.email())
                 .invitedBy(currentUser)
                 .proposedRole(request.getProposedRole())
                 .status(InvitationStatus.PENDING)
@@ -148,16 +141,15 @@ public class HouseholdInvitationService {
 
         try {
             invitation = householdInvitationRepository.save(invitation);
-            log.info("User {} sent invitation to {} for household {}",
-                    currentUserId, invitedUser.getEmail(), household.getName());
+            String inviteeIdentifier = target.user() != null ? target.user().getEmail() : target.email();
+            log.info("User {} sent invitation to {} for household {} (email-only: {})",
+                    currentUserId, inviteeIdentifier, household.getName(), target.user() == null);
             return mapToResponse(invitation);
         } catch (Exception e) {
             log.error("Failed to create invitation for household: {}", householdId, e);
             throw new DataIntegrityException("Failed to create invitation: " + e.getMessage(), e);
         }
     }
-
-
 
     // ==================== Query Operations ====================
 
@@ -259,16 +251,26 @@ public class HouseholdInvitationService {
     /**
      * Retrieves current user's pending invitations.
      *
+     * <p>This method also links any email-based invitations to the current user's account.
+     * This handles the case where invitations were sent before the user created their account.</p>
+     *
      * <p>Authorization: All authenticated users can view their own invitations.</p>
      *
      * @return List of HouseholdInvitationResponse objects for pending invitations
      */
-    @Transactional(readOnly = true)
+    @Transactional
     @PreAuthorize("isAuthenticated()")
     public List<HouseholdInvitationResponse> getMyInvitations() {
-        UUID currentUserId = securityService.getCurrentUserId();
-        log.debug("User {} retrieving their invitations", currentUserId);
+        User currentUser = securityService.getCurrentUser();
+        UUID currentUserId = currentUser.getId();
+        String currentUserEmail = currentUser.getEmail();
 
+        log.debug("User {} (email: {}) retrieving their invitations", currentUserId, currentUserEmail);
+
+        // Link any email-based invitations to this user
+        linkEmailInvitationsToCurrentUser(currentUser);
+
+        // Now fetch all invitations for this user (including newly linked ones)
         List<HouseholdInvitation> invitations = householdInvitationRepository
                 .findByInvitedUserIdAndStatus(currentUserId, InvitationStatus.PENDING);
 
@@ -280,21 +282,30 @@ public class HouseholdInvitationService {
     /**
      * Retrieves current user's invitations filtered by status.
      *
+     * <p>This method also links any email-based invitations to the current user's account
+     * when checking for PENDING invitations.</p>
+     *
      * <p>Authorization: All authenticated users can view their own invitations.</p>
      *
      * @param status Status to filter by
      * @return List of HouseholdInvitationResponse objects matching the status
      * @throws ValidationException if status is null
      */
-    @Transactional(readOnly = true)
+    @Transactional
     @PreAuthorize("isAuthenticated()")
     public List<HouseholdInvitationResponse> getMyInvitationsByStatus(InvitationStatus status) {
         if (status == null) {
             throw new ValidationException("Status cannot be null");
         }
 
-        UUID currentUserId = securityService.getCurrentUserId();
+        User currentUser = securityService.getCurrentUser();
+        UUID currentUserId = currentUser.getId();
         log.debug("User {} retrieving their {} invitations", currentUserId, status);
+
+        // Link email-based invitations if checking for pending
+        if (status == InvitationStatus.PENDING) {
+            linkEmailInvitationsToCurrentUser(currentUser);
+        }
 
         List<HouseholdInvitation> invitations = householdInvitationRepository
                 .findByInvitedUserIdAndStatus(currentUserId, status);
@@ -450,8 +461,9 @@ public class HouseholdInvitationService {
         invitation.setUpdatedAt(LocalDateTime.now());
         householdInvitationRepository.save(invitation);
 
+        String inviteeIdentifier = invitation.getEffectiveEmail();
         log.info("User {} cancelled invitation to {} for household {}",
-                currentUserId, invitation.getInvitedUser().getEmail(), invitation.getHousehold().getName());
+                currentUserId, inviteeIdentifier, invitation.getHousehold().getName());
     }
 
     /**
@@ -519,8 +531,9 @@ public class HouseholdInvitationService {
         invitation.setUpdatedAt(LocalDateTime.now());
         invitation = householdInvitationRepository.save(invitation);
 
+        String inviteeIdentifier = invitation.getEffectiveEmail();
         log.info("User {} updated invitation to {} for household {}",
-                currentUserId, invitation.getInvitedUser().getEmail(), invitation.getHousehold().getName());
+                currentUserId, inviteeIdentifier, invitation.getHousehold().getName());
 
         return mapToResponse(invitation);
     }
@@ -577,8 +590,9 @@ public class HouseholdInvitationService {
         invitation.setUpdatedAt(LocalDateTime.now());
         invitation = householdInvitationRepository.save(invitation);
 
+        String inviteeIdentifier = invitation.getEffectiveEmail();
         log.info("User {} resent invitation to {} for household {}",
-                currentUserId, invitation.getInvitedUser().getEmail(), invitation.getHousehold().getName());
+                currentUserId, inviteeIdentifier, invitation.getHousehold().getName());
 
         return mapToResponse(invitation);
     }
@@ -645,30 +659,155 @@ public class HouseholdInvitationService {
         }
 
         // TODO: Implement email sending logic
+        String inviteeIdentifier = invitation.getEffectiveEmail();
         log.info("Invitation reminder sent to {} for household {}",
-                invitation.getInvitedUser().getEmail(), invitation.getHousehold().getName());
+                inviteeIdentifier, invitation.getHousehold().getName());
+    }
+
+    // ==================== User Registration/Login Hook ====================
+
+    /**
+     * Links any pending email-based invitations to a newly registered or logged-in user.
+     *
+     * <p>This method should be called during user registration or first login to ensure
+     * invitations sent before the user had an account are properly linked.</p>
+     *
+     * @param user The user to link invitations to
+     * @return Number of invitations that were linked
+     */
+    @Transactional
+    public int linkEmailInvitationsToUser(User user) {
+        if (user == null || user.getEmail() == null) {
+            return 0;
+        }
+
+        int linkedCount = householdInvitationRepository.linkEmailInvitationsToUser(
+                user,
+                user.getEmail(),
+                InvitationStatus.PENDING,
+                LocalDateTime.now()
+        );
+
+        if (linkedCount > 0) {
+            log.info("Linked {} email-based invitation(s) to user {} ({})",
+                    linkedCount, user.getId(), user.getEmail());
+        }
+
+        return linkedCount;
     }
 
     // ==================== Helper Methods ====================
 
     /**
-     * Resolves the invited user from the request.
-     * Either invitedUserId or invitedUserEmail must be provided.
+     * Record to hold the target of an invitation - either a User or just an email address.
+     */
+    private record InvitationTarget(User user, String email) {
+        /**
+         * Returns the effective email for this target.
+         */
+        String effectiveEmail() {
+            return user != null ? user.getEmail() : email;
+        }
+    }
+
+    /**
+     * Resolves the invitation target from the request.
+     *
+     * <p>If inviting by userId, the user must exist. If inviting by email, the user may or may not exist.
+     * If the user exists, they are returned. If not, just the email is returned.</p>
      *
      * @param request The invitation request containing user identifier
-     * @return User entity for the invited user
-     * @throws ValidationException if neither userId nor email is provided
-     * @throws NotFoundException if the user is not found
+     * @param currentUserId The ID of the current user (to check for self-invitation)
+     * @return InvitationTarget containing either a User or just an email
+     * @throws ValidationException if neither userId nor email is provided, or if email is blank
+     * @throws NotFoundException if inviting by userId and user not found
+     * @throws BusinessRuleViolationException if trying to invite self
      */
-    private User resolveInvitedUser(HouseholdInvitationRequest request) {
+    private InvitationTarget resolveInvitationTarget(HouseholdInvitationRequest request, UUID currentUserId) {
         if (request.getInvitedUserId() != null) {
-            return userRepository.findById(request.getInvitedUserId())
+            // Inviting by user ID - user must exist
+            User invitedUser = userRepository.findById(request.getInvitedUserId())
                     .orElseThrow(() -> new NotFoundException("User not found with ID: " + request.getInvitedUserId()));
+
+            // Validate not inviting self
+            if (invitedUser.getId().equals(currentUserId)) {
+                throw new BusinessRuleViolationException("Cannot invite yourself");
+            }
+
+            return new InvitationTarget(invitedUser, null);
+
         } else if (request.getInvitedUserEmail() != null && !request.getInvitedUserEmail().isBlank()) {
-            return userRepository.findByEmail(request.getInvitedUserEmail())
-                    .orElseThrow(() -> new NotFoundException("User not found with email: " + request.getInvitedUserEmail()));
+            String email = request.getInvitedUserEmail().trim().toLowerCase();
+
+            // Try to find existing user with this email
+            User existingUser = userRepository.findByEmail(email).orElse(null);
+
+            if (existingUser != null) {
+                // Validate not inviting self
+                if (existingUser.getId().equals(currentUserId)) {
+                    throw new BusinessRuleViolationException("Cannot invite yourself");
+                }
+                return new InvitationTarget(existingUser, null);
+            }
+
+            // No existing user - this is an email-only invitation
+            // Check if current user's email matches (self-invitation check)
+            User currentUser = securityService.getCurrentUser();
+            if (currentUser.getEmail() != null && currentUser.getEmail().equalsIgnoreCase(email)) {
+                throw new BusinessRuleViolationException("Cannot invite yourself");
+            }
+
+            return new InvitationTarget(null, email);
+
         } else {
             throw new ValidationException("Either invitedUserId or invitedUserEmail must be provided");
+        }
+    }
+
+    /**
+     * Checks for invitation conflicts (existing membership or pending invitation).
+     *
+     * @param householdId The household ID
+     * @param target The invitation target
+     * @throws ConflictException if user is already a member or has a pending invitation
+     */
+    private void checkForInvitationConflicts(UUID householdId, InvitationTarget target) {
+        if (target.user() != null) {
+            // Check if user is already a member
+            if (householdMemberRepository.existsByHouseholdIdAndUserId(householdId, target.user().getId())) {
+                throw new ConflictException("User is already a member of this household");
+            }
+
+            // Check if user already has pending invitation
+            if (householdInvitationRepository.existsByHouseholdIdAndInvitedUserIdAndStatus(
+                    householdId, target.user().getId(), InvitationStatus.PENDING)) {
+                throw new ConflictException("User already has a pending invitation to this household");
+            }
+        } else {
+            // Email-only invitation - check if email already has pending invitation
+            if (householdInvitationRepository.existsByHouseholdIdAndInvitedEmailIgnoreCaseAndStatus(
+                    householdId, target.email(), InvitationStatus.PENDING)) {
+                throw new ConflictException("This email already has a pending invitation to this household");
+            }
+        }
+    }
+
+    /**
+     * Links any email-based invitations to the current user.
+     * Called internally when fetching invitations.
+     */
+    private void linkEmailInvitationsToCurrentUser(User currentUser) {
+        if (currentUser.getEmail() != null) {
+            int linkedCount = householdInvitationRepository.linkEmailInvitationsToUser(
+                    currentUser,
+                    currentUser.getEmail(),
+                    InvitationStatus.PENDING,
+                    LocalDateTime.now()
+            );
+            if (linkedCount > 0) {
+                log.info("Linked {} email-based invitation(s) to user {} during invitation fetch",
+                        linkedCount, currentUser.getId());
+            }
         }
     }
 
@@ -676,21 +815,38 @@ public class HouseholdInvitationService {
      * Validates that an invitation exists, is pending, and belongs to the specified user.
      * This is a common validation pattern for operations that invited users perform on their own invitations.
      *
+     * <p>This method also handles email-based invitations by checking if the current user's email
+     * matches the invitation's email, and links them if so.</p>
+     *
      * @param invitationId UUID of the invitation to validate
-     * @param invitedUser User who should be the recipient of the invitation
+     * @param currentUser User who should be the recipient of the invitation
      * @return HouseholdInvitation entity if all validations pass
      * @throws NotFoundException if invitation not found
      * @throws InsufficientPermissionException if the user is not the invited user
      * @throws ResourceStateException if the invitation is not in the PENDING state
      */
-    private HouseholdInvitation validateInvitationForInvitedUser(UUID invitationId, User invitedUser) {
+    private HouseholdInvitation validateInvitationForInvitedUser(UUID invitationId, User currentUser) {
         HouseholdInvitation invitation = householdInvitationRepository.findById(invitationId)
                 .orElseThrow(() -> new NotFoundException("Invitation not found with ID: " + invitationId));
 
+        // Check if this is an email-only invitation that matches current user's email
+        if (invitation.isEmailOnlyInvitation() &&
+                currentUser.getEmail() != null &&
+                currentUser.getEmail().equalsIgnoreCase(invitation.getInvitedEmail())) {
+            // Link the invitation to this user
+            invitation.setInvitedUser(currentUser);
+            invitation.setInvitedEmail(null);
+            invitation.setUpdatedAt(LocalDateTime.now());
+            invitation = householdInvitationRepository.save(invitation);
+            log.info("Linked email-based invitation {} to user {} during acceptance/decline",
+                    invitationId, currentUser.getId());
+        }
+
         // Validate user is the invited user
-        if (!invitation.getInvitedUser().getId().equals(invitedUser.getId())) {
-            log.warn("User {} attempted to access invitation {} intended for user {}",
-                    invitedUser.getId(), invitationId, invitation.getInvitedUser().getId());
+        if (invitation.getInvitedUser() == null || !invitation.getInvitedUser().getId().equals(currentUser.getId())) {
+            log.warn("User {} attempted to access invitation {} intended for {}",
+                    currentUser.getId(), invitationId,
+                    invitation.getInvitedUser() != null ? invitation.getInvitedUser().getId() : invitation.getInvitedEmail());
             throw new InsufficientPermissionException("You are not the invited user for this invitation");
         }
 
@@ -705,15 +861,14 @@ public class HouseholdInvitationService {
     /**
      * Maps HouseholdInvitation entity to response DTO.
      *
+     * <p>Handles both user-linked and email-only invitations.</p>
+     *
      * @param invitation HouseholdInvitation entity to map
      * @return HouseholdInvitationResponse containing the invitation's details
      */
     private HouseholdInvitationResponse mapToResponse(HouseholdInvitation invitation) {
-        return HouseholdInvitationResponse.builder()
+        HouseholdInvitationResponse.HouseholdInvitationResponseBuilder builder = HouseholdInvitationResponse.builder()
                 .id(invitation.getId())
-                .invitedUserId(invitation.getInvitedUser().getId())
-                .invitedUserEmail(invitation.getInvitedUser().getEmail())
-                .invitedUserName(invitation.getInvitedUser().getUsername())
                 .householdId(invitation.getHousehold().getId())
                 .householdName(invitation.getHousehold().getName())
                 .invitedByUserId(invitation.getInvitedBy().getId())
@@ -721,7 +876,20 @@ public class HouseholdInvitationService {
                 .proposedRole(invitation.getProposedRole())
                 .status(invitation.getStatus())
                 .createdAt(invitation.getCreatedAt())
-                .expiresAt(invitation.getExpiresAt())
-                .build();
+                .expiresAt(invitation.getExpiresAt());
+
+        // Handle invited user info - may be from a user object or just email
+        if (invitation.getInvitedUser() != null) {
+            builder.invitedUserId(invitation.getInvitedUser().getId())
+                    .invitedUserEmail(invitation.getInvitedUser().getEmail())
+                    .invitedUserName(invitation.getInvitedUser().getUsername());
+        } else {
+            // Email-only invitation
+            builder.invitedUserId(null)
+                    .invitedUserEmail(invitation.getInvitedEmail())
+                    .invitedUserName(null);
+        }
+
+        return builder.build();
     }
 }
