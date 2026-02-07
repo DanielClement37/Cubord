@@ -5,11 +5,18 @@
     "paths": {
       "@components/*": ["src/components/*"],
       "@services/*":   ["src/services/*"],
-      "@store/*":      ["src/store/*"],
+      "@stores/*":     ["src/stores/*"],
       "@hooks/*":      ["src/hooks/*"],
       "@types/*":      ["src/types/*"],
       "@contexts/*":   ["src/contexts/*"],
-      "@boot/*":       ["src/boot/*"]
+      "@boot/*":       ["src/boot/*"],
+      "@api/*":        ["src/api/*"],
+      "@utils/*":      ["src/utils/*"],
+      "@styles/*":     ["src/styles/*"],
+      "@lib/*":        ["src/lib/*"],
+      "@screens/*":    ["src/screens/*"],
+      "@test/*":       ["src/test/*"],
+      "@assets/*":     ["assets/*"]
     }
   },
   "include": [
