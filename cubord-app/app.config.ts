@@ -52,6 +52,8 @@ export default ({ config }: { config: ExpoConfig }): ExpoConfig => ({
         SUPABASE_PUBLISHABLE_KEY: process.env.SUPABASE_PUBLISHABLE_KEY,
 
         GOOGLE_ANDROID_CLIENT_ID: process.env.GOOGLE_ANDROID_CLIENT_ID,
-        GOOGLE_WEB_CLIENT_ID: process.env.GOOGLE_WEB_CLIENT_ID
+        GOOGLE_WEB_CLIENT_ID: process.env.GOOGLE_WEB_CLIENT_ID,
+
+        API_BASE_URL: process.env.API_BASE_URL,
     }
 });
