@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw';
-import { server } from '@test/mocks/server';
-import { apiClient, ApiError } from '@api/client';
+import { server } from '@/test/mocks/server';
+import { apiClient, ApiError } from '@/api/client';
 
 // ---------------------------------------------------------------------------
 // Mock expo-constants so API_BASE_URL is always defined in tests
@@ -34,7 +34,7 @@ jest.mock('@services/supabase', () => ({
 }));
 
 // Get a reference so individual tests can override
-import { supabase } from '@services/supabase';
+import { supabase } from '@/services/supabase';
 const mockGetSession = supabase.auth.getSession as jest.Mock;
 
 // ---------------------------------------------------------------------------
@@ -218,5 +218,17 @@ describe('apiClient', () => {
         // Both forms should hit the same URL without double-slash
         await expect(apiClient('/items')).resolves.toEqual([]);
         await expect(apiClient('items')).resolves.toEqual([]);
+    });
+
+    it('handles 204 No Content responses', async () => {
+        server.use(
+            http.delete(`${TEST_BASE_URL}/items/1`, () =>
+                new HttpResponse(null, { status: 204 }),
+            ),
+        );
+
+        const result = await apiClient('/items/1', 'DELETE');
+
+        expect(result).toBeNull();
     });
 });
