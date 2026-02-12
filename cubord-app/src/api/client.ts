@@ -1,5 +1,5 @@
 import Constants from 'expo-constants';
-import { supabase } from '@services/supabase';
+import { supabase } from '@/services/supabase';
 
 // ---------------------------------------------------------------------------
 // Configuration

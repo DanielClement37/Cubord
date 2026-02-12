@@ -6,7 +6,7 @@ import {
     isErrorWithCode,
     statusCodes
 } from '@react-native-google-signin/google-signin';
-import { supabase } from '@services/supabase';
+import { supabase } from '@/services/supabase';
 
 export function useGoogleAuth() {
     /** Google → Supabase */

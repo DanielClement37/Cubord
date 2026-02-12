@@ -8,8 +8,8 @@ import React, {
     ReactNode,
 } from 'react';
 import { Session } from '@supabase/supabase-js';
-import { useGoogleAuth } from '@hooks/useGoogleAuth';
-import { supabase } from '@services/supabase';
+import { useGoogleAuth } from '@/hooks/useGoogleAuth';
+import { supabase } from '@/services/supabase';
 
 interface AuthCtx {
     session: Session | null;

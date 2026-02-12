@@ -1,6 +1,6 @@
 import React from 'react';
 import { Button, StyleSheet } from 'react-native';
-import { supabase } from '@services/supabase';
+import { supabase } from '@/services/supabase';
 
 export const TokenLoggerButton: React.FC = () => {
   const logJwtToken = async () => {

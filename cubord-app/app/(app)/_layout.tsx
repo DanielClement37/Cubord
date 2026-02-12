@@ -1,6 +1,6 @@
 // app/(app)/_layout.tsx
 import { Slot, Redirect } from 'expo-router';
-import { useAuth } from '@contexts/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function AppLayout() {
     const { session } = useAuth();

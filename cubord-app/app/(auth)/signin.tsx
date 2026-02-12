@@ -1,7 +1,7 @@
 // app/(auth)/signin.tsx
 import { View, StyleSheet } from 'react-native';
 import { GoogleSigninButton } from '@react-native-google-signin/google-signin';
-import { useAuth } from '@contexts/AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function SignIn() {
     const { signInWithGoogle } = useAuth();
