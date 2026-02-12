@@ -14,10 +14,10 @@ export function useCreatePantryItem({ householdId, onSuccess }: UseCreatePantryI
 
     return useMutation<PantryItemResponse, Error, CreatePantryItemRequest>({
         mutationFn: createPantryItem,
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['pantry-items', householdId] });
-            queryClient.invalidateQueries({ queryKey: ['pantry-items', householdId, 'statistics'] });
-            queryClient.invalidateQueries({ queryKey: ['pantry-items', householdId, 'expiring'] });
+        onSuccess: async () => {
+            await queryClient.invalidateQueries({ queryKey: ['pantry-items', householdId] });
+            await queryClient.invalidateQueries({ queryKey: ['pantry-items', householdId, 'statistics'] });
+            await queryClient.invalidateQueries({ queryKey: ['pantry-items', householdId, 'expiring'] });
 
             Toast.show({ type: 'success', text1: 'Item added', text2: 'Pantry item saved successfully' });
             onSuccess?.();

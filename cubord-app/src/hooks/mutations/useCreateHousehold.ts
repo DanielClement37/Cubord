@@ -9,8 +9,8 @@ export function useCreateHousehold() {
 
     return useMutation<HouseholdResponse, Error, HouseholdRequest>({
         mutationFn: createHousehold,
-        onSuccess: (data) => {
-            queryClient.invalidateQueries({ queryKey: ['households'] });
+        onSuccess: async (data) => {
+            await queryClient.invalidateQueries({ queryKey: ['households'] });
             Toast.show({ type: 'success', text1: 'Household created', text2: data.name });
         },
     });

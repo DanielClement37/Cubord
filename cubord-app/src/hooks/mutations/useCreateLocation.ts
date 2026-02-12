@@ -9,8 +9,8 @@ export function useCreateLocation() {
 
     return useMutation<LocationResponse, Error, LocationRequest>({
         mutationFn: createLocation,
-        onSuccess: (data) => {
-            queryClient.invalidateQueries({ queryKey: ['locations', data.householdId] });
+        onSuccess: async (data) => {
+            await queryClient.invalidateQueries({ queryKey: ['locations', data.householdId] });
             Toast.show({ type: 'success', text1: 'Location created', text2: data.name });
         },
     });

@@ -8,8 +8,8 @@ export function useCreateProduct() {
 
     return useMutation<ProductResponse, Error, ProductRequest>({
         mutationFn: createProduct,
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['products'] });
+        onSuccess: async () => {
+            await queryClient.invalidateQueries({ queryKey: ['products'] });
         },
     });
 }
