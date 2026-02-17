@@ -12,6 +12,7 @@ import {
 } from '@/components/ui';
 import { spacing } from '@/styles';
 import { useState } from 'react';
+import { showSuccess, showError, showInfo } from '@/utils/toast';
 
 export default function HomeScreen() {
     const { signOut } = useAuth();
@@ -139,6 +140,23 @@ export default function HomeScreen() {
                         <Text size="sm" color="secondary" align="center">lg</Text>
                     </View>
                 </View>
+
+                {/* ── Toast demos ─────────────────────── */}
+                <SectionTitle title="Toasts" />
+                <Button
+                    label="Success Toast"
+                    onPress={() => showSuccess('Item added', 'Organic Whole Milk saved to Pantry')}
+                />
+                <Button
+                    variant="secondary"
+                    label="Info Toast"
+                    onPress={() => showInfo('Sync complete', 'All items are up to date')}
+                />
+                <Button
+                    variant="danger"
+                    label="Error Toast"
+                    onPress={() => showError('Something went wrong', 'Could not reach the server')}
+                />
 
                 {/* ── Sign Out (existing logic) ──────── */}
                 <View style={styles.signOut}>

@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { ActivityIndicator, StyleSheet, View, ViewProps } from 'react-native';
-import { lightTheme } from '@/styles/themes/light';
+import { themes } from '@/styles';
 
 type SpinnerSize = 'sm' | 'md' | 'lg';
 
@@ -26,7 +26,7 @@ const scaleMap: Record<SpinnerSize, number> = {
 
 export function Spinner({
                             size = 'md',
-                            color = lightTheme.colorPrimary,
+                            color = themes.light.colorPrimary,
                             style,
                             ...rest
                         }: SpinnerProps) {

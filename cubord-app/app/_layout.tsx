@@ -7,6 +7,8 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import { configureGoogle } from '@/boot/googleConfig';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { createQueryClient } from '@/lib/queryClient';
+import Toast from 'react-native-toast-message';
+import { toastConfig } from '@/components/ui';
 import {
     useFonts,
     NunitoSans_400Regular,
@@ -47,6 +49,7 @@ export default function Root() {
                     <Slot />
                 </AuthProvider>
             </QueryClientProvider>
+            <Toast config={toastConfig} />
         </GestureHandlerRootView>
     );
 }

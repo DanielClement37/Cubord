@@ -1,4 +1,4 @@
-import { palette } from '@/styles';
+import { palette } from '@/styles/colors';
 
 /**
  * Light theme — maps semantic token names to palette values.
