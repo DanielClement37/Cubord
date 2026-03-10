@@ -1,8 +1,7 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Text } from './Text';
-import { spacing, radius, shadow, fontFamily, fontSize } from '@/styles';
-import { palette } from '@/styles/colors';
+import { spacing, radius, shadow } from '@/styles';
 import { lightTheme } from '@/styles/themes/light';
 import type { BaseToastProps } from 'react-native-toast-message';
 
