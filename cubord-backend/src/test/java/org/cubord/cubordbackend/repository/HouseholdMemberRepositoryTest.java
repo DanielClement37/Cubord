@@ -69,14 +69,12 @@ class HouseholdMemberRepositoryTest {
         
         // Create test households
         household1 = Household.builder()
-                .id(UUID.randomUUID())
                 .name("Household One")
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .build();
         
         household2 = Household.builder()
-                .id(UUID.randomUUID())
                 .name("Household Two")
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
@@ -87,7 +85,6 @@ class HouseholdMemberRepositoryTest {
         
         // Create household members
         member1 = HouseholdMember.builder()
-                .id(UUID.randomUUID())
                 .user(user1)
                 .household(household1)
                 .role(HouseholdRole.OWNER)
@@ -96,7 +93,6 @@ class HouseholdMemberRepositoryTest {
                 .build();
         
         member2 = HouseholdMember.builder()
-                .id(UUID.randomUUID())
                 .user(user2)
                 .household(household1)
                 .role(HouseholdRole.ADMIN)
@@ -105,7 +101,6 @@ class HouseholdMemberRepositoryTest {
                 .build();
         
         member3 = HouseholdMember.builder()
-                .id(UUID.randomUUID())
                 .user(user1)
                 .household(household2)
                 .role(HouseholdRole.OWNER)
@@ -114,7 +109,6 @@ class HouseholdMemberRepositoryTest {
                 .build();
         
         member4 = HouseholdMember.builder()
-                .id(UUID.randomUUID())
                 .user(user3)
                 .household(household2)
                 .role(HouseholdRole.MEMBER)
@@ -203,7 +197,6 @@ class HouseholdMemberRepositoryTest {
         entityManager.persist(newUser);
         
         HouseholdMember newMember = HouseholdMember.builder()
-                .id(UUID.randomUUID())
                 .user(newUser)
                 .household(household1)
                 .role(HouseholdRole.MEMBER)

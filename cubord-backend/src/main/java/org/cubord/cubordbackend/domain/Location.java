@@ -17,6 +17,7 @@ import java.util.UUID;
 public class Location {
 
     @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
     private String name;

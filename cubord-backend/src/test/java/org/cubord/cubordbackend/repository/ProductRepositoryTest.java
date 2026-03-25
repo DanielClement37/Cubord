@@ -32,7 +32,6 @@ class ProductRepositoryTest {
         // Given
         String upc = "123456789012";
         Product product = Product.builder()
-                .id(UUID.randomUUID())
                 .upc(upc)
                 .name("Test Product")
                 .brand("Test Brand")
@@ -73,7 +72,6 @@ class ProductRepositoryTest {
     void shouldFindAllProductsRequiringApiRetry() {
         // Given
         Product product1 = Product.builder()
-                .id(UUID.randomUUID())
                 .upc("123456789012")
                 .name("Manual Product 1")
                 .dataSource(ProductDataSource.MANUAL)
@@ -82,7 +80,6 @@ class ProductRepositoryTest {
                 .build();
         
         Product product2 = Product.builder()
-                .id(UUID.randomUUID())
                 .upc("123456789013")
                 .name("Manual Product 2")
                 .dataSource(ProductDataSource.MANUAL)
@@ -91,7 +88,6 @@ class ProductRepositoryTest {
                 .build();
         
         Product product3 = Product.builder()
-                .id(UUID.randomUUID())
                 .upc("123456789014")
                 .name("API Product")
                 .dataSource(ProductDataSource.OPEN_FOOD_FACTS)
@@ -119,7 +115,6 @@ class ProductRepositoryTest {
         int maxRetryAttempts = 3;
         
         Product product1 = Product.builder()
-                .id(UUID.randomUUID())
                 .upc("123456789012")
                 .name("Low Retry Product")
                 .requiresApiRetry(true)
@@ -127,7 +122,6 @@ class ProductRepositoryTest {
                 .build();
         
         Product product2 = Product.builder()
-                .id(UUID.randomUUID())
                 .upc("123456789013")
                 .name("Medium Retry Product")
                 .requiresApiRetry(true)
@@ -135,7 +129,6 @@ class ProductRepositoryTest {
                 .build();
         
         Product product3 = Product.builder()
-                .id(UUID.randomUUID())
                 .upc("123456789014")
                 .name("Max Retry Product")
                 .requiresApiRetry(true)
@@ -160,21 +153,18 @@ class ProductRepositoryTest {
     void shouldFindProductsByDataSource() {
         // Given
         Product manualProduct = Product.builder()
-                .id(UUID.randomUUID())
                 .upc("123456789012")
                 .name("Manual Product")
                 .dataSource(ProductDataSource.MANUAL)
                 .build();
         
         Product apiProduct = Product.builder()
-                .id(UUID.randomUUID())
                 .upc("123456789013")
                 .name("API Product")
                 .dataSource(ProductDataSource.OPEN_FOOD_FACTS)
                 .build();
         
         Product hybridProduct = Product.builder()
-                .id(UUID.randomUUID())
                 .upc("123456789014")
                 .name("Hybrid Product")
                 .dataSource(ProductDataSource.HYBRID)
@@ -201,21 +191,18 @@ class ProductRepositoryTest {
     void shouldFindProductsByCategory() {
         // Given
         Product product1 = Product.builder()
-                .id(UUID.randomUUID())
                 .upc("123456789012")
                 .name("Bread")
                 .category("Bakery")
                 .build();
         
         Product product2 = Product.builder()
-                .id(UUID.randomUUID())
                 .upc("123456789013")
                 .name("Croissant")
                 .category("Bakery")
                 .build();
         
         Product product3 = Product.builder()
-                .id(UUID.randomUUID())
                 .upc("123456789014")
                 .name("Milk")
                 .category("Dairy")
@@ -243,21 +230,18 @@ class ProductRepositoryTest {
     void shouldFindProductsByBrand() {
         // Given
         Product product1 = Product.builder()
-                .id(UUID.randomUUID())
                 .upc("123456789012")
                 .name("Cola")
                 .brand("Coca-Cola")
                 .build();
         
         Product product2 = Product.builder()
-                .id(UUID.randomUUID())
                 .upc("123456789013")
                 .name("Sprite")
                 .brand("Coca-Cola")
                 .build();
         
         Product product3 = Product.builder()
-                .id(UUID.randomUUID())
                 .upc("123456789014")
                 .name("Pepsi")
                 .brand("PepsiCo")
@@ -285,19 +269,16 @@ class ProductRepositoryTest {
     void shouldSearchProductsByNameContaining() {
         // Given
         Product product1 = Product.builder()
-                .id(UUID.randomUUID())
                 .upc("123456789012")
                 .name("Whole Wheat Bread")
                 .build();
         
         Product product2 = Product.builder()
-                .id(UUID.randomUUID())
                 .upc("123456789013")
                 .name("White Bread")
                 .build();
         
         Product product3 = Product.builder()
-                .id(UUID.randomUUID())
                 .upc("123456789014")
                 .name("Bagel")
                 .build();
@@ -328,7 +309,6 @@ class ProductRepositoryTest {
         LocalDateTime afterTime = cutoffTime.plusHours(2);
         
         Product product1 = Product.builder()
-                .id(UUID.randomUUID())
                 .upc("123456789012")
                 .name("Old Retry Product")
                 .requiresApiRetry(true)
@@ -336,7 +316,6 @@ class ProductRepositoryTest {
                 .build();
         
         Product product2 = Product.builder()
-                .id(UUID.randomUUID())
                 .upc("123456789013")
                 .name("Recent Retry Product")
                 .requiresApiRetry(true)
@@ -344,7 +323,6 @@ class ProductRepositoryTest {
                 .build();
         
         Product product3 = Product.builder()
-                .id(UUID.randomUUID())
                 .upc("123456789014")
                 .name("Never Retried Product")
                 .requiresApiRetry(true)
@@ -371,9 +349,7 @@ class ProductRepositoryTest {
     @DisplayName("Should save and retrieve product with all fields")
     void shouldSaveAndRetrieveProductWithAllFields() {
         // Given
-        UUID productId = UUID.randomUUID();
         Product product = Product.builder()
-                .id(productId)
                 .upc("123456789012")
                 .name("Complete Product")
                 .brand("Test Brand")
@@ -386,6 +362,7 @@ class ProductRepositoryTest {
 
         // When
         Product savedProduct = productRepository.save(product);
+        UUID productId = savedProduct.getId();
         entityManager.flush();
         entityManager.clear();
         
@@ -393,6 +370,7 @@ class ProductRepositoryTest {
 
         // Then
         assertThat(savedProduct).isNotNull();
+        assertThat(savedProduct.getId()).isNotNull();
         assertThat(savedProduct.getCreatedAt()).isNotNull();
         assertThat(savedProduct.getUpdatedAt()).isNotNull();
         
@@ -416,7 +394,6 @@ class ProductRepositoryTest {
     void shouldUpdateProductAndModifyUpdatedAtTimestamp() {
         // Given
         Product product = Product.builder()
-                .id(UUID.randomUUID())
                 .upc("123456789012")
                 .name("Original Product")
                 .brand("Original Brand")
@@ -445,7 +422,6 @@ class ProductRepositoryTest {
     void shouldDeleteProductById() {
         // Given
         Product product = Product.builder()
-                .id(UUID.randomUUID())
                 .upc("123456789012")
                 .name("To Delete Product")
                 .build();
@@ -468,7 +444,6 @@ class ProductRepositoryTest {
     void shouldCountProductsByVariousCriteria() {
         // Given
         Product product1 = Product.builder()
-                .id(UUID.randomUUID())
                 .upc("123456789012")
                 .name("Manual Product")
                 .dataSource(ProductDataSource.MANUAL)
@@ -477,7 +452,6 @@ class ProductRepositoryTest {
                 .build();
         
         Product product2 = Product.builder()
-                .id(UUID.randomUUID())
                 .upc("123456789013")
                 .name("API Product")
                 .dataSource(ProductDataSource.OPEN_FOOD_FACTS)
@@ -486,7 +460,6 @@ class ProductRepositoryTest {
                 .build();
         
         Product product3 = Product.builder()
-                .id(UUID.randomUUID())
                 .upc("123456789014")
                 .name("Beverage Product")
                 .dataSource(ProductDataSource.OPEN_FOOD_FACTS)

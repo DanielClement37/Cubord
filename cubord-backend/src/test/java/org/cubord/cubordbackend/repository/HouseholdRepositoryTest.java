@@ -74,7 +74,6 @@ class HouseholdRepositoryTest {
         
         // Create test households
         household1 = Household.builder()
-                .id(UUID.randomUUID())
                 .name("Smith Family")
                 .locations(new HashSet<>())
                 .members(new HashSet<>())
@@ -83,7 +82,6 @@ class HouseholdRepositoryTest {
                 .build();
 
         household2 = Household.builder()
-                .id(UUID.randomUUID())
                 .name("Johnson Family")
                 .locations(new HashSet<>())
                 .members(new HashSet<>())
@@ -92,7 +90,6 @@ class HouseholdRepositoryTest {
                 .build();
 
         household3 = Household.builder()
-                .id(UUID.randomUUID())
                 .name("Smith-Johnson Household")
                 .locations(new HashSet<>())
                 .members(new HashSet<>())
@@ -106,7 +103,6 @@ class HouseholdRepositoryTest {
         
         // Create household members
         member1 = HouseholdMember.builder()
-                .id(UUID.randomUUID())
                 .user(user1)
                 .household(household1)
                 .role(HouseholdRole.OWNER)
@@ -115,7 +111,6 @@ class HouseholdRepositoryTest {
                 .build();
 
         member2 = HouseholdMember.builder()
-                .id(UUID.randomUUID())
                 .user(user2)
                 .household(household2)
                 .role(HouseholdRole.OWNER)
@@ -124,7 +119,6 @@ class HouseholdRepositoryTest {
                 .build();
 
         member3 = HouseholdMember.builder()
-                .id(UUID.randomUUID())
                 .user(user3)
                 .household(household3)
                 .role(HouseholdRole.MEMBER)

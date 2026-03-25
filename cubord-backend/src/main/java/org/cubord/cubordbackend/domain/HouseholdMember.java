@@ -17,6 +17,7 @@ import java.util.UUID;
 @EqualsAndHashCode(of = "id")
 public class HouseholdMember {
     @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY)

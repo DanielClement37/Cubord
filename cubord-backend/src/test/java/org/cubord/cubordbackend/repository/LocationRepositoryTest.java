@@ -41,12 +41,10 @@ class LocationRepositoryTest {
     void setUp() {
         // Create test households
         testHousehold1 = Household.builder()
-                .id(UUID.randomUUID())
                 .name("Test Household 1")
                 .build();
 
         testHousehold2 = Household.builder()
-                .id(UUID.randomUUID())
                 .name("Test Household 2")
                 .build();
 
@@ -56,21 +54,18 @@ class LocationRepositoryTest {
 
         // Create test locations
         testLocation1 = Location.builder()
-                .id(UUID.randomUUID())
                 .name("Kitchen")
                 .description("Main kitchen storage")
                 .household(testHousehold1)
                 .build();
 
         testLocation2 = Location.builder()
-                .id(UUID.randomUUID())
                 .name("Pantry")
                 .description("Food storage area")
                 .household(testHousehold1)
                 .build();
 
         testLocation3 = Location.builder()
-                .id(UUID.randomUUID())
                 .name("Garage")
                 .description("Vehicle storage")
                 .household(testHousehold2)
@@ -82,6 +77,13 @@ class LocationRepositoryTest {
         testLocation3 = entityManager.persistAndFlush(testLocation3);
 
         entityManager.clear();
+
+        // Re-fetch entities so they are managed in the current persistence context
+        testHousehold1 = entityManager.find(Household.class, testHousehold1.getId());
+        testHousehold2 = entityManager.find(Household.class, testHousehold2.getId());
+        testLocation1 = entityManager.find(Location.class, testLocation1.getId());
+        testLocation2 = entityManager.find(Location.class, testLocation2.getId());
+        testLocation3 = entityManager.find(Location.class, testLocation3.getId());
     }
 
     @Test
@@ -89,7 +91,6 @@ class LocationRepositoryTest {
     void testSaveLocation() {
         // Given
         Location newLocation = Location.builder()
-                .id(UUID.randomUUID())
                 .name("Basement")
                 .description("Underground storage")
                 .household(testHousehold1)
@@ -256,7 +257,6 @@ class LocationRepositoryTest {
     void testSaveAndFlush() {
         // Given
         Location newLocation = Location.builder()
-                .id(UUID.randomUUID())
                 .name("Attic")
                 .description("Overhead storage")
                 .household(testHousehold1)
@@ -279,14 +279,12 @@ class LocationRepositoryTest {
     void testSaveAllLocations() {
         // Given
         Location location1 = Location.builder()
-                .id(UUID.randomUUID())
                 .name("Closet")
                 .description("Clothing storage")
                 .household(testHousehold1)
                 .build();
 
         Location location2 = Location.builder()
-                .id(UUID.randomUUID())
                 .name("Shed")
                 .description("Outdoor storage")
                 .household(testHousehold2)
@@ -387,7 +385,6 @@ class LocationRepositoryTest {
     void testLocationWithMinimalData() {
         // Given
         Location minimalLocation = Location.builder()
-                .id(UUID.randomUUID())
                 .name("Minimal")
                 .household(testHousehold1)
                 .build(); // No description
@@ -411,7 +408,6 @@ class LocationRepositoryTest {
         LocalDateTime beforeCreate = LocalDateTime.now();
 
         Location newLocation = Location.builder()
-                .id(UUID.randomUUID())
                 .name("Callback Test")
                 .description("Testing lifecycle callbacks")
                 .household(testHousehold1)

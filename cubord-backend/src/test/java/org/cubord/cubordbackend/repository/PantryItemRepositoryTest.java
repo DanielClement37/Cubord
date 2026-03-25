@@ -49,12 +49,10 @@ class PantryItemRepositoryTest {
     void setUp() {
         // Create test households
         testHousehold1 = Household.builder()
-                .id(UUID.randomUUID())
                 .name("Test Household 1")
                 .build();
         
         testHousehold2 = Household.builder()
-                .id(UUID.randomUUID())
                 .name("Test Household 2")
                 .build();
 
@@ -63,21 +61,18 @@ class PantryItemRepositoryTest {
 
         // Create test locations
         testLocation1 = Location.builder()
-                .id(UUID.randomUUID())
                 .name("Kitchen Pantry")
                 .description("Main kitchen storage")
                 .household(testHousehold1)
                 .build();
 
         testLocation2 = Location.builder()
-                .id(UUID.randomUUID())
                 .name("Refrigerator")
                 .description("Main fridge")
                 .household(testHousehold1)
                 .build();
 
         testLocation3 = Location.builder()
-                .id(UUID.randomUUID())
                 .name("Basement Storage")
                 .description("Bulk storage area")
                 .household(testHousehold2)
@@ -89,7 +84,6 @@ class PantryItemRepositoryTest {
 
         // Create test products
         testProduct1 = Product.builder()
-                .id(UUID.randomUUID())
                 .upc("123456789012")
                 .name("Milk")
                 .brand("FreshDairy")
@@ -101,7 +95,6 @@ class PantryItemRepositoryTest {
                 .build();
 
         testProduct2 = Product.builder()
-                .id(UUID.randomUUID())
                 .upc("234567890123")
                 .name("Bread")
                 .brand("BakeryBest")
@@ -113,7 +106,6 @@ class PantryItemRepositoryTest {
                 .build();
 
         testProduct3 = Product.builder()
-                .id(UUID.randomUUID())
                 .upc("345678901234")
                 .name("Canned Beans")
                 .brand("HealthyEats")
@@ -130,51 +122,39 @@ class PantryItemRepositoryTest {
 
         // Create test pantry items
         testPantryItem1 = PantryItem.builder()
-                .id(UUID.randomUUID())
                 .product(testProduct1)
                 .location(testLocation2) // Milk in Refrigerator
                 .expirationDate(LocalDate.now().plusDays(5))
                 .quantity(2)
                 .unitOfMeasure("liters")
                 .notes("Whole milk")
-                .createdAt(LocalDateTime.now().minusDays(2))
-                .updatedAt(LocalDateTime.now().minusDays(2))
                 .build();
 
         testPantryItem2 = PantryItem.builder()
-                .id(UUID.randomUUID())
                 .product(testProduct2)
                 .location(testLocation1) // Bread in Kitchen Pantry
                 .expirationDate(LocalDate.now().plusDays(3))
                 .quantity(1)
                 .unitOfMeasure("loaf")
                 .notes("Whole wheat bread")
-                .createdAt(LocalDateTime.now().minusDays(1))
-                .updatedAt(LocalDateTime.now().minusDays(1))
                 .build();
 
         testPantryItem3 = PantryItem.builder()
-                .id(UUID.randomUUID())
                 .product(testProduct3)
                 .location(testLocation1) // Canned Beans in Kitchen Pantry
                 .expirationDate(LocalDate.now().plusDays(300))
                 .quantity(5)
                 .unitOfMeasure("cans")
                 .notes("Black beans")
-                .createdAt(LocalDateTime.now().minusDays(3))
-                .updatedAt(LocalDateTime.now().minusDays(3))
                 .build();
 
         testPantryItem4 = PantryItem.builder()
-                .id(UUID.randomUUID())
                 .product(testProduct1)
                 .location(testLocation3) // Milk in different household
                 .expirationDate(LocalDate.now().plusDays(6))
                 .quantity(1)
                 .unitOfMeasure("liters")
                 .notes("Skim milk")
-                .createdAt(LocalDateTime.now().minusDays(1))
-                .updatedAt(LocalDateTime.now().minusDays(1))
                 .build();
 
         entityManager.persistAndFlush(testPantryItem1);
@@ -183,6 +163,20 @@ class PantryItemRepositoryTest {
         entityManager.persistAndFlush(testPantryItem4);
 
         entityManager.clear();
+
+        // Re-fetch all entities so they are managed in the current persistence context
+        testHousehold1 = entityManager.find(Household.class, testHousehold1.getId());
+        testHousehold2 = entityManager.find(Household.class, testHousehold2.getId());
+        testLocation1 = entityManager.find(Location.class, testLocation1.getId());
+        testLocation2 = entityManager.find(Location.class, testLocation2.getId());
+        testLocation3 = entityManager.find(Location.class, testLocation3.getId());
+        testProduct1 = entityManager.find(Product.class, testProduct1.getId());
+        testProduct2 = entityManager.find(Product.class, testProduct2.getId());
+        testProduct3 = entityManager.find(Product.class, testProduct3.getId());
+        testPantryItem1 = entityManager.find(PantryItem.class, testPantryItem1.getId());
+        testPantryItem2 = entityManager.find(PantryItem.class, testPantryItem2.getId());
+        testPantryItem3 = entityManager.find(PantryItem.class, testPantryItem3.getId());
+        testPantryItem4 = entityManager.find(PantryItem.class, testPantryItem4.getId());
     }
 
     // Basic CRUD Tests
@@ -192,7 +186,6 @@ class PantryItemRepositoryTest {
     void testSaveAndFindById() {
         // Given
         PantryItem newItem = PantryItem.builder()
-                .id(UUID.randomUUID())
                 .product(testProduct1)
                 .location(testLocation1)
                 .expirationDate(LocalDate.now().plusDays(10))
@@ -504,14 +497,12 @@ class PantryItemRepositoryTest {
         // Given
         List<PantryItem> newItems = List.of(
                 PantryItem.builder()
-                        .id(UUID.randomUUID())
                         .product(testProduct1)
                         .location(testLocation1)
                         .quantity(2)
                         .unitOfMeasure("cartons")
                         .build(),
                 PantryItem.builder()
-                        .id(UUID.randomUUID())
                         .product(testProduct2)
                         .location(testLocation2)
                         .quantity(3)
@@ -563,7 +554,6 @@ class ExpirationDateDuplicateDetectionTests {
     void testFindByLocationIdAndProductIdAndExpirationDateIsNull() {
         // Given - Create item without expiration date
         PantryItem itemWithoutExpiration = PantryItem.builder()
-                .id(UUID.randomUUID())
                 .product(testProduct3)
                 .location(testLocation1)
                 .quantity(3)
@@ -604,7 +594,6 @@ class ExpirationDateDuplicateDetectionTests {
     void testExistsByLocationIdAndProductIdAndExpirationDateIsNull() {
         // Given - Create item without expiration date
         PantryItem itemWithoutExpiration = PantryItem.builder()
-                .id(UUID.randomUUID())
                 .product(testProduct2)
                 .location(testLocation2)
                 .quantity(2)
@@ -642,7 +631,6 @@ class ExpirationDateDuplicateDetectionTests {
     void testDeleteByLocationIdAndProductIdAndExpirationDateIsNull() {
         // Given - Create item without expiration date
         PantryItem itemWithoutExpiration = PantryItem.builder()
-                .id(UUID.randomUUID())
                 .product(testProduct1)
                 .location(testLocation1)
                 .quantity(4)
@@ -670,7 +658,6 @@ class ProductVariantQueryTests {
     void testFindByLocationIdAndProductIdOrderByExpirationDateAsc() {
         // Given - Create multiple variants of same product with different expiration dates
         PantryItem variant1 = PantryItem.builder()
-                .id(UUID.randomUUID())
                 .product(testProduct1)
                 .location(testLocation1)
                 .quantity(2)
@@ -678,7 +665,6 @@ class ProductVariantQueryTests {
                 .build();
         
         PantryItem variant2 = PantryItem.builder()
-                .id(UUID.randomUUID())
                 .product(testProduct1)
                 .location(testLocation1)
                 .quantity(1)
@@ -686,7 +672,6 @@ class ProductVariantQueryTests {
                 .build();
         
         PantryItem variant3 = PantryItem.builder()
-                .id(UUID.randomUUID())
                 .product(testProduct1)
                 .location(testLocation1)
                 .quantity(3)
@@ -715,7 +700,6 @@ class ProductVariantQueryTests {
     void testFindByLocationIdAndProductIdOrderByExpirationDateNullsLast() {
         // Given
         PantryItem variantWithExpiration = PantryItem.builder()
-                .id(UUID.randomUUID())
                 .product(testProduct3)
                 .location(testLocation1)
                 .quantity(2)
@@ -723,7 +707,6 @@ class ProductVariantQueryTests {
                 .build();
         
         PantryItem variantWithoutExpiration = PantryItem.builder()
-                .id(UUID.randomUUID())
                 .product(testProduct3)
                 .location(testLocation1)
                 .quantity(1)
@@ -819,7 +802,6 @@ class EnhancedQueryTests {
     void testSumQuantityByLocationAndProduct() {
         // Given - Create another milk item in same location to test aggregation
         PantryItem additionalMilk = PantryItem.builder()
-                .id(UUID.randomUUID())
                 .product(testProduct1)
                 .location(testLocation2)
                 .quantity(1)
@@ -846,7 +828,6 @@ class EnhancedQueryTests {
         void testFindByExpirationDateIsNull() {
             // Given - Create items without expiration dates
             PantryItem itemWithoutExpiration1 = PantryItem.builder()
-                    .id(UUID.randomUUID())
                     .product(testProduct3)
                     .location(testLocation1)
                     .quantity(5)
@@ -854,7 +835,6 @@ class EnhancedQueryTests {
                     .build();
 
             PantryItem itemWithoutExpiration2 = PantryItem.builder()
-                    .id(UUID.randomUUID())
                     .product(testProduct2)
                     .location(testLocation2)
                     .quantity(2)
@@ -878,7 +858,6 @@ class EnhancedQueryTests {
         void testFindByExpirationDateIsNullAndLocationHouseholdId() {
             // Given
             PantryItem itemWithoutExpiration = PantryItem.builder()
-                    .id(UUID.randomUUID())
                     .product(testProduct1)
                     .location(testLocation1)
                     .quantity(3)
