@@ -40,6 +40,23 @@ export class ApiError extends Error {
 }
 
 // ---------------------------------------------------------------------------
+// 401 Handler
+// ---------------------------------------------------------------------------
+
+/**
+ * Called when the server returns a 401 Unauthorized response.
+ * Signs the user out and lets the auth state change propagate
+ * (which triggers a redirect to the sign-in screen via AuthContext).
+ */
+async function handleUnauthorized(): Promise<void> {
+    console.warn('[api/client] 401 Unauthorized — signing out');
+    const { supabase } = await import('@/services/supabase');
+    const { useAppStore } = await import('@/stores/appStore');
+    useAppStore.getState().clearActiveHousehold();
+    await supabase.auth.signOut();
+}
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -147,6 +164,9 @@ export async function apiClient<T = unknown>(
     }
 
     if (!response.ok) {
+        if (response.status === 401) {
+            await handleUnauthorized();
+        }
         throw new ApiError(response.status, data);
     }
 

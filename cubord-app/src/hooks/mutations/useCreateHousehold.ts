@@ -1,6 +1,7 @@
 // src/hooks/mutations/useCreateHousehold.ts
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { createHousehold } from '@/api/households';
+import { useAppStore } from '@/stores/appStore';
 import type { HouseholdRequest, HouseholdResponse } from '@/types';
 import Toast from 'react-native-toast-message';
 
@@ -10,6 +11,8 @@ export function useCreateHousehold() {
     return useMutation<HouseholdResponse, Error, HouseholdRequest>({
         mutationFn: createHousehold,
         onSuccess: async (data) => {
+            // app initialization hook sees a valid ID when it re-evaluates
+            useAppStore.getState().setActiveHouseholdId(data.id);
             await queryClient.invalidateQueries({ queryKey: ['households'] });
             Toast.show({ type: 'success', text1: 'Household created', text2: data.name });
         },

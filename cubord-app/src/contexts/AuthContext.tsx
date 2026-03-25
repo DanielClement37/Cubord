@@ -7,12 +7,15 @@ import React, {
     useEffect,
     ReactNode,
 } from 'react';
-import { Session } from '@supabase/supabase-js';
+import { Session, User } from '@supabase/supabase-js';
 import { useGoogleAuth } from '@/hooks/useGoogleAuth';
 import { supabase } from '@/services/supabase';
+import { useAppStore } from '@/stores/appStore';
 
 interface AuthCtx {
     session: Session | null;
+    user: User | null;
+    loading: boolean;
     signInWithGoogle: () => Promise<void>;
     signOut: () => Promise<void>;
 }
@@ -21,10 +24,14 @@ const AuthContext = createContext<AuthCtx>({} as AuthCtx);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const [session, setSession] = useState<Session | null>(null);
-    const { signInWithGoogle: googleSignIn, signOut } = useGoogleAuth();
+    const [loading, setLoading] = useState(true);
+    const { signInWithGoogle: googleSignIn, signOut: googleSignOut } = useGoogleAuth();
 
     useEffect(() => {
-        supabase.auth.getSession().then(({ data }) => setSession(data.session));
+        supabase.auth.getSession().then(({ data }) => {
+            setSession(data.session);
+            setLoading(false);
+        });
 
         const {
             data: { subscription },
@@ -44,8 +51,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
     }, [googleSignIn]);
 
+    const signOut = useCallback(async () => {
+        await googleSignOut();
+        useAppStore.getState().clearActiveHousehold();
+    }, [googleSignOut]);
+
     return (
-        <AuthContext.Provider value={{ session, signInWithGoogle, signOut }}>
+        <AuthContext.Provider
+            value={{
+                session,
+                user: session?.user ?? null,
+                loading,
+                signInWithGoogle,
+                signOut,
+            }}
+        >
             {children}
         </AuthContext.Provider>
     );

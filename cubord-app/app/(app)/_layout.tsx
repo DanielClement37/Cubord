@@ -1,16 +1,14 @@
 // app/(app)/_layout.tsx
 import { Redirect } from 'expo-router';
 import { Tabs } from 'expo-router';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAppInitialization } from '@/hooks/useAppInitialization';
 import { palette } from '@/styles/colors';
-import {fontFamily, fontSize, radius, shadow} from '@/styles/tokens';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import {
-    HomeTabIcon,
-    ScanTabIcon,
-    PantryTabIcon,
-    ProfileTabIcon,
-} from '@/components/ui/TabIcons';
+import { fontFamily, fontSize, radius, shadow } from '@/styles/tokens';
+import {Text, Button, HomeTabIcon, ScanTabIcon, PantryTabIcon, ProfileTabIcon} from '@/components/ui';
+import {WelcomeScreen} from "@/screens/WelcomeScreen";
+import {useSafeAreaInsets} from "react-native-safe-area-context";
 
 const ACTIVE_COLOR = palette.sage700;
 const INACTIVE_COLOR = palette.sand400;
@@ -22,6 +20,40 @@ export default function AppLayout() {
 
     if (!session) {
         return <Redirect href="/signin" />;
+    }
+
+    // Gate: initialization must complete before showing tabs
+    const { status, refetch } = useAppInitialization();
+
+    if (status === 'loading') {
+        return (
+            <View style={styles.center}>
+                <ActivityIndicator size="large" color={palette.sage700} />
+            </View>
+        );
+    }
+
+    if (status === 'error') {
+        return (
+            <View style={styles.center}>
+                <Text size="lg" weight="semibold" align="center">
+                    Couldn't connect to server
+                </Text>
+                <Text
+                    size="md"
+                    color="secondary"
+                    align="center"
+                    style={{ marginTop: 8, marginBottom: 24 }}
+                >
+                    Check your connection and try again
+                </Text>
+                <Button label="Retry" onPress={() => refetch()} />
+            </View>
+        );
+    }
+
+    if (status === 'needs-household') {
+        return <WelcomeScreen />;
     }
 
     return (
@@ -50,8 +82,8 @@ export default function AppLayout() {
                 name="index"
                 options={{
                     title: 'Home',
-                    tabBarIcon: ({focused, color}) => (
-                        <HomeTabIcon focused={focused} color={color}/>
+                    tabBarIcon: ({ focused, color }) => (
+                        <HomeTabIcon focused={focused} color={color} />
                     ),
                 }}
             />
@@ -59,8 +91,8 @@ export default function AppLayout() {
                 name="scan"
                 options={{
                     title: 'Scan',
-                    tabBarIcon: ({focused, color}) => (
-                        <ScanTabIcon focused={focused} color={color}/>
+                    tabBarIcon: ({ focused, color }) => (
+                        <ScanTabIcon focused={focused} color={color} />
                     ),
                 }}
             />
@@ -68,8 +100,8 @@ export default function AppLayout() {
                 name="pantry"
                 options={{
                     title: 'Pantry',
-                    tabBarIcon: ({focused, color}) => (
-                        <PantryTabIcon focused={focused} color={color}/>
+                    tabBarIcon: ({ focused, color }) => (
+                        <PantryTabIcon focused={focused} color={color} />
                     ),
                 }}
             />
@@ -77,11 +109,20 @@ export default function AppLayout() {
                 name="profile"
                 options={{
                     title: 'Profile',
-                    tabBarIcon: ({focused, color}) => (
-                        <ProfileTabIcon focused={focused} color={color}/>
+                    tabBarIcon: ({ focused, color }) => (
+                        <ProfileTabIcon focused={focused} color={color} />
                     ),
                 }}
             />
         </Tabs>
     );
 }
+
+const styles = StyleSheet.create({
+    center: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: palette.cream100,
+    },
+});
