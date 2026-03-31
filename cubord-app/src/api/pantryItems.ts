@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import type { CreatePantryItemRequest, PantryItemResponse } from '@/types';
+import type { CreatePantryItemRequest, PantryItemResponse, PantryStatistics } from '@/types';
 
 export interface GetPantryItemsParams {
     householdId: string;
@@ -62,8 +62,8 @@ export function getExpiringItems(params: GetExpiringItemsParams): Promise<Pantry
 /**
  * Retrieves pantry statistics for a household (total items, expiring soon, etc.).
  */
-export function getPantryStatistics(householdId: string): Promise<Record<string, unknown>> {
-    return apiClient<Record<string, unknown>>(
+export function getPantryStatistics(householdId: string): Promise<PantryStatistics> {
+    return apiClient<PantryStatistics>(
         `/households/${householdId}/pantry-items/statistics`,
         'GET',
     );

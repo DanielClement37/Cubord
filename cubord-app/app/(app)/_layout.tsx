@@ -1,7 +1,7 @@
 // app/(app)/_layout.tsx
 import { Redirect } from 'expo-router';
 import { Tabs } from 'expo-router';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAppInitialization } from '@/hooks/useAppInitialization';
 import { palette } from '@/styles/colors';
@@ -74,7 +74,7 @@ export default function AppLayout() {
                     height: 56 + insets.bottom,
                     paddingBottom: insets.bottom,
                     paddingTop: 6,
-                    ...shadow.sm,
+                    ...(Platform.OS === 'ios' ? shadow.sm : { elevation: shadow.sm.elevation }),
                 },
             }}
         >

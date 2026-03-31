@@ -1,210 +1,142 @@
-import { View, ScrollView, StyleSheet, Alert } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { ScrollView, StyleSheet, RefreshControl } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
-import { TokenLoggerButton } from '@/components/TokenLoggerButton';
+import { useAppStore } from '@/stores/appStore';
+import { useHouseholds } from '@/hooks/queries';
+import { usePantryStatistics } from '@/hooks/queries';
+import { useExpiringItems } from '@/hooks/queries';
+import { useLocations } from '@/hooks/queries';
+import { ScreenContainer } from '@/components/ui';
 import {
-    ScreenContainer,
-    Text,
-    Button,
-    Card,
-    TextInput,
-    Badge,
-    Spinner,
-} from '@/components/ui';
+    GreetingHeader,
+    PantryOverviewCard,
+    NeedsAttentionSection,
+    QuickAccessSection,
+    DashboardSkeleton,
+    HouseholdPicker,
+} from '@/components/dashboard';
 import { spacing } from '@/styles';
-import { useState } from 'react';
-import { showSuccess, showError, showInfo } from '@/utils/toast';
 
 export default function HomeScreen() {
-    const { signOut } = useAuth();
-    const [inputValue, setInputValue] = useState('');
-    const [errorInput, setErrorInput] = useState('');
+    const { user } = useAuth();
+    const router = useRouter();
+    const queryClient = useQueryClient();
+    const activeHouseholdId = useAppStore((s) => s.activeHouseholdId);
+    const [pickerVisible, setPickerVisible] = useState(false);
+
+    // ── Queries ──────────────────────────────
+    const { data: households } = useHouseholds();
+    const {
+        data: statistics,
+        isLoading: statsLoading,
+        isRefetching: statsRefetching,
+    } = usePantryStatistics(activeHouseholdId ?? undefined);
+    const {
+        data: expiringItems,
+        isLoading: expiringLoading,
+        isRefetching: expiringRefetching,
+    } = useExpiringItems(activeHouseholdId ?? undefined);
+    const {
+        data: locations,
+        isLoading: locationsLoading,
+        isRefetching: locationsRefetching,
+    } = useLocations(activeHouseholdId ?? undefined);
+
+    // ── Derived data ─────────────────────────
+    const activeHousehold = households?.find((h) => h.id === activeHouseholdId);
+    const householdName = activeHousehold?.name ?? 'My Home';
+    const userName = user?.user_metadata?.full_name ?? user?.email ?? 'there';
+
+    const totalItems = statistics?.totalItems;
+    const locationsCount = locations?.length;
+
+    const isAnyLoading = statsLoading || expiringLoading || locationsLoading;
+    const isRefreshing = statsRefetching || expiringRefetching || locationsRefetching;
+
+    // ── Pull to refresh ──────────────────────
+    const onRefresh = useCallback(() => {
+        queryClient.invalidateQueries({ queryKey: ['pantry-items', activeHouseholdId] });
+        queryClient.invalidateQueries({ queryKey: ['locations', activeHouseholdId] });
+        queryClient.invalidateQueries({ queryKey: ['households'] });
+    }, [queryClient, activeHouseholdId]);
+
+    // ── Handlers ─────────────────────────────
+    const handleHouseholdPress = () => {
+        setPickerVisible(true);
+    };
+
+    const handleExpiringSoonPress = () => {
+        router.push('/pantry');
+    };
+
+    const handleLowStockPress = () => {
+        router.push('/pantry');
+    };
+
+    const handleLocationPress = () => {
+        router.push('/pantry');
+    };
+
+    const handleAddLocationPress = () => {
+        // TODO: Navigate to add location flow
+    };
 
     return (
         <ScreenContainer>
             <ScrollView
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.scroll}
+                refreshControl={
+                    <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
+                }
             >
-                {/* ── Existing logic ─────────────────── */}
-                <Text size="xl" weight="bold">
-                    Welcome! You are signed in.
-                </Text>
-                <TokenLoggerButton />
+                {isAnyLoading && !isRefreshing ? (
+                    <DashboardSkeleton />
+                ) : (
+                    <>
+                        <GreetingHeader
+                            userName={userName}
+                            householdName={householdName}
+                            onHouseholdPress={handleHouseholdPress}
+                        />
 
-                {/* ── Text variants ──────────────────── */}
-                <SectionTitle title="Text" />
-                <Text size="xl" weight="bold">XL Bold — Screen Title</Text>
-                <Text size="lg" weight="semibold">LG Semibold — Section Header</Text>
-                <Text size="md">MD Regular — Body text</Text>
-                <Text size="sm" color="secondary">SM Secondary — Caption</Text>
-                <Text size="md" color="error">Error colored text</Text>
-                <Text size="md" color="success">Success colored text</Text>
+                        <PantryOverviewCard
+                            totalItems={totalItems}
+                            locationsCount={locationsCount}
+                            isLoading={statsLoading || locationsLoading}
+                        />
 
-                {/* ── Badge variants ─────────────────── */}
-                <SectionTitle title="Badges" />
-                <View style={styles.row}>
-                    <Badge variant="safe" label="Fresh" />
-                    <Badge variant="warning" label="Expiring Soon" />
-                    <Badge variant="danger" label="Expired" />
-                    <Badge variant="neutral" label="12 items" />
-                </View>
+                        <NeedsAttentionSection
+                            expiringItems={expiringItems}
+                            statistics={statistics}
+                            isLoading={expiringLoading || statsLoading}
+                            onExpiringSoonPress={handleExpiringSoonPress}
+                            onLowStockPress={handleLowStockPress}
+                        />
 
-                {/* ── Button variants ────────────────── */}
-                <SectionTitle title="Buttons" />
-                <Button
-                    label="Primary Button"
-                    onPress={() => Alert.alert('Primary pressed')}
-                />
-                <Button
-                    variant="secondary"
-                    label="Secondary Button"
-                    onPress={() => Alert.alert('Secondary pressed')}
-                />
-                <Button
-                    variant="ghost"
-                    label="Ghost Button"
-                    onPress={() => Alert.alert('Ghost pressed')}
-                />
-                <Button
-                    variant="danger"
-                    label="Danger Button"
-                    onPress={() => Alert.alert('Danger pressed')}
-                />
-                <Button
-                    label="Loading State"
-                    loading
-                />
-                <Button
-                    label="Disabled State"
-                    disabled
-                />
-
-                {/* ── TextInput variants ─────────────── */}
-                <SectionTitle title="Text Inputs" />
-                <TextInput
-                    label="Item Name"
-                    placeholder="e.g. Organic Whole Milk"
-                    value={inputValue}
-                    onChangeText={setInputValue}
-                />
-                <TextInput
-                    label="Quantity"
-                    placeholder="Enter quantity"
-                    value={errorInput}
-                    onChangeText={setErrorInput}
-                    error={errorInput.length === 0 ? 'Quantity is required' : undefined}
-                />
-                <TextInput
-                    label="Location (disabled)"
-                    placeholder="Kitchen Pantry"
-                    disabled
-                />
-
-                {/* ── Card variants ──────────────────── */}
-                <SectionTitle title="Cards" />
-                <Card>
-                    <Text size="lg" weight="semibold">Default Card</Text>
-                    <Text size="sm" color="secondary">
-                        This is a basic surface card with subtle shadow.
-                    </Text>
-                </Card>
-                <Card variant="elevated">
-                    <Text size="lg" weight="semibold">Elevated Card</Text>
-                    <Text size="sm" color="secondary">
-                        Elevated variant with a stronger shadow.
-                    </Text>
-                </Card>
-                <Card
-                    variant="elevated"
-                    onPress={() => Alert.alert('Card pressed!')}
-                >
-                    <Text size="lg" weight="semibold">Pressable Card</Text>
-                    <Text size="sm" color="secondary">
-                        Tap me — I'm an elevated pressable card.
-                    </Text>
-                </Card>
-
-                {/* ── Spinner variants ────────────────── */}
-                <SectionTitle title="Spinners" />
-                <View style={styles.row}>
-                    <View style={styles.spinnerCol}>
-                        <Spinner size="sm" />
-                        <Text size="sm" color="secondary" align="center">sm</Text>
-                    </View>
-                    <View style={styles.spinnerCol}>
-                        <Spinner size="md" />
-                        <Text size="sm" color="secondary" align="center">md</Text>
-                    </View>
-                    <View style={styles.spinnerCol}>
-                        <Spinner size="lg" />
-                        <Text size="sm" color="secondary" align="center">lg</Text>
-                    </View>
-                </View>
-
-                {/* ── Toast demos ─────────────────────── */}
-                <SectionTitle title="Toasts" />
-                <Button
-                    label="Success Toast"
-                    onPress={() => showSuccess('Item added', 'Organic Whole Milk saved to Pantry')}
-                />
-                <Button
-                    variant="secondary"
-                    label="Info Toast"
-                    onPress={() => showInfo('Sync complete', 'All items are up to date')}
-                />
-                <Button
-                    variant="danger"
-                    label="Error Toast"
-                    onPress={() => showError('Something went wrong', 'Could not reach the server')}
-                />
-
-                {/* ── Sign Out (existing logic) ──────── */}
-                <View style={styles.signOut}>
-                    <Button
-                        variant="danger"
-                        label="Sign Out"
-                        onPress={signOut}
-                    />
-                </View>
+                        <QuickAccessSection
+                            locations={locations}
+                            isLoading={locationsLoading}
+                            onLocationPress={handleLocationPress}
+                            onAddLocationPress={handleAddLocationPress}
+                        />
+                    </>
+                )}
             </ScrollView>
-        </ScreenContainer>
-    );
-}
 
-/** Small helper for section dividers */
-function SectionTitle({ title }: { title: string }) {
-    return (
-        <View style={styles.sectionHeader}>
-            <Text size="lg" weight="bold" color="secondary">
-                {title}
-            </Text>
-        </View>
+            <HouseholdPicker
+                visible={pickerVisible}
+                onClose={() => setPickerVisible(false)}
+            />
+        </ScreenContainer>
     );
 }
 
 const styles = StyleSheet.create({
     scroll: {
-        gap: spacing.md,
+        gap: spacing.lg,
         paddingBottom: spacing.xxl,
-    },
-    row: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: spacing.sm,
-        alignItems: 'center',
-    },
-    sectionHeader: {
-        marginTop: spacing.lg,
-        borderBottomWidth: 1,
-        borderBottomColor: '#EDE3D6',
-        paddingBottom: spacing.xs,
-    },
-    spinnerCol: {
-        alignItems: 'center',
-        gap: spacing.xs,
-        width: 60,
-    },
-    signOut: {
-        marginTop: spacing.xl,
     },
 });

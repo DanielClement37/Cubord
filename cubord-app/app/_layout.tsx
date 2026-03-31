@@ -1,7 +1,11 @@
 // app/_layout.tsx
 import 'react-native-gesture-handler'; // Must be at the very top!
+import { enableScreens } from 'react-native-screens';
 import { useState } from 'react';
 import { Slot } from 'expo-router';
+
+// Disable native screens to prevent Fabric String/Boolean casting crash
+enableScreens(false);
 import { QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { configureGoogle } from '@/boot/googleConfig';

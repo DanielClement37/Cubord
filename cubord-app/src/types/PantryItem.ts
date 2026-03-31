@@ -36,3 +36,11 @@ export interface PantryItemResponse {
     createdAt: string;
     updatedAt: string;
 }
+
+export interface PantryStatistics {
+    totalItems: number;
+    distinctProducts: number;
+    lowStockCount: number;
+    expiringCount: number;
+    noExpirationDateCount: number;
+}

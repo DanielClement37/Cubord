@@ -36,6 +36,7 @@ export {
     CreatePantryItemRequest,
     UpdatePantryItemRequest,
     PantryItemResponse,
+    PantryStatistics
 } from "./PantryItem";
 
 // Error
