@@ -63,6 +63,22 @@ const successHandlers = [
         return HttpResponse.json(mockLocations);
     }),
 
+    http.post(api('/households/:householdId/locations'), async ({ request }) => {
+        const body = (await request.json()) as { name: string; description?: string | null; householdId: string };
+        return HttpResponse.json(
+            {
+                ...mockLocations[0],
+                id: 'loc-new',
+                name: body.name,
+                description: body.description ?? null,
+                householdId: body.householdId,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+            },
+            { status: 201 },
+        );
+    }),
+
     // ---- Products -------------------------------------------------------
     http.get(api('/products/upc/:upc'), () => {
         return HttpResponse.json(mockProduct);

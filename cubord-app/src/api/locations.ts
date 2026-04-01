@@ -15,5 +15,9 @@ export function getLocations(householdId: string): Promise<LocationResponse[]> {
  * Creates a new storage location within a household.
  */
 export function createLocation(data: LocationRequest): Promise<LocationResponse> {
-    return apiClient<LocationResponse>('/locations', 'POST', data);
+    return apiClient<LocationResponse>(
+        `/households/${data.householdId}/locations`,
+        'POST',
+        data,
+    );
 }

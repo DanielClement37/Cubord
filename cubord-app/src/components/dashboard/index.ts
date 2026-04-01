@@ -5,3 +5,4 @@ export { NeedsAttentionSection } from './NeedsAttentionSection';
 export { QuickAccessSection } from './QuickAccessSection';
 export { DashboardSkeleton } from './DashboardSkeleton';
 export { HouseholdPicker} from './HouseholdPicker';
+export { AddLocationModal} from './AddLocationModal';

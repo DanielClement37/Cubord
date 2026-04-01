@@ -1,4 +1,4 @@
-import type { PantryItemResponse } from '@/types';
+import type {PantryItemResponse, PantryStatistics} from '@/types';
 import { mockProduct, mockProductManual } from './products';
 import { mockLocation, mockLocations } from './locations';
 
@@ -29,12 +29,10 @@ export const mockPantryItems: PantryItemResponse[] = [
     },
 ];
 
-export const mockPantryStatistics = {
+export const mockPantryStatistics: PantryStatistics = {
     totalItems: 12,
-    expiringSoon: 3,
-    expiredCount: 1,
-    locationBreakdown: {
-        'loc-001': 8,
-        'loc-002': 4,
-    },
+    distinctProducts: 8,
+    lowStockCount: 3,
+    expiringCount: 2,
+    noExpirationDateCount: 1,
 };

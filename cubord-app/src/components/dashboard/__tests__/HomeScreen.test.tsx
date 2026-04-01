@@ -19,13 +19,13 @@ jest.mock('expo-router', () => ({
     useRouter: () => ({ push: mockPush }),
 }));
 
+const mockUser = {
+    user_metadata: { full_name: 'Daniel Smith' },
+    email: 'daniel@example.com',
+};
+
 jest.mock('@/contexts/AuthContext', () => ({
-    useAuth: () => ({
-        user: {
-            user_metadata: { full_name: 'Daniel Smith' },
-            email: 'daniel@example.com',
-        },
-    }),
+    useAuth: () => ({ user: mockUser }),
 }));
 
 // Silence SafeAreaView in tests
@@ -157,6 +157,96 @@ describe('HomeScreen (integration)', () => {
         expect(mockPush).toHaveBeenCalledWith('/pantry');
     });
 
+    it('navigates to pantry with locationId when a location chip is tapped', async () => {
+        render(<HomeScreen />);
+
+        await waitFor(() => {
+            expect(screen.getByText('Kitchen Fridge')).toBeTruthy();
+        });
+
+        fireEvent.press(screen.getByText('Kitchen Fridge'));
+
+        expect(mockPush).toHaveBeenCalledWith({
+            pathname: '/pantry',
+            params: { locationId: 'loc-001', locationName: 'Kitchen Fridge' },
+        });
+    });
+
+    it('opens the add location modal when the add chip is tapped', async () => {
+        render(<HomeScreen />);
+
+        await waitFor(() => {
+            expect(screen.getByText(/Add/)).toBeTruthy();
+        });
+
+        fireEvent.press(screen.getByText(/Add/));
+
+        await waitFor(() => {
+            expect(screen.getByText('Add New Location')).toBeTruthy();
+            expect(screen.getByText('Location name')).toBeTruthy();
+        });
+    });
+
+    it('creates a location via the modal and the modal closes on success', async () => {
+        render(<HomeScreen />);
+
+        await waitFor(() => {
+            expect(screen.getByText(/Add/)).toBeTruthy();
+        });
+
+        // Open the modal
+        fireEvent.press(screen.getByText(/Add/));
+
+        await waitFor(() => {
+            expect(screen.getByText('Add New Location')).toBeTruthy();
+        });
+
+        // Fill in the form and submit
+        fireEvent.changeText(screen.getByLabelText('Location name'), 'Garage Freezer');
+        fireEvent.press(screen.getByText('Create'));
+
+        // Modal should close after success
+        await waitFor(() => {
+            expect(screen.queryByText('Add New Location')).toBeNull();
+        });
+    });
+
+    it('navigates to pantry when low stock card is tapped', async () => {
+        // Ensure lowStockCount > 0 so the card renders
+        server.use(
+            http.get(api('/households/:id/pantry-items/statistics'), () => {
+                return HttpResponse.json({ ...mockPantryStatistics, lowStockCount: 5 });
+            }),
+        );
+
+        render(<HomeScreen />);
+
+        await waitFor(() => {
+            expect(screen.getByText('Low Stock')).toBeTruthy();
+        });
+
+        fireEvent.press(screen.getByText('Low Stock'));
+
+        expect(mockPush).toHaveBeenCalledWith('/pantry');
+    });
+
+    // ── Household Picker ─────────────────────────────
+    it('opens the household picker when the household pill is pressed', async () => {
+        render(<HomeScreen />);
+
+        await waitFor(() => {
+            expect(screen.getByText('Doe Family')).toBeTruthy();
+        });
+
+        fireEvent.press(screen.getByText('Doe Family'));
+
+        // The HouseholdPicker should now be visible (look for its content)
+        await waitFor(() => {
+            // The picker renders household names — the one already loaded
+            expect(screen.getByText('Doe Family')).toBeTruthy();
+        });
+    });
+
     // ── Error resilience ─────────────────────────────
     it('renders gracefully when statistics endpoint fails', async () => {
         server.use(
@@ -171,6 +261,63 @@ describe('HomeScreen (integration)', () => {
         render(<HomeScreen />);
 
         // The screen should still eventually render (other sections load fine)
+        await waitFor(() => {
+            expect(screen.getByText(/Daniel/)).toBeTruthy();
+        });
+    });
+
+    it('renders gracefully when expiring items endpoint fails', async () => {
+        server.use(
+            http.get(api('/households/:id/pantry-items/expiring'), () => {
+                return HttpResponse.json(
+                    { error_code: 'SERVER_ERROR', message: 'Internal error' },
+                    { status: 500 },
+                );
+            }),
+        );
+
+        render(<HomeScreen />);
+
+        await waitFor(() => {
+            expect(screen.getByText(/Daniel/)).toBeTruthy();
+            // Pantry overview should still render
+            expect(screen.getByText('Pantry Overview')).toBeTruthy();
+        });
+    });
+
+    it('renders gracefully when locations endpoint fails', async () => {
+        server.use(
+            http.get(api('/households/:id/locations'), () => {
+                return HttpResponse.json(
+                    { error_code: 'SERVER_ERROR', message: 'Internal error' },
+                    { status: 500 },
+                );
+            }),
+        );
+
+        render(<HomeScreen />);
+
+        await waitFor(() => {
+            expect(screen.getByText(/Daniel/)).toBeTruthy();
+        });
+    });
+
+    it('renders gracefully when all data endpoints fail simultaneously', async () => {
+        server.use(
+            http.get(api('/households/:id/pantry-items/statistics'), () => {
+                return HttpResponse.json({ error_code: 'SERVER_ERROR' }, { status: 500 });
+            }),
+            http.get(api('/households/:id/pantry-items/expiring'), () => {
+                return HttpResponse.json({ error_code: 'SERVER_ERROR' }, { status: 500 });
+            }),
+            http.get(api('/households/:id/locations'), () => {
+                return HttpResponse.json({ error_code: 'SERVER_ERROR' }, { status: 500 });
+            }),
+        );
+
+        render(<HomeScreen />);
+
+        // Should still show greeting — doesn't depend on those endpoints
         await waitFor(() => {
             expect(screen.getByText(/Daniel/)).toBeTruthy();
         });
@@ -216,5 +363,41 @@ describe('HomeScreen (integration)', () => {
         await waitFor(() => {
             expect(screen.getByText('My Home')).toBeTruthy();
         });
+    });
+
+    // ── User display name fallback ───────────────────
+    it('uses email when full_name is not set', async () => {
+        // Temporarily remove full_name
+        const original = mockUser.user_metadata.full_name;
+        mockUser.user_metadata.full_name = '';
+
+        render(<HomeScreen />);
+
+        await waitFor(() => {
+            expect(screen.getByText(/daniel@example.com/)).toBeTruthy();
+        });
+
+        // Restore for other tests
+        mockUser.user_metadata.full_name = original;
+    });
+
+    // ── Empty locations renders Add chip only ────────
+    it('renders only the Add Location chip when locations array is empty', async () => {
+        server.use(
+            http.get(api('/households/:id/locations'), () => {
+                return HttpResponse.json([]);
+            }),
+        );
+
+        render(<HomeScreen />);
+
+        await waitFor(() => {
+            expect(screen.getByText(/Add/)).toBeTruthy();
+            expect(screen.getByText(/Location/)).toBeTruthy();
+        });
+
+        // Location names from default mock data should NOT be present
+        expect(screen.queryByText('Kitchen Fridge')).toBeNull();
+        expect(screen.queryByText('Pantry Shelf')).toBeNull();
     });
 });

@@ -16,8 +16,10 @@ import {
     QuickAccessSection,
     DashboardSkeleton,
     HouseholdPicker,
+    AddLocationModal,
 } from '@/components/dashboard';
 import { spacing } from '@/styles';
+import type { LocationResponse } from '@/types';
 
 export default function HomeScreen() {
     const { user } = useAuth();
@@ -25,6 +27,7 @@ export default function HomeScreen() {
     const queryClient = useQueryClient();
     const activeHouseholdId = useAppStore((s) => s.activeHouseholdId);
     const [pickerVisible, setPickerVisible] = useState(false);
+    const [addLocationVisible, setAddLocationVisible] = useState(false);
 
     // ── Queries ──────────────────────────────
     const { data: households } = useHouseholds();
@@ -75,12 +78,15 @@ export default function HomeScreen() {
         router.push('/pantry');
     };
 
-    const handleLocationPress = () => {
-        router.push('/pantry');
+    const handleLocationPress = (location: LocationResponse) => {
+        router.push({
+            pathname: '/pantry',
+            params: { locationId: location.id, locationName: location.name },
+        });
     };
 
     const handleAddLocationPress = () => {
-        // TODO: Navigate to add location flow
+        setAddLocationVisible(true);
     };
 
     return (
@@ -108,6 +114,7 @@ export default function HomeScreen() {
                             isLoading={statsLoading || locationsLoading}
                         />
 
+                        {/*TODO: WIRE UP ONCE ITEMS CAN BE ADDED */}
                         <NeedsAttentionSection
                             expiringItems={expiringItems}
                             statistics={statistics}
@@ -129,6 +136,11 @@ export default function HomeScreen() {
             <HouseholdPicker
                 visible={pickerVisible}
                 onClose={() => setPickerVisible(false)}
+            />
+
+            <AddLocationModal
+                visible={addLocationVisible}
+                onClose={() => setAddLocationVisible(false)}
             />
         </ScreenContainer>
     );
