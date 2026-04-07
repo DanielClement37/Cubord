@@ -2,7 +2,10 @@ import {ProductResponse} from "./Product";
 import {LocationResponse} from "./Location";
 
 export interface CreatePantryItemRequest {
-    productId: string;
+    /** Provide either productId or upc — the backend accepts both */
+    productId?: string | null;
+    /** UPC barcode string — alternative to productId */
+    upc?: string | null;
     locationId: string;
     /** ISO date string (YYYY-MM-DD) */
     expirationDate?: string | null;

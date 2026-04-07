@@ -62,6 +62,7 @@ public class PantryItemService {
     private final LocationRepository locationRepository;
     private final ProductRepository productRepository;
     private final SecurityService securityService;
+    private final ProductService productService;
 
     // ==================== Create Operations ====================
 
@@ -99,13 +100,13 @@ public class PantryItemService {
                 .orElseThrow(() -> new NotFoundException("Location not found with ID: " + request.getLocationId()));
 
         // Load and validate product
-        Product product = productRepository.findById(request.getProductId())
-                .orElseThrow(() -> new NotFoundException("Product not found with ID: " + request.getProductId()));
+        // Resolve product by ID or UPC
+        Product product = resolveProduct(request);
 
-        // Check for existing item to consolidate (using the correct method name from repository)
+        // Check for existing item to consolidate
         Optional<PantryItem> existingItem = pantryItemRepository.findByLocationIdAndProductIdAndExpirationDate(
                 request.getLocationId(),
-                request.getProductId(),
+                product.getId(),
                 request.getExpirationDate()
         );
 
@@ -588,8 +589,9 @@ public class PantryItemService {
      * @throws ValidationException if validation fails
      */
     private void validateCreateRequest(CreatePantryItemRequest request) {
-        if (request.getProductId() == null) {
-            throw new ValidationException("Product ID cannot be null");
+        if (request.getProductId() == null
+                && (request.getUpc() == null || request.getUpc().trim().isEmpty())) {
+            throw new ValidationException("Either productId or upc must be provided");
         }
         if (request.getLocationId() == null) {
             throw new ValidationException("Location ID cannot be null");
@@ -609,6 +611,31 @@ public class PantryItemService {
         if (request.getQuantity() != null && request.getQuantity() < 0) {
             throw new ValidationException("Quantity must be a non-negative value");
         }
+    }
+
+    /**
+     * Resolves a Product from either a productId or a UPC.
+     * If only UPC is provided, looks up (or auto-creates) the product via ProductService.
+     *
+     * @param request the pantry item creation request
+     * @return the resolved Product entity
+     * @throws ValidationException if neither productId nor UPC is provided
+     * @throws NotFoundException if the product cannot be resolved
+     */
+    private Product resolveProduct(CreatePantryItemRequest request) {
+        if (request.getProductId() != null) {
+            return productRepository.findById(request.getProductId())
+                    .orElseThrow(() -> new NotFoundException("Product not found with ID: " + request.getProductId()));
+        }
+
+        if (request.getUpc() != null && !request.getUpc().trim().isEmpty()) {
+            // Look up by UPC — this will auto-create from Open Food Facts if not found locally
+            ProductResponse productResponse = productService.getProductByUpc(request.getUpc());
+            return productRepository.findById(productResponse.getId())
+                    .orElseThrow(() -> new NotFoundException("Product not found after UPC lookup"));
+        }
+
+        throw new ValidationException("Either productId or upc must be provided");
     }
 
     /**

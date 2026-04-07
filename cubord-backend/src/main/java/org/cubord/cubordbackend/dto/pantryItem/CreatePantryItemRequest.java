@@ -17,11 +17,11 @@ import java.util.UUID;
 @AllArgsConstructor
 public class CreatePantryItemRequest {
     
-    @NotNull(message = "Product ID is required")
-    private UUID productId;
-    
     @NotNull(message = "Location ID is required")
     private UUID locationId;
+
+    private UUID productId;
+    private String upc;
     
     private LocalDate expirationDate;
     private LocalDate purchaseDate;

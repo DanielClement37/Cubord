@@ -107,10 +107,55 @@ public class ProductService {
         UUID currentUserId = securityService.getCurrentUserId();
         log.debug("User {} retrieving product by UPC: {}", currentUserId, upc);
 
-        Product product = productRepository.findByUpc(upc)
-                .orElseThrow(() -> new NotFoundException("Product not found"));
+        Optional<Product> existingProduct = productRepository.findByUpc(upc);
+        if (existingProduct.isPresent()) {
+            return mapToResponse(existingProduct.get());
+        }
 
-        return mapToResponse(product);
+        // Product not in local DB — try to auto-create from external API
+        log.info("Product with UPC {} not found locally, attempting to fetch from external API", upc);
+        return createProductFromUpc(upc);
+    }
+
+    /**
+     * Creates a product by fetching data from the external API using the UPC.
+     * Falls back to a minimal manual entry if the API call fails.
+     *
+     * @param upc UPC of the product to create
+     * @return ProductResponse containing the created product's details
+     * @throws NotFoundException if the product cannot be found externally and cannot be created
+     */
+    @Transactional
+    protected ProductResponse createProductFromUpc(String upc) {
+        Product product = Product.builder()
+                .upc(upc)
+                .name("Unknown Product")
+                .dataSource(ProductDataSource.MANUAL)
+                .requiresApiRetry(false)
+                .retryAttempts(0)
+                .createdAt(LocalDateTime.now())
+                .updatedAt(LocalDateTime.now())
+                .build();
+
+        try {
+            ProductResponse apiData = upcApiService.fetchProductData(upc);
+            enrichProductWithApiData(product, apiData);
+            product.setDataSource(ProductDataSource.OPEN_FOOD_FACTS);
+            product.setRequiresApiRetry(false);
+            log.debug("Successfully fetched product data for UPC: {} from external API", upc);
+        } catch (NotFoundException e) {
+            log.warn("Product with UPC {} not found in external database", upc);
+            throw new NotFoundException("Product with UPC '" + upc + "' not found");
+        } catch (Exception e) {
+            log.warn("Failed to fetch API data for UPC: {}, creating manual entry for retry", upc, e);
+            product.setDataSource(ProductDataSource.MANUAL);
+            product.setRequiresApiRetry(true);
+            product.setRetryAttempts(0);
+        }
+
+        Product savedProduct = productRepository.save(product);
+        log.info("Auto-created product with ID: {} for UPC: {}", savedProduct.getId(), upc);
+        return mapToResponse(savedProduct);
     }
 
     /**
