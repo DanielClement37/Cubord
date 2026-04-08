@@ -4,9 +4,10 @@ import {
     StyleSheet,
     ScrollView,
     Pressable,
-    Platform,
+    
 } from 'react-native';
-import { Text, Button, TextInput, ScreenContainer } from '@/components/ui';
+import { DatePickerModal } from '@/components/ui/DatePickerModal';
+import { Text, Button, ScreenContainer } from '@/components/ui';
 import { palette } from '@/styles/colors';
 import { spacing, radius } from '@/styles/tokens';
 import { useLocations } from '@/hooks/queries/useLocations';
@@ -16,6 +17,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ProductResponse, CreatePantryItemRequest } from '@/types';
 import Toast from 'react-native-toast-message';
 import * as Haptics from 'expo-haptics';
+import { PANTRY_UNITS } from "@/utils/pantryUnits";
+import { guessExpirationDate } from "@/utils/guessExpirationDays";
 
 interface ConfirmItemScreenProps {
     product: ProductResponse;
@@ -38,14 +41,23 @@ export function ConfirmItemScreen({
     const [showLocationPicker, setShowLocationPicker] = useState(false);
     const [quantity, setQuantity] = useState(1);
     const [unit, setUnit] = useState('Unit');
-    const [expirationDate, setExpirationDate] = useState(() => {
-        if (product.defaultExpirationDays) {
-            const d = new Date();
-            d.setDate(d.getDate() + product.defaultExpirationDays);
-            return d.toISOString().split('T')[0];
-        }
-        return '';
-    });
+    const [showUnitPicker, setShowUnitPicker] = useState(false);
+
+    // ── Expiration date state ────────────────────────
+    const guessedDate = useMemo(
+        () =>
+            guessExpirationDate(
+                product.name,
+                product.category,
+                product.defaultExpirationDays,
+            ),
+        [product],
+    );
+
+    const [expirationDate, setExpirationDate] = useState<Date | null>(
+        guessedDate,
+    );
+    const [showDatePicker, setShowDatePicker] = useState(false);
 
     // Auto-select first location
     React.useEffect(() => {
@@ -73,6 +85,19 @@ export function ConfirmItemScreen({
         },
     });
 
+    const handleDateChange = useCallback(
+        (selectedDate: Date) => {
+            setExpirationDate(selectedDate);
+            setShowDatePicker(false);
+        },
+        [],
+    );
+
+    const formattedDate = useMemo(() => {
+        if (!expirationDate) return '';
+        return expirationDate.toISOString().split('T')[0];
+    }, [expirationDate]);
+
     const handleAddToPantry = useCallback(() => {
         if (!selectedLocationId) {
             Toast.show({ type: 'error', text1: 'Select a location' });
@@ -84,12 +109,12 @@ export function ConfirmItemScreen({
             locationId: selectedLocationId,
             quantity,
             unitOfMeasure: unit,
-            expirationDate: expirationDate || null,
+            expirationDate: formattedDate || null,
             purchaseDate: new Date().toISOString().split('T')[0],
         };
 
         addMutation.mutate(request);
-    }, [product.upc, selectedLocationId, quantity, unit, expirationDate, addMutation]);
+    }, [product.upc, selectedLocationId, quantity, unit, formattedDate, addMutation]);
 
     return (
         <ScreenContainer edges={['top', 'left', 'right', 'bottom']}>
@@ -114,7 +139,7 @@ export function ConfirmItemScreen({
                 {/* Product Info Card */}
                 <View style={styles.productCard}>
                     <View style={styles.productIcon}>
-                        <Text size="xl">🧴</Text>
+                        <Text size="xl">🥗</Text>
                     </View>
                     <View style={styles.productInfo}>
                         <Text size="lg" weight="bold" numberOfLines={2}>
@@ -201,24 +226,95 @@ export function ConfirmItemScreen({
                             </Pressable>
                         </View>
                     </View>
+
+                    {/* ── Unit Dropdown ── */}
                     <View style={{ flex: 1, marginLeft: spacing.md }}>
-                        <TextInput
-                            label="Unit"
-                            value={unit}
-                            onChangeText={setUnit}
-                        />
+                        <Text size="sm" weight="medium" color="secondary" style={styles.fieldLabel}>
+                            Unit
+                        </Text>
+                        <Pressable
+                            style={styles.pickerButton}
+                            onPress={() => setShowUnitPicker(!showUnitPicker)}
+                        >
+                            <Text size="md">{unit}</Text>
+                            <Text size="md" color="secondary">▼</Text>
+                        </Pressable>
                     </View>
                 </View>
 
-                {/* Expiration Date */}
-                <TextInput
-                    label="Expiration Date"
-                    placeholder="YYYY-MM-DD"
-                    value={expirationDate}
-                    onChangeText={setExpirationDate}
-                    keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'default'}
-                    style={{ marginTop: spacing.md }}
-                />
+                {showUnitPicker && (
+                    <View style={styles.dropdownList}>
+                        <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
+                            {PANTRY_UNITS.map((u) => (
+                                <Pressable
+                                    key={u}
+                                    style={[
+                                        styles.dropdownItem,
+                                        u === unit && styles.dropdownItemSelected,
+                                    ]}
+                                    onPress={() => {
+                                        setUnit(u);
+                                        setShowUnitPicker(false);
+                                    }}
+                                >
+                                    <Text
+                                        size="md"
+                                        weight={u === unit ? 'semibold' : 'regular'}
+                                    >
+                                        {u}
+                                    </Text>
+                                </Pressable>
+                            ))}
+                        </ScrollView>
+                    </View>
+                )}
+
+                {/* ── Expiration Date (Calendar Picker) ── */}
+                <Text size="sm" weight="medium" color="secondary" style={[styles.fieldLabel, { marginTop: spacing.md }]}>
+                    Expiration Date
+                </Text>
+                <Pressable
+                    style={styles.pickerButton}
+                    onPress={() => setShowDatePicker(!showDatePicker)}
+                >
+                    <Text
+                        size="md"
+                        color={expirationDate ? 'primary' : 'secondary'}
+                    >
+                        {expirationDate
+                            ? formattedDate
+                            : 'Tap to select a date'}
+                    </Text>
+                    <Text size="md" color="secondary">📅</Text>
+                </Pressable>
+
+                {expirationDate && guessedDate && (
+                    <Text size="sm" color="secondary" style={{ marginBottom: spacing.xs }}>
+                        Estimated from product type
+                    </Text>
+                )}
+
+                {expirationDate && (
+                    <Pressable
+                        onPress={() => setExpirationDate(null)}
+                        hitSlop={8}
+                        style={{ marginBottom: spacing.sm }}
+                    >
+                        <Text size="sm" weight="medium" style={{ color: palette.red400 }}>
+                            Clear date
+                        </Text>
+                    </Pressable>
+                )}
+
+                {showDatePicker && (
+                    <DatePickerModal
+                        visible={showDatePicker}
+                        value={expirationDate ?? new Date()}
+                        minimumDate={new Date()}
+                        onConfirm={handleDateChange}
+                        onCancel={() => setShowDatePicker(false)}
+                    />
+                )}
 
                 {/* Actions */}
                 <Button
@@ -306,9 +402,21 @@ const styles = StyleSheet.create({
     dropdownItemSelected: {
         backgroundColor: palette.sage50,
     },
+    unitDropdownOverlay: {
+        position: 'absolute',
+        top: '100%',
+        left: 0,
+        right: 0,
+        zIndex: 20,
+        elevation: 5,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+    },
     quantityRow: {
         flexDirection: 'row',
-        alignItems: 'flex-end',
+        alignItems: 'flex-start',
     },
     quantityStepper: {
         flexDirection: 'row',
@@ -329,5 +437,13 @@ const styles = StyleSheet.create({
     quantityValue: {
         flex: 1,
         textAlign: 'center',
+    },
+    datePickerContainer: {
+        backgroundColor: palette.white,
+        borderRadius: radius.md,
+        borderWidth: 1,
+        borderColor: palette.cream300,
+        padding: spacing.sm,
+        marginBottom: spacing.md,
     },
 });

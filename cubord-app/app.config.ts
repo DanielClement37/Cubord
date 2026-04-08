@@ -11,7 +11,6 @@ export default ({ config }: { config: ExpoConfig }): ExpoConfig => ({
     icon: "./assets/images/icon.png",
     scheme: "myapp",
     userInterfaceStyle: "automatic",
-    newArchEnabled: true,
     ios: {
         supportsTablet: true,
     },
@@ -39,7 +38,7 @@ export default ({ config }: { config: ExpoConfig }): ExpoConfig => ({
                 backgroundColor: '#ffffff'
             }
         ],
-        '@react-native-google-signin/google-signin'
+        '@react-native-google-signin/google-signin',
     ],
     experiments: {
         typedRoutes: true

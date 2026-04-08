@@ -13,20 +13,13 @@ export type InitStatus = 'loading' | 'ready' | 'needs-household' | 'error';
  * 3. Returns a status the layout can gate on
  */
 export function useAppInitialization() {
-    const { data: households, isLoading, isError, error, refetch } = useHouseholds();
+    const { data: households, isLoading, isError, refetch } = useHouseholds();
     const activeHouseholdId = useAppStore((s) => s.activeHouseholdId);
     const setActiveHouseholdId = useAppStore((s) => s.setActiveHouseholdId);
 
     const [status, setStatus] = useState<InitStatus>('loading');
 
     useEffect(() => {
-        console.log('[useAppInitialization]', {
-            isLoading,
-            isError,
-            error: isError ? String(error) : undefined,
-            householdCount: households?.length,
-            activeHouseholdId,
-        });
 
         if (isLoading) return;
 
