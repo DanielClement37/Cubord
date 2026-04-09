@@ -25,6 +25,8 @@ public class Product {
     private String brand;
     private String category;
     private Integer defaultExpirationDays;
+    private String imageUrl;
+    private String imageSmallUrl;
     
     // Retry mechanism fields
     private Boolean requiresApiRetry;

@@ -21,6 +21,8 @@ public class ProductResponse {
     private String brand;
     private String category;
     private Integer defaultExpirationDays;
+    private String imageUrl;
+    private String imageSmallUrl;
     private ProductDataSource dataSource;
     private Boolean requiresApiRetry;
     private Integer retryAttempts;

@@ -7,3 +7,4 @@ export { Spinner, type SpinnerProps } from './Spinner';
 export { ScreenContainer, type ScreenContainerProps } from './ScreenContainer';
 export { toastConfig } from './ToastConfig';
 export { HomeTabIcon, ScanTabIcon, PantryTabIcon, ProfileTabIcon } from './TabIcons';
+export { ProductImage } from './ProductImage';

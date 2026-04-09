@@ -650,6 +650,12 @@ public class ProductService {
         if (apiData.getCategory() != null && !apiData.getCategory().isBlank()) {
             product.setCategory(apiData.getCategory());
         }
+        if (apiData.getImageUrl() != null && !apiData.getImageUrl().isBlank()) {
+            product.setImageUrl(apiData.getImageUrl());
+        }
+        if (apiData.getImageSmallUrl() != null && !apiData.getImageSmallUrl().isBlank()) {
+            product.setImageSmallUrl(apiData.getImageSmallUrl());
+        }
         product.setUpdatedAt(LocalDateTime.now());
     }
 
@@ -739,6 +745,8 @@ public class ProductService {
                 .name(product.getName())
                 .brand(product.getBrand())
                 .category(product.getCategory())
+                .imageUrl(product.getImageUrl())
+                .imageSmallUrl(product.getImageSmallUrl())
                 .defaultExpirationDays(product.getDefaultExpirationDays())
                 .dataSource(product.getDataSource())
                 .requiresApiRetry(product.getRequiresApiRetry())

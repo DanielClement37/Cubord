@@ -314,6 +314,19 @@ public class UpcApiService {
                 log.debug("Category is null or empty");
             }
 
+            // Extract image URLs
+            String imageUrl = extractJsonField(productJson, "image_url");
+            log.debug("Extracted image_url: '{}'", imageUrl);
+            if (imageUrl != null && !imageUrl.isEmpty()) {
+                builder.imageUrl(imageUrl);
+            }
+
+            String imageSmallUrl = extractJsonField(productJson, "image_small_url");
+            log.debug("Extracted image_small_url: '{}'", imageSmallUrl);
+            if (imageSmallUrl != null && !imageSmallUrl.isEmpty()) {
+                builder.imageSmallUrl(imageSmallUrl);
+            }
+
             ProductResponse productResponse = builder.build();
             log.debug("Built ProductResponse - name: '{}', brand: '{}', category: '{}'",
                     productResponse.getName(), productResponse.getBrand(), productResponse.getCategory());

@@ -5,7 +5,7 @@ import {
     ScrollView,
     Pressable,
 } from 'react-native';
-import { Text, Button, TextInput, ScreenContainer } from '@/components/ui';
+import {Text, Button, TextInput, ScreenContainer, ProductImage} from '@/components/ui';
 import { QuantityUnitRow, LocationPicker, ExpirationDatePicker } from '@/components/scan';
 import { palette } from '@/styles/colors';
 import { spacing, radius, shadow } from '@/styles/tokens';
@@ -123,9 +123,13 @@ export function ConfirmItemScreen({
 
                 {/* Product Info Card */}
                 <View style={styles.productCard}>
-                    <View style={styles.productIcon}>
-                        <Text size="xl">🥗</Text>
-                    </View>
+                    <ProductImage
+                        imageUrl={product.imageUrl}
+                        name={product.name}
+                        category={product.category}
+                        size={56}
+                        style={styles.productIcon}
+                    />
                     <View style={styles.productInfo}>
                         {isEditing ? (
                             <>
@@ -212,12 +216,6 @@ const styles = StyleSheet.create({
         ...shadow.sm,
     },
     productIcon: {
-        width: 56,
-        height: 56,
-        borderRadius: radius.sm,
-        backgroundColor: palette.cream200,
-        alignItems: 'center',
-        justifyContent: 'center',
         marginRight: spacing.md,
     },
     productInfo: { flex: 1, gap: 2 },

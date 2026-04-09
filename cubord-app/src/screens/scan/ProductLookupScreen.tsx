@@ -6,7 +6,7 @@ import {
     Pressable,
     ActivityIndicator,
 } from 'react-native';
-import { Text, Button, TextInput, ScreenContainer } from '@/components/ui';
+import {Text, Button, TextInput, ScreenContainer, ProductImage} from '@/components/ui';
 import { palette } from '@/styles/colors';
 import { spacing, radius } from '@/styles/tokens';
 import { searchProducts } from '@/api/products';
@@ -148,6 +148,13 @@ export function ProductLookupScreen({
                                 ]}
                                 onPress={() => setSelectedProduct(product)}
                             >
+                                <ProductImage
+                                    imageUrl={product.imageUrl}
+                                    name={product.name}
+                                    category={product.category}
+                                    size={40}
+                                    style={{ marginRight: spacing.sm }}
+                                />
                                 <View style={[
                                     styles.radioOuter,
                                     isSelected && styles.radioOuterSelected,

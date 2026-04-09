@@ -28,6 +28,8 @@ export interface ProductResponse {
     name: string;
     brand: string | null;
     category: string | null;
+    imageUrl: string | null;
+    imageSmallUrl: string | null;
     defaultExpirationDays: number | null;
     dataSource: ProductDataSource;
     createdAt: string;
