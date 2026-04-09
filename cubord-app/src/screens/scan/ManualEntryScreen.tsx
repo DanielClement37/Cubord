@@ -5,8 +5,8 @@ import {
     ScrollView,
     Pressable,
 } from 'react-native';
-import { DatePickerModal } from '@/components/ui/DatePickerModal';
 import { Text, Button, TextInput, ScreenContainer } from '@/components/ui';
+import { QuantityUnitRow, LocationPicker, ExpirationDatePicker } from '@/components/scan';
 import { palette } from '@/styles/colors';
 import { spacing, radius } from '@/styles/tokens';
 import { useLocations } from '@/hooks/queries/useLocations';
@@ -14,10 +14,14 @@ import { useAppStore } from '@/stores/appStore';
 import { createProduct } from '@/api/products';
 import { createPantryItem } from '@/api/pantryItems';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { ProductRequest, ProductResponse, CreatePantryItemRequest } from '@/types';
+import type { ProductResponse } from '@/types';
 import Toast from 'react-native-toast-message';
 import * as Haptics from 'expo-haptics';
-import { PANTRY_UNITS } from '@/utils/pantryUnits';
+
+const CATEGORIES = [
+    'DAIRY', 'PRODUCE', 'MEAT', 'SEAFOOD', 'BAKERY', 'FROZEN',
+    'CANNED', 'SNACKS', 'BEVERAGES', 'CONDIMENTS', 'SPICES', 'GRAINS', 'OTHER',
+];
 
 interface ManualEntryScreenProps {
     upc: string;
@@ -25,23 +29,6 @@ interface ManualEntryScreenProps {
     onScanAnother: () => void;
     onGoBack: () => void;
 }
-
-const CATEGORIES = [
-    'Select Category',
-    'DAIRY',
-    'PRODUCE',
-    'MEAT',
-    'SEAFOOD',
-    'BAKERY',
-    'FROZEN',
-    'CANNED',
-    'SNACKS',
-    'BEVERAGES',
-    'CONDIMENTS',
-    'SPICES',
-    'GRAINS',
-    'OTHER',
-];
 
 export function ManualEntryScreen({
                                       upc,
@@ -71,23 +58,18 @@ export function ManualEntryScreen({
     // Validation
     const [errors, setErrors] = useState<Record<string, string>>({});
 
-    // Auto-select first location
     React.useEffect(() => {
         if (locations.length > 0 && !selectedLocationId) {
             setSelectedLocationId(locations[0].id);
         }
     }, [locations, selectedLocationId]);
 
-    const selectedLocation = locations.find((l) => l.id === selectedLocationId);
-
-    const createProductMutation = useMutation({
-        mutationFn: createProduct,
-    });
+    const createProductMutation = useMutation({ mutationFn: createProduct });
 
     const createPantryItemMutation = useMutation({
         mutationFn: createPantryItem,
         onSuccess: async () => {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             await queryClient.invalidateQueries({ queryKey: ['pantryItems'] });
             await queryClient.invalidateQueries({ queryKey: ['pantryStatistics'] });
             Toast.show({ type: 'success', text1: 'Added to Pantry', text2: name });
@@ -108,41 +90,34 @@ export function ManualEntryScreen({
         return Object.keys(newErrors).length === 0;
     }, [name, selectedLocationId]);
 
-    const handleDateChange = useCallback((selectedDate: Date) => {
-        setExpirationDate(selectedDate);
-        setShowDatePicker(false);
-    }, []);
-
     const formattedDate = useMemo(() => {
-        if (!expirationDate) return '';
-        return expirationDate.toISOString().split('T')[0];
+        return expirationDate ? expirationDate.toISOString().split('T')[0] : '';
     }, [expirationDate]);
+
+    const handleDateChange = useCallback((date: Date | null) => {
+        setExpirationDate(date);
+        if (date) setShowDatePicker(false);
+    }, []);
 
     const handleAddToPantry = useCallback(async () => {
         if (!validate()) return;
 
         try {
-            // 1. Create the product (backend doesn't know about this UPC yet)
-            const productRequest: ProductRequest = {
+            const product: ProductResponse = await createProductMutation.mutateAsync({
                 upc,
                 name: name.trim(),
                 brand: brand.trim() || null,
                 category: category || null,
-            };
+            });
 
-            const product: ProductResponse = await createProductMutation.mutateAsync(productRequest);
-
-            // 2. Create pantry item
-            const pantryItemRequest: CreatePantryItemRequest = {
+            createPantryItemMutation.mutate({
                 productId: product.id,
                 locationId: selectedLocationId,
                 quantity,
                 unitOfMeasure: unit,
                 expirationDate: formattedDate || null,
                 purchaseDate: new Date().toISOString().split('T')[0],
-            };
-
-            createPantryItemMutation.mutate(pantryItemRequest);
+            });
         } catch (error) {
             Toast.show({
                 type: 'error',
@@ -194,234 +169,78 @@ export function ManualEntryScreen({
 
                 {/* Brand */}
                 <View style={{ marginTop: spacing.md }}>
-                    <TextInput
-                        label="Brand"
-                        placeholder="Brand"
-                        value={brand}
-                        onChangeText={setBrand}
-                    />
+                    <TextInput label="Brand" placeholder="Brand" value={brand} onChangeText={setBrand} />
                 </View>
 
                 {/* Category */}
-                <Text size="sm" weight="medium" color="secondary" style={[styles.fieldLabel, { marginTop: spacing.md }]}>
+                <Text size="sm" weight="medium" color="secondary" style={[styles.categoryLabel, { marginTop: spacing.md }]}>
                     Category
                 </Text>
-                <Pressable
-                    style={styles.pickerButton}
-                    onPress={() => setShowCategoryPicker(!showCategoryPicker)}
-                >
+                <Pressable style={styles.categoryPicker} onPress={() => setShowCategoryPicker(!showCategoryPicker)}>
                     <Text size="md" color={category ? undefined : 'secondary'}>
                         {category || 'Select Category'}
                     </Text>
                     <Text size="md" color="secondary">▼</Text>
                 </Pressable>
                 {showCategoryPicker && (
-                    <View style={styles.dropdownList}>
+                    <View style={styles.categoryDropdown}>
                         <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
-                            {CATEGORIES.filter((c) => c !== 'Select Category').map((cat) => (
+                            {CATEGORIES.map((cat) => (
                                 <Pressable
                                     key={cat}
-                                    style={[
-                                        styles.dropdownItem,
-                                        cat === category && styles.dropdownItemSelected,
-                                    ]}
-                                    onPress={() => {
-                                        setCategory(cat);
-                                        setShowCategoryPicker(false);
-                                    }}
+                                    style={[styles.categoryItem, cat === category && styles.categoryItemSelected]}
+                                    onPress={() => { setCategory(cat); setShowCategoryPicker(false); }}
                                 >
-                                    <Text
-                                        size="md"
-                                        weight={cat === category ? 'semibold' : 'regular'}
-                                    >
-                                        {cat}
-                                    </Text>
+                                    <Text size="md" weight={cat === category ? 'semibold' : 'regular'}>{cat}</Text>
                                 </Pressable>
                             ))}
                         </ScrollView>
                     </View>
                 )}
 
-                {/* Location Picker */}
-                <Text size="sm" weight="medium" color="secondary" style={[styles.fieldLabel, { marginTop: spacing.md }]}>
-                    Location *
-                </Text>
-                <Pressable
-                    style={[styles.pickerButton, errors.location ? { borderColor: palette.red400 } : null]}
-                    onPress={() => setShowLocationPicker(!showLocationPicker)}
-                >
-                    <Text size="md">
-                        {selectedLocation?.name || 'Select location'}
-                    </Text>
-                    <Text size="md" color="secondary">▼</Text>
-                </Pressable>
-                {errors.location && (
-                    <Text size="sm" color="error" style={{ marginTop: -spacing.sm, marginBottom: spacing.sm }}>
-                        {errors.location}
-                    </Text>
-                )}
-                {showLocationPicker && (
-                    <View style={styles.dropdownList}>
-                        {locations.map((loc) => (
-                            <Pressable
-                                key={loc.id}
-                                style={[
-                                    styles.dropdownItem,
-                                    loc.id === selectedLocationId && styles.dropdownItemSelected,
-                                ]}
-                                onPress={() => {
-                                    setSelectedLocationId(loc.id);
-                                    setShowLocationPicker(false);
-                                    if (errors.location) setErrors((e) => ({ ...e, location: '' }));
-                                }}
-                            >
-                                <Text
-                                    size="md"
-                                    weight={loc.id === selectedLocationId ? 'semibold' : 'regular'}
-                                >
-                                    {loc.name}
-                                </Text>
-                            </Pressable>
-                        ))}
-                    </View>
-                )}
+                <LocationPicker
+                    locations={locations}
+                    selectedLocationId={selectedLocationId}
+                    onSelectLocation={(id) => {
+                        setSelectedLocationId(id);
+                        setShowLocationPicker(false);
+                        if (errors.location) setErrors((e) => ({ ...e, location: '' }));
+                    }}
+                    showPicker={showLocationPicker}
+                    onTogglePicker={() => setShowLocationPicker(!showLocationPicker)}
+                    error={errors.location}
+                    style={{ marginTop: spacing.md }}
+                />
 
-                {/* Quantity + Unit */}
-                <View style={styles.quantityRow}>
-                    <View style={{ flex: 1 }}>
-                        <Text size="sm" weight="medium" color="secondary" style={styles.fieldLabel}>
-                            Quantity
-                        </Text>
-                        <View style={styles.quantityStepper}>
-                            <Pressable
-                                style={styles.stepperButton}
-                                onPress={() => setQuantity(Math.max(1, quantity - 1))}
-                            >
-                                <Text size="lg" weight="bold">−</Text>
-                            </Pressable>
-                            <Text size="md" weight="semibold" style={styles.quantityValue}>
-                                {quantity}
-                            </Text>
-                            <Pressable
-                                style={styles.stepperButton}
-                                onPress={() => setQuantity(quantity + 1)}
-                            >
-                                <Text size="lg" weight="bold">+</Text>
-                            </Pressable>
-                        </View>
-                    </View>
+                <QuantityUnitRow
+                    quantity={quantity}
+                    onQuantityChange={setQuantity}
+                    unit={unit}
+                    onUnitChange={(u) => { setUnit(u); setShowUnitPicker(false); }}
+                    showUnitPicker={showUnitPicker}
+                    onToggleUnitPicker={() => setShowUnitPicker(!showUnitPicker)}
+                />
 
-                    {/* ── Unit Dropdown ── */}
-                    <View style={{ flex: 1, marginLeft: spacing.md }}>
-                        <Text size="sm" weight="medium" color="secondary" style={styles.fieldLabel}>
-                            Unit
-                        </Text>
-                        <Pressable
-                            style={styles.pickerButton}
-                            onPress={() => setShowUnitPicker(!showUnitPicker)}
-                        >
-                            <Text size="md">{unit}</Text>
-                            <Text size="md" color="secondary">▼</Text>
-                        </Pressable>
-                    </View>
-                </View>
-
-                {showUnitPicker && (
-                    <View style={styles.dropdownList}>
-                        <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
-                            {PANTRY_UNITS.map((u) => (
-                                <Pressable
-                                    key={u}
-                                    style={[
-                                        styles.dropdownItem,
-                                        u === unit && styles.dropdownItemSelected,
-                                    ]}
-                                    onPress={() => {
-                                        setUnit(u);
-                                        setShowUnitPicker(false);
-                                    }}
-                                >
-                                    <Text
-                                        size="md"
-                                        weight={u === unit ? 'semibold' : 'regular'}
-                                    >
-                                        {u}
-                                    </Text>
-                                </Pressable>
-                            ))}
-                        </ScrollView>
-                    </View>
-                )}
-
-                {/* ── Expiration Date (Calendar Picker) ── */}
-                <Text size="sm" weight="medium" color="secondary" style={[styles.fieldLabel, { marginTop: spacing.md }]}>
-                    Expiration Date
-                </Text>
-                <Pressable
-                    style={styles.pickerButton}
-                    onPress={() => setShowDatePicker(!showDatePicker)}
-                >
-                    <Text
-                        size="md"
-                        color={expirationDate ? undefined : 'secondary'}
-                    >
-                        {expirationDate
-                            ? formattedDate
-                            : 'Tap to select a date'}
-                    </Text>
-                    <Text size="md" color="secondary">📅</Text>
-                </Pressable>
-
-                {expirationDate && (
-                    <Pressable
-                        onPress={() => setExpirationDate(null)}
-                        hitSlop={8}
-                        style={{ marginBottom: spacing.sm }}
-                    >
-                        <Text size="sm" weight="medium" style={{ color: palette.red400 }}>
-                            Clear date
-                        </Text>
-                    </Pressable>
-                )}
-
-                {showDatePicker && (
-                    <DatePickerModal
-                        visible={showDatePicker}
-                        value={expirationDate ?? new Date()}
-                        minimumDate={new Date()}
-                        onConfirm={handleDateChange}
-                        onCancel={() => setShowDatePicker(false)}
-                    />
-                )}
+                <ExpirationDatePicker
+                    expirationDate={expirationDate}
+                    onDateChange={handleDateChange}
+                    showPicker={showDatePicker}
+                    onTogglePicker={() => setShowDatePicker(!showDatePicker)}
+                    style={{ marginTop: spacing.md }}
+                />
 
                 {/* Actions */}
-                <Button
-                    label="Add to Pantry"
-                    onPress={handleAddToPantry}
-                    loading={isLoading}
-                    style={{ marginTop: spacing.lg }}
-                />
-                <Button
-                    label="Scan Another Item"
-                    variant="ghost"
-                    onPress={onScanAnother}
-                    style={{ marginTop: spacing.sm }}
-                />
+                <Button label="Add to Pantry" onPress={handleAddToPantry} loading={isLoading} style={{ marginTop: spacing.lg }} />
+                <Button label="Scan Another Item" variant="ghost" onPress={onScanAnother} style={{ marginTop: spacing.sm }} />
             </ScrollView>
         </ScreenContainer>
     );
 }
 
 const styles = StyleSheet.create({
-    scroll: {
-        flex: 1,
-    },
-    scrollContent: {
-        paddingBottom: spacing.xxl,
-    },
-    header: {
-        marginBottom: spacing.lg,
-    },
+    scroll: { flex: 1 },
+    scrollContent: { paddingBottom: spacing.xxl },
+    header: { marginBottom: spacing.lg },
     upcBadge: {
         backgroundColor: palette.cream200,
         borderRadius: radius.sm,
@@ -430,10 +249,10 @@ const styles = StyleSheet.create({
         alignSelf: 'flex-start',
         marginBottom: spacing.lg,
     },
-    fieldLabel: {
+    categoryLabel: {
         marginBottom: spacing.xs,
     },
-    pickerButton: {
+    categoryPicker: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
@@ -445,7 +264,7 @@ const styles = StyleSheet.create({
         backgroundColor: palette.white,
         marginBottom: spacing.md,
     },
-    dropdownList: {
+    categoryDropdown: {
         backgroundColor: palette.white,
         borderWidth: 1,
         borderColor: palette.cream300,
@@ -454,38 +273,13 @@ const styles = StyleSheet.create({
         marginBottom: spacing.md,
         overflow: 'hidden',
     },
-    dropdownItem: {
+    categoryItem: {
         paddingHorizontal: spacing.md,
         paddingVertical: spacing.sm + 4,
         borderBottomWidth: 1,
         borderBottomColor: palette.cream200,
     },
-    dropdownItemSelected: {
+    categoryItemSelected: {
         backgroundColor: palette.sage50,
-    },
-    quantityRow: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        marginTop: spacing.md,
-    },
-    quantityStepper: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        height: 48,
-        borderWidth: 1.5,
-        borderColor: palette.cream300,
-        borderRadius: radius.md,
-        backgroundColor: palette.white,
-        overflow: 'hidden',
-    },
-    stepperButton: {
-        width: 48,
-        height: 48,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    quantityValue: {
-        flex: 1,
-        textAlign: 'center',
     },
 });
