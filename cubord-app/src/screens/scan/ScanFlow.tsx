@@ -1,12 +1,14 @@
 import React, { useState, useCallback } from 'react';
 import { ScannerScreen } from './ScannerScreen';
 import { ConfirmItemScreen } from './ConfirmItemScreen';
+import { ProductLookupScreen } from './ProductLookupScreen';
 import { ManualEntryScreen } from './ManualEntryScreen';
 import type { ProductResponse } from '@/types';
 
 type ScanFlowScreen =
     | { name: 'scanner' }
     | { name: 'confirm-item'; product: ProductResponse }
+    | { name: 'product-lookup'; upc: string }
     | { name: 'manual-entry'; upc: string };
 
 /**
@@ -16,7 +18,9 @@ type ScanFlowScreen =
  *   Scanner → GET /products/upc/{code} → 200 → ConfirmItemScreen → POST /pantry-items { upc }
  *
  * Unknown product:
- *   Scanner → GET /products/upc/{code} → 404 → ManualEntryScreen
+ *   Scanner → GET /products/upc/{code} → 404 → ProductLookupScreen
+ *     → user picks a search result → ConfirmItemScreen
+ *     → user chooses manual entry → ManualEntryScreen
  */
 export function ScanFlow() {
     const [currentScreen, setCurrentScreen] = useState<ScanFlowScreen>({ name: 'scanner' });
@@ -30,6 +34,10 @@ export function ScanFlow() {
     }, []);
 
     const handleProductNotFound = useCallback((upc: string) => {
+        setCurrentScreen({ name: 'product-lookup', upc });
+    }, []);
+
+    const handleGoToManualEntry = useCallback((upc: string) => {
         setCurrentScreen({ name: 'manual-entry', upc });
     }, []);
 
@@ -39,6 +47,17 @@ export function ScanFlow() {
                 <ScannerScreen
                     onProductFound={handleProductFound}
                     onProductNotFound={handleProductNotFound}
+                />
+            );
+
+        case 'product-lookup':
+            return (
+                <ProductLookupScreen
+                    upc={currentScreen.upc}
+                    onProductSelected={handleProductFound}
+                    onCreateManually={handleGoToManualEntry}
+                    onScanAnother={goToScanner}
+                    onGoBack={goToScanner}
                 />
             );
 

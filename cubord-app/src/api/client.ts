@@ -73,6 +73,18 @@ export interface RequestOptions extends Omit<RequestInit, 'method' | 'body' | 'h
     authenticated?: boolean;
 }
 
+/**
+ * Spring Boot Page response shape.
+ */
+export interface PageResponse<T> {
+    content: T[];
+    totalElements: number;
+    totalPages: number;
+    number: number;
+    size: number;
+}
+
+
 // ---------------------------------------------------------------------------
 // Token helper
 // ---------------------------------------------------------------------------
