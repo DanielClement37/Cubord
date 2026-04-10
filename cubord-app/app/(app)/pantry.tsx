@@ -1,10 +1,6 @@
-import { ScreenContainer, Text } from '@/components/ui';
+//app/(app)/pantry.tsx
+import { PantryFlow } from '@/screens/pantry';
 
 export default function PantryScreen() {
-    return (
-        <ScreenContainer >
-            <Text size="xl" weight="bold">Pantry</Text>
-            <Text size="md" color="secondary">Your pantry items will appear here</Text>
-        </ScreenContainer>
-    );
+    return <PantryFlow />;
 }

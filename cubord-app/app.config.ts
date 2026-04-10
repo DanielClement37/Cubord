@@ -1,4 +1,4 @@
-// app.config.ts  (at project root)
+// app.config.ts
 import 'dotenv/config';
 import { ExpoConfig } from '@expo/config-types';
 
@@ -12,6 +12,7 @@ export default ({ config }: { config: ExpoConfig }): ExpoConfig => ({
     scheme: "myapp",
     userInterfaceStyle: "automatic",
     ios: {
+        bundleIdentifier: "com.danielclement37.cubordapp",
         supportsTablet: true,
     },
     android: {
@@ -39,6 +40,8 @@ export default ({ config }: { config: ExpoConfig }): ExpoConfig => ({
             }
         ],
         '@react-native-google-signin/google-signin',
+        "expo-secure-store",
+        "expo-web-browser",
     ],
     experiments: {
         typedRoutes: true

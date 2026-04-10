@@ -1,5 +1,5 @@
-import { apiClient } from './client';
-import type { CreatePantryItemRequest, PantryItemResponse, PantryStatistics } from '@/types';
+import {apiClient, PageResponse} from './client';
+import type {CreatePantryItemRequest, PantryItemResponse, PantryStatistics, UpdatePantryItemRequest} from '@/types';
 
 export interface GetPantryItemsParams {
     householdId: string;
@@ -7,13 +7,7 @@ export interface GetPantryItemsParams {
     size?: number;
 }
 
-export interface PaginatedResponse<T> {
-    content: T[];
-    totalElements: number;
-    totalPages: number;
-    number: number;
-    size: number;
-}
+
 
 export interface GetExpiringItemsParams {
     householdId: string;
@@ -28,10 +22,10 @@ export interface GetExpiringItemsParams {
  */
 export function getPantryItems(
     params: GetPantryItemsParams,
-): Promise<PaginatedResponse<PantryItemResponse>> {
+): Promise<PageResponse<PantryItemResponse>> {
     const { householdId, page = 0, size = 20 } = params;
     const query = new URLSearchParams({ page: String(page), size: String(size) });
-    return apiClient<PaginatedResponse<PantryItemResponse>>(
+    return apiClient<PageResponse<PantryItemResponse>>(
         `/households/${householdId}/pantry-items?${query}`,
         'GET',
     );
@@ -42,6 +36,79 @@ export function getPantryItems(
  */
 export function createPantryItem(data: CreatePantryItemRequest): Promise<PantryItemResponse> {
     return apiClient<PantryItemResponse>('/pantry-items', 'POST', data);
+}
+
+/**
+ * Retrieves a single pantry item by its ID.
+ */
+export function getPantryItem(id: string): Promise<PantryItemResponse> {
+    return apiClient<PantryItemResponse>(`/pantry-items/${id}`, 'GET');
+}
+
+/**
+ * Fully updates a pantry item (PUT).
+ */
+export function updatePantryItem(
+    id: string,
+    data: UpdatePantryItemRequest,
+): Promise<PantryItemResponse> {
+    return apiClient<PantryItemResponse>(`/pantry-items/${id}`, 'PUT', data);
+}
+
+/**
+ * Partially updates a pantry item (PATCH).
+ * Only the provided fields are updated on the server.
+ */
+export function patchPantryItem(
+    id: string,
+    data: Partial<UpdatePantryItemRequest>,
+): Promise<PantryItemResponse> {
+    return apiClient<PantryItemResponse>(`/pantry-items/${id}`, 'PATCH', data);
+}
+
+/**
+ * Deletes a pantry item.
+ */
+export function deletePantryItem(id: string): Promise<void> {
+    return apiClient<void>(`/pantry-items/${id}`, 'DELETE');
+}
+
+/**
+ * Retrieves all pantry items for a specific location.
+ */
+export function getPantryItemsByLocation(
+    locationId: string,
+): Promise<PantryItemResponse[]> {
+    return apiClient<PantryItemResponse[]>(
+        `/locations/${locationId}/pantry-items`,
+        'GET',
+    );
+}
+
+/**
+ * Searches pantry items by query string within a household.
+ */
+export function searchPantryItems(
+    householdId: string,
+    query: string,
+): Promise<PantryItemResponse[]> {
+    return apiClient<PantryItemResponse[]>(
+        `/households/${householdId}/pantry-items/search?query=${encodeURIComponent(query)}`,
+        'GET',
+    );
+}
+
+/**
+ * Retrieves low-stock pantry items for a household.
+ */
+export function getLowStockItems(
+    householdId: string,
+    threshold = 5,
+): Promise<PantryItemResponse[]> {
+    return apiClient<PantryItemResponse[]>(
+        `/households/${householdId}/pantry-items/low-stock?threshold=${threshold}`,
+        'GET',
+    );
 }
 
 /**

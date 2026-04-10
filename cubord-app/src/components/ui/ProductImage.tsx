@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Image, StyleSheet, type ViewStyle } from 'react-native';
 import { Text } from '@/components/ui/Text';
 import { palette } from '@/styles/colors';
@@ -26,6 +26,12 @@ export function ProductImage({
                                  style,
                              }: ProductImageProps) {
     const [failed, setFailed] = useState(false);
+
+    // Reset failure state when the URL changes so we re-attempt loading
+    useEffect(() => {
+        setFailed(false);
+    }, [imageUrl]);
+
     const showImage = !!imageUrl && !failed;
 
     const containerStyle: ViewStyle = {

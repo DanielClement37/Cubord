@@ -5,3 +5,5 @@ export { useExpiringItems } from './useExpiringItems';
 export { usePantryStatistics } from './usePantryStatistics';
 export { useLocations } from './useLocations';
 export { useProductByUpc } from './useProductByUpc';
+export { useLowStockItems } from './useLowStockItems';
+export { usePantryItemsByLocation } from './usePantryItemsByLocation';
