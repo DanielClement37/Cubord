@@ -3,6 +3,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { PantryListScreen } from './PantryListScreen';
 import { LocationDetailScreen } from './LocationDetailScreen';
 import type { LocationResponse, PantryItemResponse } from '@/types';
+import {ItemDetailScreen} from "@/screens/pantry/ItemDetailScreen";
 
 type PantryFlowScreen =
     | { name: 'list' }
@@ -93,9 +94,11 @@ export function PantryFlow() {
             );
 
         case 'detail':
-            // TODO: Step 8 — ItemDetailScreen
-            // For now, fall back to location or list
-            goBack();
-            return null;
+            return (
+                <ItemDetailScreen
+                    item={currentScreen.item}
+                    onBack={goBack}
+                />
+            );
     }
 }
