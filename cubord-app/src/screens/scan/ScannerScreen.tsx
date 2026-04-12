@@ -18,9 +18,10 @@ import type { ProductResponse } from '@/types';
 interface ScannerScreenProps {
     onProductFound: (product: ProductResponse) => void;
     onProductNotFound: (upc: string) => void;
+    onSearchProduct: () => void;
 }
 
-export function ScannerScreen({ onProductFound, onProductNotFound }: ScannerScreenProps) {
+export function ScannerScreen({ onProductFound, onProductNotFound, onSearchProduct }: ScannerScreenProps) {
     const [permission, requestPermission] = useCameraPermissions();
     const [isProcessing, setIsProcessing] = useState(false);
     const [scanStatus, setScanStatus] = useState<'idle' | 'scanning' | 'error'>('idle');
@@ -187,9 +188,15 @@ export function ScannerScreen({ onProductFound, onProductNotFound }: ScannerScre
             {/* Bottom actions */}
             <View style={styles.bottomPanel}>
                 <Button
-                    label="Enter barcode manually"
+                    label="Search for product"
                     variant="secondary"
+                    onPress={onSearchProduct}
+                />
+                <Button
+                    label="Enter barcode manually"
+                    variant="ghost"
                     onPress={() => setShowManualEntry(true)}
+                    style={{ marginTop: spacing.sm }}
                 />
             </View>
 

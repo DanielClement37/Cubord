@@ -13,7 +13,7 @@ import { searchProducts } from '@/api/products';
 import type { ProductResponse } from '@/types';
 
 interface ProductLookupScreenProps {
-    upc: string;
+    upc?: string;
     onProductSelected: (product: ProductResponse) => void;
     onCreateManually: (upc: string) => void;
     onScanAnother: () => void;
@@ -95,22 +95,38 @@ export function ProductLookupScreen({
                 </View>
 
                 {/* Product Not Found Banner */}
-                <View style={styles.notFoundBanner}>
-                    <View style={styles.barcodeIcon}>
-                        <Text size="xl">❓</Text>
+                {upc ? (
+                    <View style={styles.notFoundBanner}>
+                        <View style={styles.barcodeIcon}>
+                            <Text size="xl">❓</Text>
+                        </View>
+                        <View style={styles.notFoundText}>
+                            <Text size="lg" weight="bold">Product Not Found</Text>
+                            <Text size="sm" color="secondary" style={{ marginTop: spacing.xs }}>
+                                We couldn't match this barcode.{'\n'}Try a quick search first.
+                            </Text>
+                        </View>
                     </View>
-                    <View style={styles.notFoundText}>
-                        <Text size="lg" weight="bold">Product Not Found</Text>
-                        <Text size="sm" color="secondary" style={{ marginTop: spacing.xs }}>
-                            We couldn't match this barcode.{'\n'}Try a quick search first.
-                        </Text>
+                ) : (
+                    <View style={styles.notFoundBanner}>
+                        <View style={styles.barcodeIcon}>
+                            <Text size="xl">🔍</Text>
+                        </View>
+                        <View style={styles.notFoundText}>
+                            <Text size="lg" weight="bold">Find a Product</Text>
+                            <Text size="sm" color="secondary" style={{ marginTop: spacing.xs }}>
+                                Search by name or brand to add{'\n'}an item to your pantry.
+                            </Text>
+                        </View>
                     </View>
-                </View>
+                )}
 
                 {/* UPC Badge */}
-                <View style={styles.upcBadge}>
-                    <Text size="sm" color="secondary">UPC: {upc}</Text>
-                </View>
+                {upc ? (
+                    <View style={styles.upcBadge}>
+                        <Text size="sm" color="secondary">UPC: {upc}</Text>
+                    </View>
+                ) : null}
 
                 {/* Search Input */}
                 <TextInput
@@ -186,7 +202,7 @@ export function ProductLookupScreen({
                 {/* Create manually link */}
                 <Pressable
                     style={styles.createManuallyButton}
-                    onPress={() => onCreateManually(upc)}
+                    onPress={() => onCreateManually(upc ?? '')}
                 >
                     <Text size="md" weight="semibold" style={{ color: palette.sage700 }}>
                         + Create new product manually

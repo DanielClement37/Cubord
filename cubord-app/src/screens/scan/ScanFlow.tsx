@@ -8,7 +8,7 @@ import type { ProductResponse } from '@/types';
 type ScanFlowScreen =
     | { name: 'scanner' }
     | { name: 'confirm-item'; product: ProductResponse }
-    | { name: 'product-lookup'; upc: string }
+    | { name: 'product-lookup'; upc?: string }
     | { name: 'manual-entry'; upc: string };
 
 /**
@@ -37,6 +37,10 @@ export function ScanFlow() {
         setCurrentScreen({ name: 'product-lookup', upc });
     }, []);
 
+    const handleGoToProductLookup = useCallback(() => {
+        setCurrentScreen({ name: 'product-lookup' });
+    }, []);
+
     const handleGoToManualEntry = useCallback((upc: string) => {
         setCurrentScreen({ name: 'manual-entry', upc });
     }, []);
@@ -47,6 +51,7 @@ export function ScanFlow() {
                 <ScannerScreen
                     onProductFound={handleProductFound}
                     onProductNotFound={handleProductNotFound}
+                    onSearchProduct={handleGoToProductLookup}
                 />
             );
 
