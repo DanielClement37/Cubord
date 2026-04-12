@@ -30,6 +30,7 @@ import { palette } from '@/styles/colors';
 import { spacing, radius, shadow } from '@/styles/tokens';
 import { Ionicons } from '@expo/vector-icons';
 import type { LocationResponse, PantryItemResponse } from '@/types';
+import {AddLocationModal} from "@/components/dashboard";
 
 /** Max items shown per location group before the "show more" link. */
 const ITEMS_PER_GROUP = 3;
@@ -58,6 +59,7 @@ export function PantryListScreen({
     const [expandedLocations, setExpandedLocations] = useState<
         Record<string, boolean>
     >({});
+    const [showAddLocation, setShowAddLocation] = useState(false);
 
     // ── Queries ──────────────────────────────
     const {
@@ -224,6 +226,27 @@ export function PantryListScreen({
                             onSelect={(id) => setActiveFilter(id as FilterId)}
                         />
 
+                        {/* Add Location button */}
+                        <Pressable
+                            onPress={() => setShowAddLocation(true)}
+                            style={styles.addLocationBtn}
+                            accessibilityRole="button"
+                            accessibilityLabel="Add location"
+                        >
+                            <Ionicons
+                                name="add-circle-outline"
+                                size={18}
+                                color={palette.sand500}
+                            />
+                            <Text
+                                size="sm"
+                                weight="medium"
+                                style={{ color: palette.sand500 }}
+                            >
+                                Add Location
+                            </Text>
+                        </Pressable>
+
                         {/* Empty states */}
                         {noLocations && (
                             <EmptyPantryState variant="locations" />
@@ -334,6 +357,12 @@ export function PantryListScreen({
                     >
                         <Ionicons name="add" size={28} color={palette.white} />
                     </Pressable>
+
+                    {/* Add Location Modal */}
+                    <AddLocationModal
+                        visible={showAddLocation}
+                        onClose={() => setShowAddLocation(false)}
+                    />
                 </>
             )}
         </ScreenContainer>
@@ -366,5 +395,17 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
         ...shadow.lg,
+    },
+    addLocationBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        alignSelf: 'flex-start',
+        gap: spacing.xs,
+        paddingVertical: spacing.xs,
+        paddingHorizontal: spacing.sm,
+        borderRadius: radius.sm,
+        borderWidth: 1,
+        borderColor: palette.sand200,
+        backgroundColor: palette.white,
     },
 });
