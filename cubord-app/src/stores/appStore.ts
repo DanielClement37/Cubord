@@ -19,8 +19,14 @@ interface AppState {
     /** Currently selected household */
     activeHouseholdId: string | null;
 
+    /** Cached Supabase access token for synchronous reads */
+    accessToken: string | null;
+
     /** Switch to a different household */
     setActiveHouseholdId: (id: string) => void;
+
+    /** Update the cached access token (called from AuthContext) */
+    setAccessToken: (token: string | null) => void;
 
     /** Reset on sign-out */
     clearActiveHousehold: () => void;
@@ -33,10 +39,13 @@ export const useAppStore = create<AppState>()(
     persist(
         (set) => ({
             activeHouseholdId: null,
+            accessToken: null,
 
             setActiveHouseholdId: (id) => set({ activeHouseholdId: id }),
 
-            clearActiveHousehold: () => set({ activeHouseholdId: null }),
+            setAccessToken: (token) => set({ accessToken: token }),
+
+            clearActiveHousehold: () => set({ activeHouseholdId: null, accessToken: null }),
         }),
         {
             name: 'app-store',

@@ -1,5 +1,4 @@
 import Constants from 'expo-constants';
-import { supabase } from '@/services/supabase';
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -90,15 +89,11 @@ export interface PageResponse<T> {
 // ---------------------------------------------------------------------------
 
 /**
- * Reads the current JWT from the Supabase session.
- *
- * TODO: Once the Zustand auth store is implemented (Phase 1 — Step 4),
- *       replace this with a synchronous read from the store to avoid the
- *       extra async hop on every request.
+ * Reads the current JWT synchronously from the Zustand auth store.
  */
-async function getAccessToken(): Promise<string | null> {
-    const { data: { session } } = await supabase.auth.getSession();
-    return session?.access_token ?? null;
+function getAccessToken(): string | null {
+    const { useAppStore } = require('@/stores/appStore');
+    return useAppStore.getState().accessToken;
 }
 
 // ---------------------------------------------------------------------------
@@ -133,7 +128,7 @@ export async function apiClient<T = unknown>(
     };
 
     if (authenticated) {
-        const token = await getAccessToken();
+        const token = getAccessToken();
         if (token) {
             headers['Authorization'] = `Bearer ${token}`;
         }

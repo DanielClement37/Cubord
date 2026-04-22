@@ -25,6 +25,8 @@ class ProductDomainTest {
         String brand = "Test Brand";
         String category = "Test Category";
         Integer defaultExpirationDays = 30;
+        String imageUrl = "https://images.openfoodfacts.org/images/products/123/front_en.400.jpg";
+        String imageSmallUrl = "https://images.openfoodfacts.org/images/products/123/front_en.200.jpg";
         Boolean requiresApiRetry = false;
         Integer retryAttempts = 0;
         LocalDateTime lastRetryAttempt = LocalDateTime.now();
@@ -40,6 +42,8 @@ class ProductDomainTest {
                 .brand(brand)
                 .category(category)
                 .defaultExpirationDays(defaultExpirationDays)
+                .imageUrl(imageUrl)
+                .imageSmallUrl(imageSmallUrl)
                 .requiresApiRetry(requiresApiRetry)
                 .retryAttempts(retryAttempts)
                 .lastRetryAttempt(lastRetryAttempt)
@@ -55,6 +59,8 @@ class ProductDomainTest {
         assertThat(product.getBrand()).isEqualTo(brand);
         assertThat(product.getCategory()).isEqualTo(category);
         assertThat(product.getDefaultExpirationDays()).isEqualTo(defaultExpirationDays);
+        assertThat(product.getImageUrl()).isEqualTo(imageUrl);
+        assertThat(product.getImageSmallUrl()).isEqualTo(imageSmallUrl);
         assertThat(product.getRequiresApiRetry()).isEqualTo(requiresApiRetry);
         assertThat(product.getRetryAttempts()).isEqualTo(retryAttempts);
         assertThat(product.getLastRetryAttempt()).isEqualTo(lastRetryAttempt);
@@ -85,6 +91,8 @@ class ProductDomainTest {
         assertThat(product.getBrand()).isNull();
         assertThat(product.getCategory()).isNull();
         assertThat(product.getDefaultExpirationDays()).isNull();
+        assertThat(product.getImageUrl()).isNull();
+        assertThat(product.getImageSmallUrl()).isNull();
         assertThat(product.getRequiresApiRetry()).isNull();
         assertThat(product.getRetryAttempts()).isNull();
         assertThat(product.getLastRetryAttempt()).isNull();
@@ -140,6 +148,8 @@ class ProductDomainTest {
         assertThat(product.getBrand()).isNull();
         assertThat(product.getCategory()).isNull();
         assertThat(product.getDefaultExpirationDays()).isNull();
+        assertThat(product.getImageUrl()).isNull();
+        assertThat(product.getImageSmallUrl()).isNull();
         assertThat(product.getRequiresApiRetry()).isNull();
         assertThat(product.getRetryAttempts()).isNull();
         assertThat(product.getLastRetryAttempt()).isNull();
@@ -158,6 +168,8 @@ class ProductDomainTest {
         String brand = "All Args Brand";
         String category = "All Args Category";
         Integer defaultExpirationDays = 45;
+        String imageUrl = "https://images.openfoodfacts.org/images/products/456/front_en.400.jpg";
+        String imageSmallUrl = "https://images.openfoodfacts.org/images/products/456/front_en.200.jpg";
         Boolean requiresApiRetry = true;
         Integer retryAttempts = 1;
         LocalDateTime lastRetryAttempt = LocalDateTime.now();
@@ -166,7 +178,8 @@ class ProductDomainTest {
         LocalDateTime updatedAt = LocalDateTime.now();
 
         // When
-        Product product = new Product(id, upc, name, brand, category, defaultExpirationDays, 
+        Product product = new Product(id, upc, name, brand, category, defaultExpirationDays,
+                                    imageUrl, imageSmallUrl,
                                     requiresApiRetry, retryAttempts, lastRetryAttempt, dataSource, 
                                     createdAt, updatedAt);
 
@@ -177,6 +190,8 @@ class ProductDomainTest {
         assertThat(product.getBrand()).isEqualTo(brand);
         assertThat(product.getCategory()).isEqualTo(category);
         assertThat(product.getDefaultExpirationDays()).isEqualTo(defaultExpirationDays);
+        assertThat(product.getImageUrl()).isEqualTo(imageUrl);
+        assertThat(product.getImageSmallUrl()).isEqualTo(imageSmallUrl);
         assertThat(product.getRequiresApiRetry()).isEqualTo(requiresApiRetry);
         assertThat(product.getRetryAttempts()).isEqualTo(retryAttempts);
         assertThat(product.getLastRetryAttempt()).isEqualTo(lastRetryAttempt);

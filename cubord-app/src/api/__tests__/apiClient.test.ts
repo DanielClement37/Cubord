@@ -19,29 +19,30 @@ jest.mock('expo-constants', () => ({
 }));
 
 // ---------------------------------------------------------------------------
-// Mock supabase auth — returns a fake JWT by default
+// Mock appStore — provides a fake JWT by default
 // ---------------------------------------------------------------------------
 const FAKE_TOKEN = 'test-jwt-token';
 
-jest.mock('@services/supabase', () => ({
-    supabase: {
-        auth: {
-            getSession: jest.fn().mockResolvedValue({
-                data: { session: { access_token: FAKE_TOKEN } },
-            }),
-        },
+let mockAccessToken: string | null = FAKE_TOKEN;
+
+jest.mock('@/stores/appStore', () => ({
+    useAppStore: {
+        getState: () => ({
+            accessToken: mockAccessToken,
+            clearActiveHousehold: jest.fn(),
+        }),
     },
 }));
-
-// Get a reference so individual tests can override
-import { supabase } from '@/services/supabase';
-const mockGetSession = supabase.auth.getSession as jest.Mock;
 
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 describe('apiClient', () => {
+    beforeEach(() => {
+        mockAccessToken = FAKE_TOKEN;
+    });
+
     // ------ Successful requests -------------------------------------------
 
     it('makes a GET request and returns parsed JSON', async () => {
@@ -105,9 +106,7 @@ describe('apiClient', () => {
     });
 
     it('omits Authorization header when no session exists', async () => {
-        mockGetSession.mockResolvedValueOnce({
-            data: { session: null },
-        });
+        mockAccessToken = null;
 
         let authHeader: string | null = null;
 

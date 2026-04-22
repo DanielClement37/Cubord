@@ -46,4 +46,27 @@ describe('useAppStore', () => {
         useAppStore.getState().clearActiveHousehold();
         expect(useAppStore.getState().activeHouseholdId).toBeNull();
     });
+
+    it('has null as the initial accessToken', () => {
+        expect(useAppStore.getState().accessToken).toBeNull();
+    });
+
+    it('setAccessToken updates the value', () => {
+        useAppStore.getState().setAccessToken('jwt-token-abc');
+        expect(useAppStore.getState().accessToken).toBe('jwt-token-abc');
+    });
+
+    it('setAccessToken can be set to null', () => {
+        useAppStore.getState().setAccessToken('jwt-token-abc');
+        useAppStore.getState().setAccessToken(null);
+        expect(useAppStore.getState().accessToken).toBeNull();
+    });
+
+    it('clearActiveHousehold also clears accessToken', () => {
+        useAppStore.getState().setAccessToken('jwt-token-abc');
+        useAppStore.getState().setActiveHouseholdId('household-123');
+        useAppStore.getState().clearActiveHousehold();
+        expect(useAppStore.getState().accessToken).toBeNull();
+        expect(useAppStore.getState().activeHouseholdId).toBeNull();
+    });
 });

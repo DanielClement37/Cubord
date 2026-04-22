@@ -50,7 +50,7 @@ export default function HomeScreen() {
     // ── Derived data ─────────────────────────
     const activeHousehold = households?.find((h) => h.id === activeHouseholdId);
     const householdName = activeHousehold?.name ?? 'My Home';
-    const userName = user?.user_metadata?.full_name ?? user?.email ?? 'there';
+    const userName = user?.user_metadata?.full_name || user?.email || 'there';
 
     const totalItems = statistics?.totalItems;
     const locationsCount = locations?.length;

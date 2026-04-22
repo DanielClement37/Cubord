@@ -30,6 +30,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     useEffect(() => {
         supabase.auth.getSession().then(({ data }) => {
             setSession(data.session);
+            useAppStore.getState().setAccessToken(data.session?.access_token ?? null);
             setLoading(false);
         });
 
@@ -37,6 +38,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             data: { subscription },
         } = supabase.auth.onAuthStateChange((_event, newSession) => {
             setSession(newSession);
+            useAppStore.getState().setAccessToken(newSession?.access_token ?? null);
         });
 
         return () => subscription.unsubscribe();
