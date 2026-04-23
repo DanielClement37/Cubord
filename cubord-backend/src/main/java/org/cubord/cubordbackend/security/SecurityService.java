@@ -17,10 +17,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.EnumSet;
-import java.util.Optional;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 
 /**
  * Centralized security service for authentication and authorization checks.
@@ -589,7 +586,7 @@ public class SecurityService {
     /**
      * Creates a new user from JWT token claims.
      * 
-     * <p>This is called on first login when the user exists in the auth provider
+     * <p>This is called on the first login when the user exists in the auth provider
      * but not yet in our database.</p>
      *
      * @param token The JWT authentication token
@@ -598,7 +595,22 @@ public class SecurityService {
     private User createUserFromToken(JwtAuthenticationToken token) {
         String subject = token.getToken().getSubject();
         String email = token.getToken().getClaimAsString("email");
+        
+        // Supabase nests Google provider claims inside user_metadata
+        Map<String, Object> userMetadata = token.getToken().getClaimAsMap("user_metadata");
+        
         String displayName = token.getToken().getClaimAsString("name");
+        if (displayName == null && userMetadata != null) {
+            Object name = userMetadata.get("name");
+            if (name != null) displayName = name.toString();
+        }
+        
+        String avatarUrl = token.getToken().getClaimAsString("picture");
+        if (avatarUrl == null && userMetadata != null) {
+            Object avatar = userMetadata.get("avatar_url");
+            if (avatar == null) avatar = userMetadata.get("picture");
+            if (avatar != null) avatarUrl = avatar.toString();
+        }
 
         log.info("Creating new user from JWT token for subject: {}", subject);
 
@@ -606,6 +618,7 @@ public class SecurityService {
                 .id(UUID.fromString(subject))
                 .email(email != null ? email : subject + "@unknown.com")
                 .displayName(displayName != null ? displayName : "User")
+                .avatarUrl(avatarUrl)
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .build();

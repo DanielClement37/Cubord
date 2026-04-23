@@ -13,6 +13,7 @@ export interface UserRequest {
 export interface UserUpdateRequest {
     /** @minLength 2 @maxLength 50 */
     displayName?: string | null;
+    avatarUrl?: string | null;
     /** Must be a valid email */
     email?: string | null;
     username?: string | null;
@@ -23,6 +24,7 @@ export interface UserResponse {
     username: string;
     email: string;
     displayName: string;
+    avatarUrl: string | null;
     createdAt: string;
     updatedAt: string;
 }

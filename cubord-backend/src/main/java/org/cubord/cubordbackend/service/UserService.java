@@ -161,6 +161,11 @@ public class UserService {
             log.debug("Updated display name for user {}", id);
         }
 
+        if (updateRequest.getAvatarUrl() != null) {
+            user.setAvatarUrl(updateRequest.getAvatarUrl().isBlank() ? null : updateRequest.getAvatarUrl());
+            log.debug("Updated avatar URL for user {}", id);
+        }
+
         if (updateRequest.getEmail() != null && !updateRequest.getEmail().isBlank()) {
             updateEmailIfChanged(user, updateRequest.getEmail());
         }
@@ -228,7 +233,14 @@ public class UserService {
                         updateEmailIfChanged(user, value.toString());
                     }
                     break;
-                    
+
+                case "avatarUrl":
+                    if (value != null) {
+                        user.setAvatarUrl(value.toString().isBlank() ? null : value.toString());
+                        log.debug("Patched avatarUrl for user {}", id);
+                    }
+                    break;
+
                 case "username":
                     if (value != null && !value.toString().isBlank()) {
                         String newUsername = value.toString();
@@ -303,6 +315,7 @@ public class UserService {
                 .id(user.getId())
                 .email(user.getEmail())
                 .displayName(user.getDisplayName())
+                .avatarUrl(user.getAvatarUrl())
                 .username(user.getUsername())
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())

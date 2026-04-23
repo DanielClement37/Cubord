@@ -18,7 +18,10 @@ public class UserUpdateRequest {
     
     @Email(message = "Email must be valid")
     private String email;
-    
+
+    @Size(max = 2048, message = "Avatar URL must not exceed 2048 characters")
+    private String avatarUrl;
+
     // This field is included for completeness but should be ignored during updates
     private String username;
 }

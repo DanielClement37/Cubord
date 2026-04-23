@@ -6,7 +6,6 @@ import { server } from '@test/mocks/server';
 import {
     mockHouseholds,
     mockLocations,
-    mockPantryItems,
     mockPantryStatistics,
 } from '@test/mocks/data';
 import { useAppStore } from '@/stores/appStore';
